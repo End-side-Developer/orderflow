@@ -491,6 +491,7 @@ async function requestApi<T>(path: string, init: RequestInit): Promise<ApiResult
     const response = await fetch(url, {
       ...init,
       cache: "no-store",
+      credentials: init.credentials ?? "include",
       headers,
     });
 
@@ -502,6 +503,7 @@ async function requestApi<T>(path: string, init: RequestInit): Promise<ApiResult
         const retryResponse = await fetch(url, {
           ...init,
           cache: "no-store",
+          credentials: init.credentials ?? "include",
           headers,
         });
         return parseResponse<T>(retryResponse);
@@ -1335,6 +1337,20 @@ export type AdvocatesListData = {
   total: number;
   items: AdvocateDirectoryItem[];
 };
+
+export interface AiChatRequest {
+  message: string;
+  context?: "navigation" | "legal_term" | "case_help";
+}
+
+export interface AiChatResponse {
+  reply: string;
+  model: string;
+}
+
+export async function postAiChat(payload: AiChatRequest): Promise<ApiResult<AiChatResponse>> {
+  return apiPostJson<AiChatRequest, AiChatResponse>("/ai/chat", payload);
+}
 
 export type AdvocateListParams = {
   q?: string;

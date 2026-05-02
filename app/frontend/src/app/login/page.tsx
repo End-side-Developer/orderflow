@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { loginUser } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth/store";
@@ -18,11 +18,18 @@ export default function LoginPage() {
   const redirect = searchParams.get("redirect") ?? "/dashboard";
 
   const setSession = useAuthStore((s) => s.setSession);
+  const status = useAuthStore((s) => s.status);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (status === "authed") {
+      router.replace(redirect);
+    }
+  }, [redirect, router, status]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
