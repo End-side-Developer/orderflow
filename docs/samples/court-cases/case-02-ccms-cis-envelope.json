@@ -1,0 +1,48 @@
+{
+  "ccms": {
+    "reference_id": "DHC-CCMS-CRLA-228-2003-2025-11-24",
+    "delivery_timestamp": "2025-11-24T10:00:00Z",
+    "document_type": "judgment",
+    "source_url": "https://delhihighcourt.nic.in/app/showFileJudgment/59524112025CRLA2282003_205515.pdf",
+    "source_gateway": "indian-ecourts-service",
+    "receipt_id": "DHC-EC-2025-1124-CRLA228"
+  },
+  "cis": {
+    "case_id": "CRL.A. 228/2003 and CRL.A. 238/2003",
+    "court_name": "High Court of Delhi",
+    "court_code": "DHC",
+    "order_date": "2025-11-24",
+    "bench": "Justice Amit Mahajan",
+    "parties": [
+      "Har Swarup Verma and Ashok Kumar Gupta",
+      "State of Delhi"
+    ],
+    "petitioners": [
+      "Har Swarup Verma",
+      "Ashok Kumar Gupta"
+    ],
+    "respondents": [
+      "State of Delhi"
+    ],
+    "case_type": "Criminal Appeal",
+    "filing_number": "Criminal Appeal No. 228/2003",
+    "diary_number": "Diary No. 205515/2025",
+    "judge_names": [
+      "Justice Amit Mahajan"
+    ],
+    "hearing_stage": "Judgment pronounced",
+    "state": "Delhi",
+    "district": "New Delhi",
+    "department_tags": [
+      "Criminal Law",
+      "Appeal",
+      "ACB"
+    ]
+  },
+  "source_file_name": "delhi-hc-crla-228-2003-judgment-24-11-2025.pdf",
+  "source_file_type": "application/pdf",
+  "additional_metadata": {
+    "source_gateway": "indian-ecourts-service",
+    "source_url": "https://delhihighcourt.nic.in/app/showFileJudgment/59524112025CRLA2282003_205515.pdf"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "departments": [
+    {
+      "code": "REVENUE",
+      "name": "Department of Revenue",
+      "aliases": ["revenue", "tehsildar", "collector", "patwari", "land records", "tax", "stamp duty"]
+    },
+    {
+      "code": "URBAN_DEV",
+      "name": "Urban Development Department",
+      "aliases": ["urban development", "udd", "municipal", "municipality", "municipal corporation", "town planning", "urban local body", "ulb"]
+    },
+    {
+      "code": "RURAL_DEV",
+      "name": "Rural Development Department",
+      "aliases": ["rural development", "panchayat", "panchayati raj", "village", "gram", "block development"]
+    },
+    {
+      "code": "HEALTH",
+      "name": "Department of Health & Family Welfare",
+      "aliases": ["health", "health department", "medical", "hospital", "civil surgeon", "cmo", "chief medical officer", "primary health centre", "phc"]
+    },
+    {
+      "code": "EDUCATION",
+      "name": "Department of School Education",
+      "aliases": ["education", "school", "ssa", "samagra shiksha", "headmaster", "principal", "deo", "district education officer"]
+    },
+    {
+      "code": "HIGHER_ED",
+      "name": "Department of Higher Education",
+      "aliases": ["higher education", "university", "college", "vice chancellor", "registrar", "ugc"]
+    },
+    {
+      "code": "HOME",
+      "name": "Home Department",
+      "aliases": ["home", "police", "sp", "superintendent of police", "dgp", "law and order", "prison", "jail"]
+    },
+    {
+      "code": "FINANCE",
+      "name": "Department of Finance",
+      "aliases": ["finance", "treasury", "audit", "ag", "accountant general", "budget", "expenditure"]
+    },
+    {
+      "code": "PWD",
+      "name": "Public Works Department",
+      "aliases": ["pwd", "public works", "roads", "buildings", "executive engineer", "junior engineer", "highways"]
+    },
+    {
+      "code": "WATER",
+      "name": "Public Health Engineering / Water Resources",
+      "aliases": ["water", "phe", "phed", "irrigation", "jal nigam", "jal shakti", "water supply", "tubewell"]
+    },
+    {
+      "code": "POWER",
+      "name": "Energy / Power Department",
+      "aliases": ["power", "electricity", "discom", "transmission", "ueppcl", "uppcl", "wbsedcl", "load dispatch"]
+    },
+    {
+      "code": "ENV",
+      "name": "Environment, Forest & Climate Change",
+      "aliases": ["environment", "forest", "pollution control", "spcb", "cpcb", "climate", "wildlife"]
+    },
+    {
+      "code": "LABOUR",
+      "name": "Department of Labour & Employment",
+      "aliases": ["labour", "labor", "labour commissioner", "esi", "employment", "minimum wage", "industrial tribunal"]
+    },
+    {
+      "code": "WCD",
+      "name": "Women & Child Development",
+      "aliases": ["women", "child", "wcd", "icds", "anganwadi", "child welfare"]
+    },
+    {
+      "code": "SOCIAL_WELFARE",
+      "name": "Social Welfare Department",
+      "aliases": ["social welfare", "scheduled caste", "scheduled tribe", "obc", "minority welfare", "pension scheme"]
+    },
+    {
+      "code": "TRANSPORT",
+      "name": "Transport Department",
+      "aliases": ["transport", "rto", "regional transport officer", "motor vehicle", "permit", "road safety"]
+    },
+    {
+      "code": "AGRI",
+      "name": "Department of Agriculture",
+      "aliases": ["agriculture", "agri", "farmer", "krishi", "horticulture", "minimum support price", "msp"]
+    },
+    {
+      "code": "IT",
+      "name": "Department of Information Technology",
+      "aliases": ["information technology", "it department", "egovernance", "e-governance", "nic", "national informatics centre", "digital"]
+    }
+  ]
+}

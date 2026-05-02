@@ -1,0 +1,47 @@
+{
+  "ccms": {
+    "reference_id": "DHC-CCMS-WPC-8524-2025-2026-02-05",
+    "delivery_timestamp": "2026-02-05T10:00:00Z",
+    "document_type": "judgment",
+    "source_url": "https://delhihighcourt.nic.in/app/showFileJudgment/75005022026CW85242025_154137.pdf",
+    "source_gateway": "indian-ecourts-service",
+    "receipt_id": "DHC-EC-2026-0205-8524"
+  },
+  "cis": {
+    "case_id": "W.P.(C) 8524/2025",
+    "court_name": "High Court of Delhi",
+    "court_code": "DHC",
+    "order_date": "2026-02-05",
+    "bench": "Delhi High Court Bench",
+    "parties": [
+      "Petitioners in W.P.(C) 8524/2025 and connected matters",
+      "Union of India and Others"
+    ],
+    "petitioners": [
+      "Petitioners in W.P.(C) 8524/2025 and connected matters"
+    ],
+    "respondents": [
+      "Union of India and Others"
+    ],
+    "case_type": "Writ Petition (Civil)",
+    "filing_number": "Filing No. 8524/2025",
+    "diary_number": "Diary No. 154137/2025",
+    "judge_names": [
+      "Unknown from public excerpt"
+    ],
+    "hearing_stage": "Judgment pronounced",
+    "state": "Delhi",
+    "district": "New Delhi",
+    "department_tags": [
+      "SSC",
+      "Recruitment",
+      "Administrative Law"
+    ]
+  },
+  "source_file_name": "delhi-hc-wpc-8524-2025-judgment-05-02-2026.pdf",
+  "source_file_type": "application/pdf",
+  "additional_metadata": {
+    "source_gateway": "indian-ecourts-service",
+    "source_url": "https://delhihighcourt.nic.in/app/showFileJudgment/75005022026CW85242025_154137.pdf"
+  }
+}

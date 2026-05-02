@@ -1,0 +1,27 @@
+{
+  "ccms": {
+    "reference_id": "CCMS-REF-2026-001",
+    "delivery_timestamp": "2026-04-24T10:15:00Z",
+    "document_type": "final_order"
+  },
+  "cis": {
+    "case_id": "CIS-CASE-2026-981",
+    "court_name": "High Court of Karnataka",
+    "court_code": "KAHC01",
+    "order_date": "2026-04-20",
+    "bench": "Division Bench",
+    "parties": [
+      "State of Karnataka",
+      "Petitioner"
+    ],
+    "case_type": "Writ Petition",
+    "department_tags": [
+      "Revenue",
+      "Urban Development"
+    ]
+  },
+  "additional_metadata": {
+    "delivery_feed": "nightly_sync",
+    "source_gateway": "indian-ecourts-service"
+  }
+}

@@ -1,0 +1,31 @@
+node_modules/
+app/frontend/node_modules/
+*__pycache__/
+*.pyc
+*.egg-info/
+app/frontend/.next*
+tmp/
+quality_output.txt
+*.tsbuildinfo
+app/backend/AIForBharat_Theme_App_Factory/
+
+# Local environment files (secrets)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Common secret material
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Local secret/config blobs
+secrets/
+**/secrets/
+*.secrets.json
+*.secret.json

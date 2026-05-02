@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "Sample officer directory used for routing demos. Replace with the live HRMS / cadre roster before production.",
+  "officers": [
+    {"id": "OFF-REV-001", "name": "Smt. Rashmi Kale", "designation": "District Collector", "department_code": "REVENUE", "jurisdiction": "Pune", "contact": "collector.pune@maharashtra.gov.in"},
+    {"id": "OFF-REV-002", "name": "Shri Anil Verma", "designation": "Tehsildar", "department_code": "REVENUE", "jurisdiction": "Bengaluru Urban", "contact": "tehsildar.blr@karnataka.gov.in"},
+    {"id": "OFF-URB-001", "name": "Shri Karthik Iyer", "designation": "Municipal Commissioner", "department_code": "URBAN_DEV", "jurisdiction": "Chennai", "contact": "commissioner@chennaicorporation.gov.in"},
+    {"id": "OFF-URB-002", "name": "Smt. Neha Joshi", "designation": "Town Planning Officer", "department_code": "URBAN_DEV", "jurisdiction": "Indore", "contact": "tpo.indore@mp.gov.in"},
+    {"id": "OFF-RUR-001", "name": "Shri Ravindra Singh", "designation": "Block Development Officer", "department_code": "RURAL_DEV", "jurisdiction": "Varanasi", "contact": "bdo.varanasi@up.gov.in"},
+    {"id": "OFF-HEA-001", "name": "Dr. Meera Pillai", "designation": "Chief Medical Officer", "department_code": "HEALTH", "jurisdiction": "Thiruvananthapuram", "contact": "cmo.tvm@kerala.gov.in"},
+    {"id": "OFF-HEA-002", "name": "Dr. Sanjay Mishra", "designation": "Civil Surgeon", "department_code": "HEALTH", "jurisdiction": "Bhopal", "contact": "civil.surgeon@bhopal.gov.in"},
+    {"id": "OFF-EDU-001", "name": "Smt. Priya Nair", "designation": "District Education Officer", "department_code": "EDUCATION", "jurisdiction": "Hyderabad", "contact": "deo.hyd@telangana.gov.in"},
+    {"id": "OFF-HIG-001", "name": "Prof. R. Subramanian", "designation": "Registrar", "department_code": "HIGHER_ED", "jurisdiction": "Madras University", "contact": "registrar@unom.ac.in"},
+    {"id": "OFF-HOM-001", "name": "Shri Devraj Patil", "designation": "Superintendent of Police", "department_code": "HOME", "jurisdiction": "Nashik", "contact": "sp.nashik@maharashtra.gov.in"},
+    {"id": "OFF-FIN-001", "name": "Smt. Lalitha Rao", "designation": "Director of Treasuries", "department_code": "FINANCE", "jurisdiction": "Andhra Pradesh", "contact": "dot.ap@ap.gov.in"},
+    {"id": "OFF-PWD-001", "name": "Shri Manoj Kumar", "designation": "Executive Engineer (PWD)", "department_code": "PWD", "jurisdiction": "Patna", "contact": "ee.pwd.patna@bihar.gov.in"},
+    {"id": "OFF-WAT-001", "name": "Smt. Anita Roy", "designation": "Chief Engineer (PHED)", "department_code": "WATER", "jurisdiction": "Jaipur", "contact": "ce.phed.jaipur@rajasthan.gov.in"},
+    {"id": "OFF-POW-001", "name": "Shri Suresh Menon", "designation": "Superintending Engineer (Discom)", "department_code": "POWER", "jurisdiction": "Kochi", "contact": "se.discom.kochi@kseb.in"},
+    {"id": "OFF-ENV-001", "name": "Dr. Neelima Bhatt", "designation": "Member Secretary, SPCB", "department_code": "ENV", "jurisdiction": "Gujarat", "contact": "ms.gpcb@gujarat.gov.in"},
+    {"id": "OFF-LAB-001", "name": "Shri Imran Sheikh", "designation": "Labour Commissioner", "department_code": "LABOUR", "jurisdiction": "Mumbai", "contact": "labour.commissioner@maharashtra.gov.in"},
+    {"id": "OFF-WCD-001", "name": "Smt. Kavitha Reddy", "designation": "District Programme Officer (ICDS)", "department_code": "WCD", "jurisdiction": "Vijayawada", "contact": "dpo.icds.vij@ap.gov.in"},
+    {"id": "OFF-SOC-001", "name": "Shri Bhupendra Singh", "designation": "Director, Social Welfare", "department_code": "SOCIAL_WELFARE", "jurisdiction": "Lucknow", "contact": "director.sw@up.gov.in"},
+    {"id": "OFF-TRA-001", "name": "Shri Jignesh Patel", "designation": "Regional Transport Officer", "department_code": "TRANSPORT", "jurisdiction": "Ahmedabad", "contact": "rto.ahd@gujarat.gov.in"},
+    {"id": "OFF-AGR-001", "name": "Dr. Gurmeet Singh", "designation": "Director of Agriculture", "department_code": "AGRI", "jurisdiction": "Punjab", "contact": "doa.punjab@punjab.gov.in"},
+    {"id": "OFF-IT-001", "name": "Shri Nikhil Sharma", "designation": "Secretary, IT", "department_code": "IT", "jurisdiction": "Karnataka", "contact": "secretary.it@karnataka.gov.in"}
+  ]
+}

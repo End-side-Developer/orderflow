@@ -1,0 +1,141 @@
+name: orderflow-local
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: orderflow-postgres
+    environment:
+      POSTGRES_DB: ${ORDERFLOW_INFRA_POSTGRES_DB:-orderflow}
+      POSTGRES_USER: ${ORDERFLOW_INFRA_POSTGRES_USER:-orderflow}
+      POSTGRES_PASSWORD: ${ORDERFLOW_INFRA_POSTGRES_PASSWORD:-orderflow}
+    ports:
+      - "${ORDERFLOW_INFRA_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - orderflow-postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ORDERFLOW_INFRA_POSTGRES_USER:-orderflow} -d ${ORDERFLOW_INFRA_POSTGRES_DB:-orderflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    container_name: orderflow-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - orderflow-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  minio:
+    image: minio/minio:latest
+    container_name: orderflow-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${ORDERFLOW_INFRA_MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${ORDERFLOW_INFRA_MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${ORDERFLOW_INFRA_MINIO_API_PORT:-9000}:9000"
+      - "${ORDERFLOW_INFRA_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - orderflow-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  minio-bootstrap:
+    image: minio/mc:latest
+    container_name: orderflow-minio-bootstrap
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/bootstrap/create-bucket.sh"]
+    environment:
+      ORDERFLOW_INFRA_MINIO_ROOT_USER: ${ORDERFLOW_INFRA_MINIO_ROOT_USER:-minioadmin}
+      ORDERFLOW_INFRA_MINIO_ROOT_PASSWORD: ${ORDERFLOW_INFRA_MINIO_ROOT_PASSWORD:-minioadmin}
+      ORDERFLOW_INFRA_DOCUMENTS_BUCKET: ${ORDERFLOW_INFRA_DOCUMENTS_BUCKET:-orderflow-documents}
+    volumes:
+      - ./minio:/bootstrap:ro
+    restart: "no"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.61.0
+    container_name: orderflow-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.112.0
+    container_name: orderflow-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${ORDERFLOW_INFRA_OTEL_GRPC_PORT:-4317}:4317"
+      - "${ORDERFLOW_INFRA_OTEL_HTTP_PORT:-4318}:4318"
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: orderflow-libretranslate
+    environment:
+      LIBRE_PORT: "${ORDERFLOW_INFRA_LIBRETRANSLATE_PORT:-5000}"
+      LIBRE_LOAD_ONLY: "hi,en,ta,te,kn,ml,mr"
+      LIBRE_THREADS: "4"
+    ports:
+      - "${ORDERFLOW_INFRA_LIBRETRANSLATE_PORT:-5000}:${ORDERFLOW_INFRA_LIBRETRANSLATE_PORT:-5000}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${ORDERFLOW_INFRA_LIBRETRANSLATE_PORT:-5000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  orderflow-postgres-data:
+  orderflow-redis-data:
+  orderflow-minio-data:
