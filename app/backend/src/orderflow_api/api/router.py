@@ -18,6 +18,7 @@ from orderflow_api.api.routes.page_annotations import router as page_annotations
 from orderflow_api.api.routes.workflows import router as workflows_router
 from orderflow_api.api.routes.intelligence import router as intelligence_router
 from orderflow_api.api.routes.workbench import router as workbench_router
+from orderflow_api.api.routes.ai_chat import router as ai_chat_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -38,3 +39,4 @@ api_router.include_router(page_annotations_router)
 api_router.include_router(workflows_router)
 api_router.include_router(intelligence_router)
 api_router.include_router(workbench_router)
+api_router.include_router(ai_chat_router)
