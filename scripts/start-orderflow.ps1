@@ -413,10 +413,12 @@ if ($Force -and -not $DryRun) {
 
     $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
     if ($dockerCommand) {
-        & docker rm -f orderflow-temporal 2>$null | Out-Null
+        try { & docker rm -f orderflow-temporal 2>&1 | Out-Null } catch {}
         Push-Location $InfraDir
         try {
-            & docker compose down 2>$null | Out-Null
+            & docker compose down 2>&1 | Out-Null
+        } catch {
+            Write-Host "Warning: docker compose down failed" -ForegroundColor Yellow
         } finally {
             Pop-Location
         }
