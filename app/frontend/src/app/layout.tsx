@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import { TopNav } from "@/components/top-nav";
 import { AuthProvider } from "@/lib/auth/provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AiChatWidget } from "@/components/ai-chat/ai-chat-widget";
 
 import "./globals.css";
 
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
             <div className="flex min-h-screen flex-col">
               <TopNav />
               <main className="mx-auto w-full max-w-[1380px] flex-1 px-6 py-8">{children}</main>
+              <AiChatWidget />
             </div>
           </AuthProvider>
         </TooltipProvider>
