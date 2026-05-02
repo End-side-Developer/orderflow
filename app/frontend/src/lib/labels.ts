@@ -16,6 +16,8 @@ export interface RouteDescriptor {
   key: RouteKey;
   href: string;
   label: string;
+  simpleLabel?: string;
+  helpText?: string;
   description: string;
   inWorkflow: boolean;
   workflowIndex: number | null;
@@ -28,6 +30,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "overview",
     href: "/",
     label: "Overview",
+    simpleLabel: "Case overview",
+    helpText: "Summary of all your active cases in one place.",
     description: "Workbench summary across all live cases.",
     inWorkflow: false,
     workflowIndex: null,
@@ -36,6 +40,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "intake",
     href: "/upload",
     label: "Intake",
+    simpleLabel: "Add new case",
+    helpText: "Upload a new judgment to start the workflow.",
     description: "Upload a new judgment to start the workflow.",
     inWorkflow: true,
     workflowIndex: 1,
@@ -45,6 +51,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "analyze",
     href: "/document-summary",
     label: "Analyze",
+    simpleLabel: "Read documents",
+    helpText: "View AI-generated page summaries and highlights.",
     description: "Page-level summaries, highlights, and AI extraction.",
     inWorkflow: true,
     workflowIndex: 2,
@@ -54,6 +62,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "verify",
     href: "/obligations",
     label: "Verify",
+    simpleLabel: "Approve duties",
+    helpText: "Approve, reject, or close court duties with evidence.",
     description: "Approve, reject, and close obligations with proof.",
     inWorkflow: true,
     workflowIndex: 3,
@@ -63,6 +73,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "escalate",
     href: "/risk",
     label: "Escalate",
+    simpleLabel: "Urgent issues",
+    helpText: "Items flagged as high-risk that need immediate review.",
     description: "Triage risk-scored items and open escalations.",
     inWorkflow: true,
     workflowIndex: 4,
@@ -72,6 +84,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "departments",
     href: "/departments",
     label: "Departments",
+    simpleLabel: "Government offices",
+    helpText: "Performance and load across government departments.",
     description: "Department health, ownership, and load.",
     inWorkflow: false,
     workflowIndex: null,
@@ -106,6 +120,8 @@ export const ROUTES: RouteDescriptor[] = [
     key: "admin",
     href: "/admin/verifications",
     label: "Admin",
+    simpleLabel: "Advocate approvals",
+    helpText: "Review and approve advocate registration requests.",
     description: "Advocate verification queue and user management.",
     inWorkflow: false,
     workflowIndex: null,

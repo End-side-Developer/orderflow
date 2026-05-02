@@ -67,6 +67,8 @@ import {
 import type { Annotation as PdfAnnotation, PdfTextPosition } from "@/components/pdf-viewer";
 import { cn } from "@/lib/utils";
 
+import { InfoHint } from "@/components/info-hint";
+
 const PdfViewer = dynamic(
   () => import("@/components/pdf-viewer").then((mod) => mod.PdfViewer),
   {
@@ -517,7 +519,11 @@ function DocumentSummaryContent() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Analyze"
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            Read documents <InfoHint glossaryKey="analyze" />
+          </span>
+        }
         title={docLabel ? docLabel : "Page-level analysis"}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">

@@ -229,6 +229,8 @@ function buildRelatedCaseRecommendations(
   return recommendations.slice(0, SIMILAR_CASE_LIMIT);
 }
 
+import { InfoHint } from "@/components/info-hint";
+
 export default function ObligationsPage() {
   return (
     <Suspense
@@ -488,8 +490,12 @@ function ObligationsContent() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Verify"
-        title="Approve, reject, and close obligations"
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            Court duties <InfoHint glossaryKey="obligations" />
+          </span>
+        }
+        title="Approve, reject, and close court duties with evidence"
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs">{documentId.slice(0, 8)}</span>

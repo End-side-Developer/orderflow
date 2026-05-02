@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Cpu, FileSearch, Globe, Search, UploadCloud } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
+import { InfoHint } from "@/components/info-hint";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -538,7 +539,11 @@ export default function UploadPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Intake"
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            Add new case <InfoHint glossaryKey="intake" />
+          </span>
+        }
         title="Upload a judgment to start the workflow"
         subtitle="Pick a file or fetch from Indian eCourts. Extraction, summaries, annotations, and the orchestration run start automatically."
       />

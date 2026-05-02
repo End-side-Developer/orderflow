@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
+import { InfoHint } from "@/components/info-hint";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -88,8 +89,12 @@ export default function DepartmentsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Departments"
-        title="Department health scoring"
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            Department health <InfoHint glossaryKey="departments" />
+          </span>
+        }
+        title="Department performance"
         subtitle={
           data
             ? `Tracking ${data.total_departments} departments · average health ${data.avg_health_score.toFixed(1)}/100`

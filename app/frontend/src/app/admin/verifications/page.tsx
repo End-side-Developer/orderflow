@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { AdvocateDirectoryItem } from "@/lib/api/client";
 import { listPendingAdvocates, verifyAdvocate, rejectAdvocate } from "@/lib/api/client";
@@ -20,6 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/app/page-header";
+import { InfoHint } from "@/components/info-hint";
 
 export default function VerificationsPage() {
   const router = useRouter();
@@ -34,21 +36,7 @@ export default function VerificationsPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
-    if (status === "anon") {
-      router.push("/login?redirect=/admin/verifications");
-      return;
-    }
-    if (status !== "authed") return;
-    if (user && user.role !== "judge" && user.role !== "government") {
-      router.push("/dashboard");
-      return;
-    }
-    void loadPending();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, user]);
-
-  async function loadPending() {
+  const loadPending = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -61,7 +49,20 @@ export default function VerificationsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (status === "anon") {
+      router.push("/login?redirect=/admin/verifications");
+      return;
+    }
+    if (status !== "authed") return;
+    if (user && user.role !== "judge" && user.role !== "government") {
+      router.push("/dashboard");
+      return;
+    }
+    void loadPending();
+  }, [loadPending, router, status, user]);
 
   async function handleVerify(id: string) {
     setActionLoading(true);
@@ -103,12 +104,15 @@ export default function VerificationsPage() {
 
   return (
     <div className="space-y-6 py-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Advocate Verifications</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Review and approve or reject pending advocate registrations.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            Advocate approvals <InfoHint glossaryKey="verifications" />
+          </span>
+        }
+        title="Review pending registrations"
+        subtitle="Review and approve or reject pending advocate registrations."
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

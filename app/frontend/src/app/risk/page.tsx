@@ -68,6 +68,8 @@ function formatAuditAction(action: string): string {
   return action.replaceAll(".", " ");
 }
 
+import { InfoHint } from "@/components/info-hint";
+
 export default function RiskPage() {
   return (
     <Suspense
@@ -283,7 +285,11 @@ function RiskContent() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Escalate"
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            Urgent issues <InfoHint glossaryKey="escalate" />
+          </span>
+        }
         title="Risk and escalation dashboard"
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
