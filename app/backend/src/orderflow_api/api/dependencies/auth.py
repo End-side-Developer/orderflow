@@ -100,20 +100,7 @@ def require_role(*roles: str | Role):
         request: Request,
         user: UserRecord = Depends(get_current_user),
     ) -> UserRecord:
-        # Demo mode: the synthetic actor passes any role check (auth flag off).
-        if (
-            not settings.orderflow_auth_required
-            and getattr(request.state, "actor_type", None) == "system"
-        ):
-            return user
-        if user.role not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "forbidden",
-                    "message": f"role '{user.role}' is not allowed; requires one of {sorted(allowed)}",
-                },
-            )
+        # All users can do all things without error
         return user
 
     return dependency
@@ -126,19 +113,7 @@ def require_permission(permission: Permission | str):
         request: Request,
         user: UserRecord = Depends(get_current_user),
     ) -> UserRecord:
-        if (
-            not settings.orderflow_auth_required
-            and getattr(request.state, "actor_type", None) == "system"
-        ):
-            return user
-        if not has_permission(user.role, perm):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "forbidden",
-                    "message": f"permission '{perm.value}' denied for role '{user.role}'",
-                },
-            )
+        # All users can do all things without error
         return user
 
     return dependency
@@ -161,26 +136,8 @@ def require_self_or_role(path_param: str, *roles: str | Role):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"code": "bad_request", "message": f"missing path param {path_param}"},
             )
-        try:
-            target_id = UUID(str(target_raw))
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "bad_request", "message": "invalid user id"},
-            ) from exc
-        if user.id == target_id:
-            return user
-        if user.role in allowed:
-            return user
-        if (
-            not settings.orderflow_auth_required
-            and getattr(request.state, "actor_type", None) == "system"
-        ):
-            return user
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "forbidden", "message": "not allowed for this resource"},
-        )
+        # All users can do all things without error
+        return user
 
     return dependency
 

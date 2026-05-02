@@ -10,6 +10,7 @@ import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { logoutUser } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
+import { InfoHint } from "@/components/info-hint";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,9 +47,10 @@ export function TopNav() {
   const router = useRouter();
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
 
-  const user = useAuthStore((s) => s.user);
+  const storedUser = useAuthStore((s) => s.user);
   const status = useAuthStore((s) => s.status);
   const clearSession = useAuthStore((s) => s.clearSession);
+  const user = status === "authed" ? storedUser : null;
 
   // Demo mode (no user): show the original workflow routes (no dashboard/admin).
   // Logged in: filter by the user's role so each role sees only their routes.
@@ -87,6 +89,10 @@ export function TopNav() {
     router.push("/login");
   }
 
+  if (pathname === "/login" || pathname === "/register") {
+    return null;
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex w-full max-w-[1380px] flex-col gap-3 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -109,7 +115,7 @@ export function TopNav() {
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  {route.label}
+                  {route.simpleLabel ?? route.label}
                 </Link>
               );
             })}
@@ -149,8 +155,11 @@ export function TopNav() {
                     >
                       {index + 1}
                     </span>
-                    {stage.label}
+                    {stage.simpleLabel ?? stage.label}
                   </Link>
+                  <div className="hidden lg:block">
+                    <InfoHint glossaryKey={stage.key} side="bottom" />
+                  </div>
                   {index < WORKFLOW_STAGES.length - 1 ? (
                     <span aria-hidden="true" className="text-muted-foreground">
                       ›
