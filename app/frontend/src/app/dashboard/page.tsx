@@ -6,12 +6,16 @@ import { useEffect, useState } from "react";
 
 import type { WorkbenchOverviewData } from "@/lib/api/client";
 import { getWorkbenchOverview } from "@/lib/api/client";
+import { QuickActionCard } from "@/components/dashboard/quick-action-card";
+import { FeaturedAdvocates } from "@/components/dashboard/featured-advocates";
+import { Users, Scale, MessageCircle } from "lucide-react";
 import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfoHint } from "@/components/info-hint";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -40,16 +44,19 @@ export default function DashboardPage() {
   }, [user]);
 
   if (status === "loading" || !user) {
-    return (
-      <div className="space-y-4 py-8">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
+    if (status === "loading") {
+      return (
+        <div className="space-y-4 py-8">
+          <Skeleton className="h-8 w-48" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full" />
+            ))}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+    return null;
   }
 
   return (
@@ -61,33 +68,44 @@ export default function DashboardPage() {
         <Badge variant="outline">{ROLE_LABELS[user.role]}</Badge>
       </div>
 
+      {/* Quick actions for all roles */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Quick actions</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <QuickActionCard
+            icon={<Scale />}
+            title="Find an Advocate"
+            description="Find and connect with verified advocates."
+            onClick={() => router.push("/advocates")}
+          />
+          <QuickActionCard
+            icon={<MessageCircle />}
+            title="Ask AI Assistant"
+            description="Get answers about terminology and case help."
+            onClick={() => window.dispatchEvent(new Event("orderflow:open-ai-chat"))}
+          />
+        </div>
+      </div>
+
       {/* Citizen dashboard */}
       {user.role === "citizen" && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Your cases</CardTitle>
-              <CardDescription>
-                View public obligations and case status linked to your matters.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link href="/public">View public obligations</Link>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Advocate directory</CardTitle>
-              <CardDescription>Find and connect with verified advocates.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link href="/advocates">Browse advocates</Link>
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="space-y-8">
+          <div className="grid gap-4 sm:grid-cols-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>Your cases</CardTitle>
+                <CardDescription>
+                  View public obligations and case status linked to your matters.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline">
+                  <Link href="/public">View public obligations</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+          <FeaturedAdvocates />
         </div>
       )}
 
@@ -107,7 +125,9 @@ export default function DashboardPage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Case analysis</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Read documents <InfoHint glossaryKey="analyze" />
+              </CardTitle>
               <CardDescription>Access document summaries and obligations.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -160,18 +180,22 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader>
-                <CardTitle>Workbench</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  Case overview <InfoHint glossaryKey="workbench" />
+                </CardTitle>
                 <CardDescription>Full case overview and workflow management.</CardDescription>
               </CardHeader>
               <CardContent>
                 <Button asChild>
-                  <Link href="/">Open workbench</Link>
+                  <Link href="/">Open case overview</Link>
                 </Button>
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Intake</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  Add new case <InfoHint glossaryKey="intake" />
+                </CardTitle>
                 <CardDescription>Upload new judgments for processing.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -182,7 +206,9 @@ export default function DashboardPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Verifications</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  Advocate approvals <InfoHint glossaryKey="verifications" />
+                </CardTitle>
                 <CardDescription>Review pending advocate registrations.</CardDescription>
               </CardHeader>
               <CardContent>
