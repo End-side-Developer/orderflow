@@ -190,6 +190,7 @@ def test_login_success_returns_access_token_and_sets_cookie(
     assert "access_token" in data
     assert data["user"]["role"] == "judge"
     assert settings.orderflow_refresh_cookie_name in resp.cookies
+    assert "Path=/" in resp.headers["set-cookie"]
 
 
 def test_login_for_advocate_attaches_advocate_profile(
@@ -255,7 +256,7 @@ def test_me_with_no_bearer_when_auth_required_returns_401(
 
 
 def test_refresh_without_cookie_returns_401() -> None:
-    resp = _client.post(f"{_BASE}/refresh")
+    resp = TestClient(app).post(f"{_BASE}/refresh")
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "no_refresh_token"
 
@@ -268,12 +269,15 @@ def test_refresh_with_valid_cookie_returns_new_access_token(
 
     monkeypatch.setattr(auth_service, "rotate_refresh", MagicMock(return_value=issued))
     monkeypatch.setattr(user_persistence, "record_credentials_event", MagicMock())
+    monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=user))
 
     refresh_cookie = {settings.orderflow_refresh_cookie_name: issued.refresh_token}
     resp = _client.post(f"{_BASE}/refresh", cookies=refresh_cookie)
 
     assert resp.status_code == 200
-    assert "access_token" in resp.json()["data"]
+    data = resp.json()["data"]
+    assert "access_token" in data
+    assert data["user"]["role"] == "citizen"
 
 
 def test_refresh_with_invalid_token_returns_401() -> None:

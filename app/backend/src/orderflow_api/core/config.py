@@ -205,7 +205,7 @@ class Settings(BaseSettings):
         validation_alias="ORDERFLOW_REFRESH_COOKIE_DOMAIN",
     )
     orderflow_refresh_cookie_secure: bool = Field(
-        default=True,
+        default=False,
         validation_alias="ORDERFLOW_REFRESH_COOKIE_SECURE",
     )
     orderflow_refresh_cookie_samesite: str = Field(
@@ -213,7 +213,7 @@ class Settings(BaseSettings):
         validation_alias="ORDERFLOW_REFRESH_COOKIE_SAMESITE",
     )
     orderflow_refresh_cookie_path: str = Field(
-        default="/api/v1/auth",
+        default="/",
         validation_alias="ORDERFLOW_REFRESH_COOKIE_PATH",
     )
 

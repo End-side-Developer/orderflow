@@ -21,6 +21,7 @@ from orderflow_api.schemas.users import UserRecord
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_LEGACY_REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 
 def _client_ip(request: Request) -> str | None:
@@ -35,6 +36,12 @@ def _user_agent(request: Request) -> str | None:
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
+    if settings.orderflow_refresh_cookie_path != _LEGACY_REFRESH_COOKIE_PATH:
+        response.delete_cookie(
+            key=settings.orderflow_refresh_cookie_name,
+            domain=settings.orderflow_refresh_cookie_domain,
+            path=_LEGACY_REFRESH_COOKIE_PATH,
+        )
     response.set_cookie(
         key=settings.orderflow_refresh_cookie_name,
         value=token,
@@ -53,6 +60,12 @@ def _clear_refresh_cookie(response: Response) -> None:
         domain=settings.orderflow_refresh_cookie_domain,
         path=settings.orderflow_refresh_cookie_path,
     )
+    if settings.orderflow_refresh_cookie_path != _LEGACY_REFRESH_COOKIE_PATH:
+        response.delete_cookie(
+            key=settings.orderflow_refresh_cookie_name,
+            domain=settings.orderflow_refresh_cookie_domain,
+            path=_LEGACY_REFRESH_COOKIE_PATH,
+        )
 
 
 @router.post(
@@ -210,11 +223,24 @@ async def refresh_route(
     )
     _set_refresh_cookie(response, issued.refresh_token)
 
+    user = user_persistence.get_user_by_id(claims.sub)
+    if user is None:
+        _clear_refresh_cookie(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "refresh_failed", "message": "user no longer exists"},
+        )
+    advocate_profile = (
+        user_persistence.get_advocate_profile(user.id) if user.role == "advocate" else None
+    )
+
     return success(
         data={
             "access_token": issued.access_token,
             "token_type": "bearer",
             "expires_in": auth_service.access_ttl_seconds(),
+            "user": user,
+            "advocate_profile": advocate_profile,
         },
         request_id=request_id,
         message="token_refreshed",

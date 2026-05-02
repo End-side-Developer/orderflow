@@ -56,7 +56,8 @@ class LoginEnvelope(SuccessResponse):
 
 
 class RefreshData(TokenPayload):
-    pass
+    user: UserRecord
+    advocate_profile: AdvocateProfileRecord | None = None
 
 
 class RefreshEnvelope(SuccessResponse):
