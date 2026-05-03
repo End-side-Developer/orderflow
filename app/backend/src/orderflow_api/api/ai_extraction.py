@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import json
+import re
 from typing import Any
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
@@ -657,3 +658,152 @@ def _safe_priority(value: object) -> str:
         return lowered
 
     return "medium"
+
+
+def extract_case_flow(
+    *,
+    metadata: dict[str, object] | None,
+    summaries: list[object],
+    obligations: list[object],
+) -> dict[str, list[dict[str, object]]]:
+    """Build a deterministic case-flow graph from extracted document signals."""
+    nodes: list[dict[str, object]] = []
+    edges: list[dict[str, object]] = []
+
+    metadata_obj = _coerce_mapping(metadata)
+    cis = _coerce_mapping(metadata_obj.get("cis"))
+
+    parties: list[str] = []
+    for key in ("petitioners", "respondents", "parties"):
+        value = cis.get(key)
+        if isinstance(value, list):
+            parties.extend([str(item).strip() for item in value if str(item).strip()])
+    parties = list(dict.fromkeys(parties))[:6]
+
+    party_node_ids: list[str] = []
+    for idx, party in enumerate(parties, start=1):
+        node_id = f"party-{idx}"
+        party_node_ids.append(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "node_type": "party",
+                "label": party,
+                "detail": "Party to the proceedings",
+                "page_ref": None,
+            }
+        )
+
+    event_node_ids: list[str] = []
+    for summary in summaries[:12]:
+        page_number = _safe_int(_read_field(summary, "page_number"))
+        summary_text = _safe_text(_read_field(summary, "summary")) or "Proceeding update"
+        label = f"Page {page_number}" if page_number else "Case event"
+        node_id = f"event-{page_number or len(event_node_ids) + 1}"
+        event_node_ids.append(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "node_type": "event",
+                "label": label,
+                "detail": summary_text[:220],
+                "page_ref": page_number,
+            }
+        )
+
+    first_event = event_node_ids[0] if event_node_ids else None
+    if first_event:
+        for party_node_id in party_node_ids:
+            edges.append(
+                {
+                    "id": f"{party_node_id}->{first_event}",
+                    "source": party_node_id,
+                    "target": first_event,
+                    "relation": "involved_in",
+                }
+            )
+
+    for left, right in zip(event_node_ids, event_node_ids[1:]):
+        edges.append(
+            {
+                "id": f"{left}->{right}",
+                "source": left,
+                "target": right,
+                "relation": "next",
+            }
+        )
+
+    order_node_ids: list[str] = []
+    for summary in summaries:
+        text = _safe_text(_read_field(summary, "summary")) or ""
+        if not re.search(r"\b(order|directed|dispose|allowed|dismissed)\b", text, re.IGNORECASE):
+            continue
+        page_number = _safe_int(_read_field(summary, "page_number"))
+        node_id = f"order-{len(order_node_ids) + 1}"
+        order_node_ids.append(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "node_type": "order",
+                "label": "Court order",
+                "detail": text[:220],
+                "page_ref": page_number,
+            }
+        )
+
+    for order_node_id in order_node_ids:
+        previous_event = event_node_ids[-1] if event_node_ids else None
+        if previous_event:
+            edges.append(
+                {
+                    "id": f"{previous_event}->{order_node_id}",
+                    "source": previous_event,
+                    "target": order_node_id,
+                    "relation": "results_in",
+                }
+            )
+
+    obligation_node_ids: list[str] = []
+    for idx, obligation in enumerate(obligations[:20], start=1):
+        title = _safe_text(_read_field(obligation, "title")) or "Obligation"
+        citation = _read_field(obligation, "citation")
+        page_ref = _safe_int(_read_field(citation, "page_number"))
+        node_id = f"obligation-{idx}"
+        obligation_node_ids.append(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "node_type": "obligation",
+                "label": title[:120],
+                "detail": _safe_text(_read_field(obligation, "description")),
+                "page_ref": page_ref,
+            }
+        )
+
+    for idx, obligation_node_id in enumerate(obligation_node_ids):
+        source_order = order_node_ids[idx % len(order_node_ids)] if order_node_ids else None
+        source_event = event_node_ids[-1] if event_node_ids else None
+        source = source_order or source_event
+        if source:
+            edges.append(
+                {
+                    "id": f"{source}->{obligation_node_id}",
+                    "source": source,
+                    "target": obligation_node_id,
+                    "relation": "creates",
+                }
+            )
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def _read_field(value: object, field: str) -> object:
+    if isinstance(value, dict):
+        return value.get(field)
+    return getattr(value, field, None)
+
+
+def _coerce_mapping(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    return {}
