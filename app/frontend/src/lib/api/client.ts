@@ -1330,12 +1330,80 @@ export type AdvocateDirectoryItem = {
   full_name: string | null;
   email: string;
   phone: string | null;
+  case_count?: number;
   profile: AdvocateProfile;
 };
 
 export type AdvocatesListData = {
   total: number;
   items: AdvocateDirectoryItem[];
+};
+
+export type AdvocateRecommendationFilters = {
+  specialization: string | null;
+  jurisdiction_state: string | null;
+  jurisdiction_level: string | null;
+  language: string | null;
+};
+
+export type AdvocateRecommendationsData = {
+  document_id: string;
+  total: number;
+  filters: AdvocateRecommendationFilters;
+  items: AdvocateDirectoryItem[];
+};
+
+export type CaseFlowNode = {
+  id: string;
+  node_type: "party" | "event" | "order" | "obligation";
+  label: string;
+  detail: string | null;
+  page_ref: number | null;
+};
+
+export type CaseFlowEdge = {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+};
+
+export type CaseFlowData = {
+  document_id: string;
+  nodes: CaseFlowNode[];
+  edges: CaseFlowEdge[];
+};
+
+export type AdvocateCaseLink = {
+  id: string;
+  document_id: string;
+  advocate_user_id: string;
+  role: "counsel" | "co-counsel" | "consulting";
+  status: "claimed" | "verified";
+  created_at: string;
+  verified_at: string | null;
+  verified_by_user_id: string | null;
+  document_title: string | null;
+  court_name: string | null;
+  order_date: string | null;
+  advocate_full_name: string | null;
+  advocate_photo_url: string | null;
+};
+
+export type AdvocateCaseLinksData = {
+  total: number;
+  items: AdvocateCaseLink[];
+};
+
+export type AdvocateCaseClaimPayload = {
+  document_id: string;
+  role: "counsel" | "co-counsel" | "consulting";
+};
+
+export type DocumentAdvocatesData = {
+  document_id: string;
+  total: number;
+  items: AdvocateCaseLink[];
 };
 
 export interface AiChatRequest {
@@ -1346,6 +1414,75 @@ export interface AiChatRequest {
 export interface AiChatResponse {
   reply: string;
   model: string;
+}
+
+function toStringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function toNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function normalizeAdvocateItem(raw: unknown): AdvocateDirectoryItem {
+  const item = (raw ?? {}) as Record<string, unknown>;
+  const existingProfile =
+    typeof item.profile === "object" && item.profile !== null
+      ? (item.profile as Record<string, unknown>)
+      : null;
+
+  const inferredId = toStringValue(item.id || item.user_id);
+  const source = existingProfile ? { ...existingProfile, ...item } : item;
+
+  const profile: AdvocateProfile = {
+    user_id: toStringValue(source.user_id || inferredId),
+    bar_council_id: toStringValue(source.bar_council_id),
+    registration_number: toNullableString(source.registration_number),
+    photo_url: toNullableString(source.photo_url),
+    bio: toNullableString(source.bio),
+    years_of_experience: toNumberOrNull(source.years_of_experience),
+    languages: toStringArray(source.languages),
+    specializations: toStringArray(source.specializations),
+    jurisdictions: Array.isArray(source.jurisdictions)
+      ? (source.jurisdictions as AdvocateJurisdiction[])
+      : [],
+    verification_status:
+      source.verification_status === "pending" ||
+      source.verification_status === "rejected"
+        ? (source.verification_status as "pending" | "rejected")
+        : "verified",
+    verified_at: toNullableString(source.verified_at),
+    rejection_reason: toNullableString(source.rejection_reason),
+    ratings_avg: typeof source.ratings_avg === "number" ? source.ratings_avg : null,
+    ratings_count: typeof source.ratings_count === "number" ? source.ratings_count : 0,
+    consultation_fee_min_inr: toNumberOrNull(source.consultation_fee_min_inr),
+    consultation_fee_max_inr: toNumberOrNull(source.consultation_fee_max_inr),
+    created_at: toStringValue(source.created_at),
+    updated_at: toStringValue(source.updated_at),
+  };
+
+  return {
+    id: inferredId || profile.user_id,
+    full_name: toNullableString(item.full_name),
+    email: toStringValue(item.email),
+    phone: toNullableString(item.phone),
+    case_count: typeof item.case_count === "number" ? item.case_count : 0,
+    profile,
+  };
+}
+
+function normalizeAdvocateItems(items: unknown): AdvocateDirectoryItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => normalizeAdvocateItem(item));
 }
 
 export async function postAiChat(payload: AiChatRequest): Promise<ApiResult<AiChatResponse>> {
@@ -1392,40 +1529,150 @@ export async function listAdvocatesDirectory(
   if (params?.limit !== undefined) query.set("limit", String(params.limit));
   if (params?.offset !== undefined) query.set("offset", String(params.offset));
   const qs = query.toString();
-  return apiGet<AdvocatesListData>(`/advocates${qs ? `?${qs}` : ""}`);
+  const result = await apiGet<AdvocatesListData>(`/advocates${qs ? `?${qs}` : ""}`);
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      items: normalizeAdvocateItems((result.data as unknown as Record<string, unknown>).items),
+    },
+  };
+}
+
+export async function getDocumentAdvocateRecommendations(
+  documentId: string,
+): Promise<ApiResult<AdvocateRecommendationsData>> {
+  const result = await apiGet<AdvocateRecommendationsData>(
+    `/documents/${encodeURIComponent(documentId)}/advocate-recommendations`,
+  );
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      items: normalizeAdvocateItems((result.data as unknown as Record<string, unknown>).items),
+    },
+  };
+}
+
+export async function getDocumentCaseFlow(
+  documentId: string,
+): Promise<ApiResult<CaseFlowData>> {
+  return apiGet<CaseFlowData>(`/documents/${encodeURIComponent(documentId)}/case-flow`);
 }
 
 export async function getAdvocate(id: string): Promise<ApiResult<AdvocateDirectoryItem>> {
-  return apiGet<AdvocateDirectoryItem>(`/advocates/${encodeURIComponent(id)}`);
+  const result = await apiGet<AdvocateDirectoryItem>(`/advocates/${encodeURIComponent(id)}`);
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: normalizeAdvocateItem(result.data as unknown),
+  };
 }
 
 export async function updateAdvocateMe(
   payload: AdvocateUpdateRequest,
 ): Promise<ApiResult<AdvocateDirectoryItem>> {
-  return requestApi<AdvocateDirectoryItem>("/advocates/me", {
+  const result = await requestApi<AdvocateDirectoryItem>("/advocates/me", {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: normalizeAdvocateItem(result.data as unknown),
+  };
 }
 
 export async function verifyAdvocate(id: string): Promise<ApiResult<AdvocateDirectoryItem>> {
-  return apiPostJson<Record<string, never>, AdvocateDirectoryItem>(
+  const result = await apiPostJson<Record<string, never>, AdvocateDirectoryItem>(
     `/advocates/${encodeURIComponent(id)}/verify`,
     {},
   );
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: normalizeAdvocateItem(result.data as unknown),
+  };
 }
 
 export async function rejectAdvocate(
   id: string,
   reason: string,
 ): Promise<ApiResult<AdvocateDirectoryItem>> {
-  return apiPostJson<{ reason: string }, AdvocateDirectoryItem>(
+  const result = await apiPostJson<{ reason: string }, AdvocateDirectoryItem>(
     `/advocates/${encodeURIComponent(id)}/reject`,
     { reason },
   );
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: normalizeAdvocateItem(result.data as unknown),
+  };
 }
 
 export async function listPendingAdvocates(): Promise<ApiResult<AdvocatesListData>> {
-  return apiGet<AdvocatesListData>("/advocates/pending");
+  const result = await apiGet<AdvocatesListData>("/advocates/pending");
+  if (!result.ok) return result;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      items: normalizeAdvocateItems((result.data as unknown as Record<string, unknown>).items),
+    },
+  };
+}
+
+export async function listAdvocateCases(
+  userId: string,
+  status?: "claimed" | "verified",
+): Promise<ApiResult<AdvocateCaseLinksData>> {
+  const query = new URLSearchParams();
+  if (status) query.set("status", status);
+  const suffix = query.toString();
+  return apiGet<AdvocateCaseLinksData>(
+    `/advocates/${encodeURIComponent(userId)}/cases${suffix ? `?${suffix}` : ""}`,
+  );
+}
+
+export async function claimAdvocateCase(
+  payload: AdvocateCaseClaimPayload,
+): Promise<ApiResult<{ item: AdvocateCaseLink }>> {
+  return apiPostJson<AdvocateCaseClaimPayload, { item: AdvocateCaseLink }>(
+    "/advocates/me/cases",
+    payload,
+  );
+}
+
+export async function unclaimAdvocateCase(
+  documentId: string,
+): Promise<ApiResult<{ deleted: boolean }>> {
+  return requestApi<{ deleted: boolean }>(`/advocates/me/cases/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+  });
+}
+
+export async function verifyAdvocateCase(
+  userId: string,
+  documentId: string,
+): Promise<ApiResult<{ item: AdvocateCaseLink }>> {
+  return apiPostJson<Record<string, never>, { item: AdvocateCaseLink }>(
+    `/advocates/${encodeURIComponent(userId)}/cases/${encodeURIComponent(documentId)}/verify`,
+    {},
+  );
+}
+
+export async function listDocumentAdvocates(
+  documentId: string,
+  status?: "claimed" | "verified",
+): Promise<ApiResult<DocumentAdvocatesData>> {
+  const query = new URLSearchParams();
+  if (status) query.set("status", status);
+  const suffix = query.toString();
+  return apiGet<DocumentAdvocatesData>(
+    `/documents/${encodeURIComponent(documentId)}/advocates${suffix ? `?${suffix}` : ""}`,
+  );
 }
