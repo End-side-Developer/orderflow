@@ -11,16 +11,13 @@ import {
   CheckCircle2,
   ClipboardList,
   FileText,
-  KeyRound,
   Link2,
   ListChecks,
   Lock,
   Pencil,
-  Settings2,
   ShieldCheck,
   Sparkles,
   XCircle,
-  Zap,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
@@ -52,6 +49,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { JudgmentDecisionPanel } from "@/components/judgment-decision-panel";
+import { DocumentAdvocatesStrip } from "@/components/document-advocates-strip";
 import {
   apiGet,
   extractPageObligations,
@@ -131,18 +129,6 @@ type PageLoadError = {
   requestId?: string;
 };
 
-const SIG_VARIANT: Record<HighlightItem["significance"], "destructive" | "warn" | "muted"> = {
-  critical: "destructive",
-  important: "warn",
-  contextual: "muted",
-};
-
-const SIG_BORDER: Record<HighlightItem["significance"], string> = {
-  critical: "border-l-destructive bg-destructive/5",
-  important: "border-l-warn bg-warn/5",
-  contextual: "border-l-border bg-muted/30",
-};
-
 const PRIORITY_VARIANT: Record<string, "destructive" | "warn" | "accent" | "muted"> = {
   critical: "destructive",
   high: "warn",
@@ -176,13 +162,11 @@ function DocumentSummaryContent() {
   const [loading, setLoading] = useState<LoadState>("idle");
   const [error, setError] = useState<PageLoadError | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [docId, setDocId] = useState<string | null>(qid);
   const [docLabel, setDocLabel] = useState<string | null>(null);
   const [uploadReason, setUploadReason] = useState<string | null>(extractionReason);
   const [viewMode, setViewMode] = useState<"summary" | "pdf">("summary");
   const [annotations, setAnnotations] = useState<PageAnnotation[]>([]);
-  const [importantOnly, setImportantOnly] = useState(false);
 
   const [pageObligations, setPageObligations] = useState<Map<number, ExtractedObligation[]>>(
     new Map(),
@@ -405,13 +389,6 @@ function DocumentSummaryContent() {
     }
   }
 
-  const toggle = (id: string) => {
-    const n = new Set(expanded);
-    if (n.has(id)) n.delete(id);
-    else n.add(id);
-    setExpanded(n);
-  };
-
   async function handleReview(obl: ExtractedObligation, decision: "approved" | "rejected") {
     setReviewingCode(obl.obligation_code);
     const result = await reviewObligation({
@@ -507,9 +484,6 @@ function DocumentSummaryContent() {
   }
 
   const cur = summaries[currentPage - 1];
-  const highlights = importantOnly
-    ? cur?.important_highlights.filter((h) => h.significance !== "contextual") ?? []
-    : cur?.important_highlights ?? [];
   const currentPageObligations = pageObligations.get(currentPage) ?? [];
   const currentGateMeta = pageGateMeta.get(currentPage);
   const pendingObligations = currentPageObligations.filter(
@@ -549,6 +523,8 @@ function DocumentSummaryContent() {
         </Alert>
       ) : null}
 
+      <DocumentAdvocatesStrip documentId={docId} />
+
       {viewMode === "pdf" ? (
         <PdfViewer
           documentId={docId}
@@ -576,11 +552,6 @@ function DocumentSummaryContent() {
             {cur ? (
               <PageDetail
                 page={cur}
-                highlights={highlights}
-                importantOnly={importantOnly}
-                onToggleImportantOnly={() => setImportantOnly((v) => !v)}
-                expanded={expanded}
-                onToggleExpanded={toggle}
                 pageObligations={currentPageObligations}
                 pendingObligations={pendingObligations}
                 gateMeta={currentGateMeta}
@@ -603,7 +574,6 @@ function DocumentSummaryContent() {
                 onEditTitleChange={setEditTitle}
                 onEditDescChange={setEditDesc}
                 onReview={handleReview}
-                summaries={summaries}
                 onJumpToPage={(pageNumber) => {
                   const ti = summaries.findIndex((s) => s.page_number === pageNumber);
                   if (ti >= 0) setCurrentPage(ti + 1);
@@ -691,11 +661,6 @@ function PageSidebar({
 
 function PageDetail(props: {
   page: PageSummary;
-  highlights: HighlightItem[];
-  importantOnly: boolean;
-  onToggleImportantOnly: () => void;
-  expanded: Set<string>;
-  onToggleExpanded: (id: string) => void;
   pageObligations: ExtractedObligation[];
   pendingObligations: ExtractedObligation[];
   gateMeta?: { gate: string; avgConf: number };
@@ -710,16 +675,10 @@ function PageDetail(props: {
   onEditTitleChange: (v: string) => void;
   onEditDescChange: (v: string) => void;
   onReview: (o: ExtractedObligation, decision: "approved" | "rejected") => Promise<void>;
-  summaries: PageSummary[];
   onJumpToPage: (pageNumber: number) => void;
 }) {
   const {
     page,
-    highlights,
-    importantOnly,
-    onToggleImportantOnly,
-    expanded,
-    onToggleExpanded,
     pageObligations,
     pendingObligations,
     gateMeta,
@@ -739,116 +698,6 @@ function PageDetail(props: {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Page
-            </span>
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-              Page {page.page_number}
-            </h2>
-          </div>
-          {page.confidence != null ? (
-            <div className="min-w-[180px]">
-              <ConfidenceMeter value={page.confidence} />
-            </div>
-          ) : null}
-          <Button
-            variant={importantOnly ? "default" : "outline"}
-            size="sm"
-            onClick={onToggleImportantOnly}
-          >
-            <Settings2 />
-            {importantOnly ? "Show all highlights" : "Important only"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <FileText className="h-4 w-4 text-muted-foreground" /> Page summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm leading-relaxed text-foreground/90">{page.summary}</p>
-        </CardContent>
-      </Card>
-
-      {page.key_points.length > 0 ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <KeyRound className="h-4 w-4 text-muted-foreground" /> Key points
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 pt-0">
-            {page.key_points.map((p, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-2 rounded-md border-l-2 border-primary bg-muted/30 px-3 py-2 text-sm"
-              >
-                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                <span className="text-foreground/90">{p}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {highlights.length > 0 ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Zap className="h-4 w-4 text-muted-foreground" />
-              {importantOnly ? "Critical & important highlights" : "Important extracts"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 pt-0">
-            {highlights.map((h, i) => {
-              const hid = `h-${i}`;
-              const isOpen = expanded.has(hid);
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    "rounded-md border-l-2 px-3 py-2",
-                    SIG_BORDER[h.significance] ?? SIG_BORDER.contextual,
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="flex-1 text-sm italic leading-relaxed text-foreground/90">
-                      &ldquo;{h.text}&rdquo;
-                    </p>
-                    <Badge variant={SIG_VARIANT[h.significance]} className="uppercase">
-                      {h.significance}
-                    </Badge>
-                  </div>
-                  {h.relevance ? (
-                    <div className="mt-2">
-                      <Button
-                        variant="link"
-                        size="sm"
-                        className="h-auto p-0 text-xs"
-                        onClick={() => onToggleExpanded(hid)}
-                      >
-                        {isOpen ? "Hide note" : "Show note"}
-                      </Button>
-                      {isOpen ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          <strong>Why it matters:</strong> {h.relevance}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      ) : null}
-
       {page.context_links.length > 0 ? (
         <Card>
           <CardHeader className="pb-3">
