@@ -10,6 +10,7 @@ from sqlalchemy.engine import RowMapping
 
 from orderflow_api.core.db import get_engine
 from orderflow_api.schemas.advocates import (
+    AdvocateCaseLinkRecord,
     AdvocateDirectoryItem,
     AdvocateProfileRecord,
     Availability,
@@ -100,6 +101,27 @@ ADVOCATE_PROFILES_TABLE = sa.Table(
     # filters via ADVOCATE_PROFILES_TABLE.c.search_tsv. Reads only; writes
     # are handled by the GENERATED ALWAYS clause in the migration.
     sa.Column("search_tsv", postgresql.TSVECTOR(), nullable=True),
+)
+
+DOCUMENTS_TABLE = sa.Table(
+    "documents",
+    _METADATA,
+    sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+    sa.Column("source_file_name", sa.String(length=255), nullable=False),
+    sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+)
+
+CASE_ADVOCATES_TABLE = sa.Table(
+    "case_advocates",
+    _METADATA,
+    sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+    sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("advocate_user_id", postgresql.UUID(as_uuid=True), nullable=False),
+    sa.Column("role", sa.String(length=32), nullable=False),
+    sa.Column("status", sa.String(length=16), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("verified_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
 )
 
 
@@ -577,6 +599,14 @@ def list_advocates(
             )
         )
 
+    case_count_subquery = (
+        sa.select(sa.func.count())
+        .select_from(CASE_ADVOCATES_TABLE)
+        .where(CASE_ADVOCATES_TABLE.c.advocate_user_id == ADVOCATE_PROFILES_TABLE.c.user_id)
+        .correlate(ADVOCATE_PROFILES_TABLE)
+        .scalar_subquery()
+    )
+
     base = sa.select(
         ADVOCATE_PROFILES_TABLE.c.user_id,
         USERS_TABLE.c.full_name.label("full_name"),
@@ -590,6 +620,7 @@ def list_advocates(
         ADVOCATE_PROFILES_TABLE.c.ratings_avg,
         ADVOCATE_PROFILES_TABLE.c.ratings_count,
         ADVOCATE_PROFILES_TABLE.c.verified_at,
+        case_count_subquery.label("case_count"),
     ).select_from(join)
 
     if where_clauses:
@@ -628,10 +659,201 @@ def list_advocates(
             ratings_avg=float(row["ratings_avg"] or 0),
             ratings_count=row["ratings_count"] or 0,
             verified_at=row["verified_at"],
+            case_count=int(row["case_count"] or 0),
         )
         for row in rows
     ]
     return total, items
+
+
+def list_advocate_cases(
+    advocate_user_id: UUID,
+    *,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[int, list[AdvocateCaseLinkRecord]]:
+    join = CASE_ADVOCATES_TABLE.join(
+        DOCUMENTS_TABLE,
+        DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
+    ).outerjoin(
+        USERS_TABLE,
+        USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    ).outerjoin(
+        ADVOCATE_PROFILES_TABLE,
+        ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    )
+
+    statement = sa.select(
+        CASE_ADVOCATES_TABLE,
+        DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
+        DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
+        USERS_TABLE.c.full_name.label("advocate_full_name"),
+        ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
+    ).select_from(join).where(
+        CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id
+    )
+    if status is not None:
+        statement = statement.where(CASE_ADVOCATES_TABLE.c.status == status)
+
+    statement = statement.order_by(
+        sa.desc(CASE_ADVOCATES_TABLE.c.verified_at.nulls_last()),
+        sa.desc(CASE_ADVOCATES_TABLE.c.created_at),
+    )
+
+    count_stmt = sa.select(sa.func.count()).select_from(statement.subquery())
+    page_stmt = statement.limit(limit).offset(offset)
+
+    with get_engine().connect() as connection:
+        total = int(connection.execute(count_stmt).scalar_one())
+        rows = connection.execute(page_stmt).mappings().all()
+
+    return total, [_to_case_link_record(row) for row in rows]
+
+
+def list_document_advocates(
+    document_id: UUID,
+    *,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[int, list[AdvocateCaseLinkRecord]]:
+    join = CASE_ADVOCATES_TABLE.join(
+        DOCUMENTS_TABLE,
+        DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
+    ).outerjoin(
+        USERS_TABLE,
+        USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    ).outerjoin(
+        ADVOCATE_PROFILES_TABLE,
+        ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    )
+
+    statement = sa.select(
+        CASE_ADVOCATES_TABLE,
+        DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
+        DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
+        USERS_TABLE.c.full_name.label("advocate_full_name"),
+        ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
+    ).select_from(join).where(
+        CASE_ADVOCATES_TABLE.c.document_id == document_id
+    )
+    if status is not None:
+        statement = statement.where(CASE_ADVOCATES_TABLE.c.status == status)
+
+    statement = statement.order_by(
+        sa.desc(CASE_ADVOCATES_TABLE.c.status),
+        sa.desc(CASE_ADVOCATES_TABLE.c.verified_at.nulls_last()),
+        sa.desc(CASE_ADVOCATES_TABLE.c.created_at),
+    )
+
+    count_stmt = sa.select(sa.func.count()).select_from(statement.subquery())
+    page_stmt = statement.limit(limit).offset(offset)
+    with get_engine().connect() as connection:
+        total = int(connection.execute(count_stmt).scalar_one())
+        rows = connection.execute(page_stmt).mappings().all()
+
+    return total, [_to_case_link_record(row) for row in rows]
+
+
+def claim_advocate_case(
+    *,
+    advocate_user_id: UUID,
+    document_id: UUID,
+    role: str,
+) -> AdvocateCaseLinkRecord:
+    now = _now()
+    link_id = uuid4()
+    with get_engine().begin() as connection:
+        insert_stmt = postgresql.insert(CASE_ADVOCATES_TABLE).values(
+            id=link_id,
+            document_id=document_id,
+            advocate_user_id=advocate_user_id,
+            role=role,
+            status="claimed",
+            created_at=now,
+            verified_at=None,
+            verified_by_user_id=None,
+        )
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["document_id", "advocate_user_id"],
+            set_={
+                "role": role,
+                "status": "claimed",
+                "verified_at": None,
+                "verified_by_user_id": None,
+            },
+        )
+        connection.execute(upsert_stmt)
+
+    record = get_advocate_case_link(advocate_user_id=advocate_user_id, document_id=document_id)
+    if record is None:
+        raise UserNotFound()
+    return record
+
+
+def unclaim_advocate_case(*, advocate_user_id: UUID, document_id: UUID) -> bool:
+    with get_engine().begin() as connection:
+        result = connection.execute(
+            sa.delete(CASE_ADVOCATES_TABLE)
+            .where(CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id)
+            .where(CASE_ADVOCATES_TABLE.c.document_id == document_id)
+            .where(CASE_ADVOCATES_TABLE.c.status == "claimed")
+        )
+    return bool(result.rowcount and result.rowcount > 0)
+
+
+def verify_advocate_case(
+    *,
+    advocate_user_id: UUID,
+    document_id: UUID,
+    verified_by_user_id: UUID,
+) -> AdvocateCaseLinkRecord | None:
+    now = _now()
+    with get_engine().begin() as connection:
+        result = connection.execute(
+            sa.update(CASE_ADVOCATES_TABLE)
+            .where(CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id)
+            .where(CASE_ADVOCATES_TABLE.c.document_id == document_id)
+            .values(
+                status="verified",
+                verified_at=now,
+                verified_by_user_id=verified_by_user_id,
+            )
+        )
+    if not result.rowcount:
+        return None
+    return get_advocate_case_link(advocate_user_id=advocate_user_id, document_id=document_id)
+
+
+def get_advocate_case_link(
+    *,
+    advocate_user_id: UUID,
+    document_id: UUID,
+) -> AdvocateCaseLinkRecord | None:
+    join = CASE_ADVOCATES_TABLE.join(
+        DOCUMENTS_TABLE,
+        DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
+    ).outerjoin(
+        USERS_TABLE,
+        USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    ).outerjoin(
+        ADVOCATE_PROFILES_TABLE,
+        ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    )
+    statement = sa.select(
+        CASE_ADVOCATES_TABLE,
+        DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
+        DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
+        USERS_TABLE.c.full_name.label("advocate_full_name"),
+        ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
+    ).select_from(join).where(
+        CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id,
+        CASE_ADVOCATES_TABLE.c.document_id == document_id,
+    )
+    with get_engine().connect() as connection:
+        row = connection.execute(statement).mappings().first()
+    return _to_case_link_record(row) if row is not None else None
 
 
 # ------------- mappers -----------------------------------------------------
@@ -681,3 +903,36 @@ def _to_advocate_record(row: RowMapping) -> AdvocateProfileRecord:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+def _to_case_link_record(row: RowMapping) -> AdvocateCaseLinkRecord:
+    metadata = row.get("document_metadata")
+    court_name = _extract_metadata_text(metadata, ("cis", "court_name"))
+    order_date = _extract_metadata_text(metadata, ("cis", "order_date"))
+    return AdvocateCaseLinkRecord(
+        id=row["id"],
+        document_id=row["document_id"],
+        advocate_user_id=row["advocate_user_id"],
+        role=row["role"],
+        status=row["status"],
+        created_at=row["created_at"],
+        verified_at=row["verified_at"],
+        verified_by_user_id=row["verified_by_user_id"],
+        document_title=row.get("document_title"),
+        court_name=court_name,
+        order_date=order_date,
+        advocate_full_name=row.get("advocate_full_name"),
+        advocate_photo_url=row.get("advocate_photo_url"),
+    )
+
+
+def _extract_metadata_text(metadata: object, path: tuple[str, ...]) -> str | None:
+    cursor: object = metadata if isinstance(metadata, dict) else {}
+    for key in path:
+        if not isinstance(cursor, dict):
+            return None
+        cursor = cursor.get(key)
+    if isinstance(cursor, str):
+        cleaned = cursor.strip()
+        return cleaned or None
+    return None
