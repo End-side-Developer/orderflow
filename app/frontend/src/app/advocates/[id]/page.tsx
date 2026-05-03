@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { use } from "react";
 
-import type { AdvocateDirectoryItem } from "@/lib/api/client";
-import { getAdvocate } from "@/lib/api/client";
+import type { AdvocateCaseLink, AdvocateDirectoryItem } from "@/lib/api/client";
+import { getAdvocate, listAdvocateCases } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,15 +15,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function AdvocateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [advocate, setAdvocate] = useState<AdvocateDirectoryItem | null>(null);
+  const [cases, setCases] = useState<AdvocateCaseLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    getAdvocate(id)
-      .then((r) => {
-        if (r.ok) setAdvocate(r.data);
+    Promise.all([getAdvocate(id), listAdvocateCases(id)])
+      .then(([advocateResult, casesResult]) => {
+        if (advocateResult.ok) setAdvocate(advocateResult.data);
         else setNotFound(true);
+        if (casesResult.ok) setCases(casesResult.data.items);
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -62,7 +64,7 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
         </div>
         {p.ratings_count > 0 && (
           <Badge variant="secondary" className="text-sm">
-            ★ {p.ratings_avg?.toFixed(1)} ({p.ratings_count})
+            â˜… {p.ratings_avg?.toFixed(1)} ({p.ratings_count})
           </Badge>
         )}
       </div>
@@ -142,10 +144,10 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
                 <span className="text-muted-foreground">Consultation fee</span>
                 <span>
                   {p.consultation_fee_min_inr !== null
-                    ? `₹${p.consultation_fee_min_inr.toLocaleString()}`
-                    : "—"}
+                    ? `â‚¹${p.consultation_fee_min_inr.toLocaleString()}`
+                    : "â€”"}
                   {p.consultation_fee_max_inr !== null
-                    ? ` – ₹${p.consultation_fee_max_inr.toLocaleString()}`
+                    ? ` â€“ â‚¹${p.consultation_fee_max_inr.toLocaleString()}`
                     : ""}
                 </span>
               </div>
@@ -163,10 +165,42 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
           )}
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Cases</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm">
+          {cases.length === 0 ? (
+            <p className="text-muted-foreground">No linked cases yet.</p>
+          ) : (
+            cases.map((item) => (
+              <Link
+                key={item.id}
+                href={`/document-summary?document_id=${encodeURIComponent(item.document_id)}`}
+                className="rounded-md border border-border bg-muted/30 px-3 py-2 transition-colors hover:bg-muted/50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-foreground">
+                    {item.document_title ?? "Untitled case document"}
+                  </span>
+                  <Badge variant={item.status === "verified" ? "good" : "warn"}>
+                    {item.status}
+                  </Badge>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {item.court_name ?? "Court unknown"}
+                  {item.order_date ? ` · ${item.order_date}` : ""}
+                </div>
+              </Link>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <Button asChild variant="outline">
-        <Link href="/advocates">← Back to directory</Link>
+        <Link href="/advocates">Back to directory</Link>
       </Button>
     </div>
   );
 }
+
