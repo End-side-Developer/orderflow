@@ -11,6 +11,8 @@ from orderflow_api.schemas.common import SuccessResponse
 
 VerificationStatus = Literal["pending", "verified", "rejected"]
 JurisdictionLevel = Literal["supreme", "high_court", "district", "tribunal", "other"]
+CaseLinkRole = Literal["counsel", "co-counsel", "consulting"]
+CaseLinkStatus = Literal["claimed", "verified"]
 
 ADVOCATE_SPECIALIZATIONS: tuple[str, ...] = (
     "criminal",
@@ -97,6 +99,7 @@ class AdvocateDirectoryItem(BaseModel):
     ratings_avg: float = 0.0
     ratings_count: int = 0
     verified_at: datetime | None = None
+    case_count: int = 0
 
 
 class AdvocateProfileUpdateRequest(BaseModel):
@@ -119,6 +122,36 @@ class AdvocateRejectRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=2000)
 
 
+class AdvocateCaseClaimRequest(BaseModel):
+    document_id: UUID
+    role: CaseLinkRole = "counsel"
+
+
+class AdvocateCaseLinkRecord(BaseModel):
+    id: UUID
+    document_id: UUID
+    advocate_user_id: UUID
+    role: CaseLinkRole
+    status: CaseLinkStatus
+    created_at: datetime
+    verified_at: datetime | None = None
+    verified_by_user_id: UUID | None = None
+    document_title: str | None = None
+    court_name: str | None = None
+    order_date: str | None = None
+    advocate_full_name: str | None = None
+    advocate_photo_url: str | None = None
+
+
+class AdvocateCaseLinkData(BaseModel):
+    item: AdvocateCaseLinkRecord
+
+
+class AdvocateCaseLinksData(BaseModel):
+    total: int
+    items: list[AdvocateCaseLinkRecord]
+
+
 class AdvocateDirectoryData(BaseModel):
     total: int
     limit: int
@@ -132,3 +165,11 @@ class AdvocateDirectoryEnvelope(SuccessResponse):
 
 class AdvocateProfileEnvelope(SuccessResponse):
     data: AdvocateProfileRecord
+
+
+class AdvocateCaseLinkEnvelope(SuccessResponse):
+    data: AdvocateCaseLinkData
+
+
+class AdvocateCaseLinksEnvelope(SuccessResponse):
+    data: AdvocateCaseLinksData
