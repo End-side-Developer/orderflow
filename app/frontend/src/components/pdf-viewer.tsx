@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 
 import { PdfOverlayLayer } from "./pdf-overlay-layer";
 import { AiPageSummaryOverlay } from "./ai-page-summary-overlay";
+import { RecommendedAdvocatesPanel } from "./recommended-advocates-panel";
+import { getDocument } from "@/lib/api/client";
 
 // Dynamic import of pdfjs-dist to avoid SSR issues
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
@@ -60,6 +62,11 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [textPositions, setTextPositions] = useState<PdfTextPosition[]>([]);
+  const [documentLanguage, setDocumentLanguage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCurrentPage(initialPage);
+  }, [documentId, initialPage]);
 
   // Extract text positions from all pages
   async function extractAllTextPositions(pdfDoc: any) {
@@ -102,10 +109,20 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
       try {
         setLoading(true);
         setError(null);
+        setDocumentLanguage(null);
 
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "http://localhost:8000/api/v1"}/documents/${documentId}/download`
-        );
+        const [response, documentResult] = await Promise.all([
+          fetch(
+            `${process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "http://localhost:8000/api/v1"}/documents/${documentId}/download`,
+          ),
+          getDocument(documentId),
+        ]);
+
+        if (documentResult.ok) {
+          setDocumentLanguage(
+            documentResult.data.auto_detected_language ?? documentResult.data.source_language ?? "en",
+          );
+        }
 
         if (!response.ok) {
           throw new Error(`Failed to download PDF: ${response.status}`);
@@ -140,7 +157,7 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
   // Render current page
   useEffect(() => {
     async function renderPage() {
-      if (!pdf || !canvasRef.current) return;
+      if (loading || !pdf || !canvasRef.current) return;
 
       try {
         const page = await pdf.getPage(currentPage);
@@ -165,8 +182,8 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
       }
     }
 
-    renderPage();
-  }, [pdf, currentPage, scale]);
+    void renderPage();
+  }, [loading, pdf, currentPage, scale]);
 
   // Handle page change
   function handlePageChange(newPage: number) {
@@ -258,12 +275,15 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
         </div>
 
         {/* AI Insight Sidebar */}
-        <div style={{ position: 'sticky', top: '24px', flexShrink: 0, zIndex: 10, width: "380px" }}>
+        <div style={{ position: 'sticky', top: '24px', flexShrink: 0, zIndex: 10, width: "380px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <AiPageSummaryOverlay 
             currentPage={currentPage}
             pageText={textPositions.filter(t => t.page === currentPage).map(t => t.text).join(" ")}
             documentId={documentId}
+            preferredLanguage={documentLanguage}
+            onJumpToPage={handlePageChange}
           />
+          <RecommendedAdvocatesPanel documentId={documentId} />
         </div>
         
       </div>
