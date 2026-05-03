@@ -25,6 +25,7 @@ DOCUMENTS_TABLE = sa.Table(
     sa.Column("workflow_run_id", sa.String(length=255), nullable=True),
     sa.Column("status", sa.String(length=32), nullable=False),
     sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column("case_flow_graph", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column("source_language", sa.String(length=8), nullable=False),
     sa.Column("auto_detected_language", sa.String(length=8), nullable=True),
     sa.Column("language_confidence", sa.Numeric(5, 4), nullable=False),
@@ -79,6 +80,7 @@ def persist_uploaded_document(
         "workflow_run_id": None,
         "status": "uploaded",
         "metadata": metadata,
+        "case_flow_graph": None,
         "source_language": source_language,
         "auto_detected_language": auto_detected_language,
         "language_confidence": language_confidence,
@@ -111,6 +113,7 @@ def get_persisted_document(document_id: UUID) -> DocumentRecord | None:
         workflow_run_id=row.get("workflow_run_id"),
         status=row["status"],
         metadata=row["metadata"],
+        case_flow_graph=row.get("case_flow_graph"),
         source_language=_extract_supported_language(row.get("source_language"), default="en"),
         auto_detected_language=_extract_supported_language(
             row.get("auto_detected_language"),
@@ -128,6 +131,20 @@ def set_document_workflow_run_id(document_id: UUID, workflow_run_id: str) -> Non
         sa.update(DOCUMENTS_TABLE)
         .where(DOCUMENTS_TABLE.c.id == document_id)
         .values(workflow_run_id=workflow_run_id, updated_at=datetime.now(UTC))
+    )
+
+    with get_engine().begin() as connection:
+        result = connection.execute(statement)
+
+    if result.rowcount == 0:
+        raise ValueError(f"Document not found: {document_id}")
+
+
+def set_document_case_flow_graph(document_id: UUID, case_flow_graph: dict[str, object]) -> None:
+    statement = (
+        sa.update(DOCUMENTS_TABLE)
+        .where(DOCUMENTS_TABLE.c.id == document_id)
+        .values(case_flow_graph=case_flow_graph, updated_at=datetime.now(UTC))
     )
 
     with get_engine().begin() as connection:
@@ -187,6 +204,7 @@ def list_all_persisted_documents() -> list[DocumentRecord]:
             workflow_run_id=row.get("workflow_run_id"),
             status=row["status"],
             metadata=row["metadata"],
+            case_flow_graph=row.get("case_flow_graph"),
             source_language=_extract_supported_language(row.get("source_language"), default="en"),
             auto_detected_language=_extract_supported_language(
                 row.get("auto_detected_language"),
@@ -219,6 +237,7 @@ def find_document_by_checksum(checksum_sha256: str) -> DocumentRecord | None:
         workflow_run_id=row.get("workflow_run_id"),
         status=row["status"],
         metadata=row["metadata"],
+        case_flow_graph=row.get("case_flow_graph"),
         source_language=_extract_supported_language(row.get("source_language"), default="en"),
         auto_detected_language=_extract_supported_language(
             row.get("auto_detected_language"),
