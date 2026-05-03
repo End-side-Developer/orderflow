@@ -11,8 +11,14 @@ from orderflow_api.api.dependencies.auth import (
 )
 from orderflow_api.api.response import success
 from orderflow_api.core.auth.permissions import Permission, Role
+from orderflow_api.api.document_persistence import get_persisted_document
+from orderflow_api.api.stub_repository import get_document
 from orderflow_api.schemas.advocates import (
     ADVOCATE_SPECIALIZATIONS,
+    AdvocateCaseClaimRequest,
+    AdvocateCaseLinkEnvelope,
+    AdvocateCaseLinksData,
+    AdvocateCaseLinksEnvelope,
     AdvocateDirectoryEnvelope,
     AdvocateProfileEnvelope,
     AdvocateProfileUpdateRequest,
@@ -157,6 +163,115 @@ async def update_advocate_me_route(
             detail={"code": "advocate_not_found", "message": "advocate profile not found"},
         )
     return success(data=updated, request_id=request_id, message="advocate_profile_updated")
+
+
+@router.get("/{user_id}/cases", response_model=AdvocateCaseLinksEnvelope)
+async def list_advocate_cases_route(
+    request: Request,
+    user_id: UUID,
+    status_filter: str | None = Query(default=None, alias="status", pattern="^(claimed|verified)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _caller=Depends(require_permission(Permission.CASE_READ)),
+) -> dict[str, object]:
+    request_id = getattr(request.state, "request_id", None)
+    total, items = user_persistence.list_advocate_cases(
+        user_id,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+    return success(
+        data=AdvocateCaseLinksData(total=total, items=items).model_dump(),
+        request_id=request_id,
+    )
+
+
+@router.post("/me/cases", response_model=AdvocateCaseLinkEnvelope)
+async def claim_advocate_case_route(
+    request: Request,
+    payload: AdvocateCaseClaimRequest,
+    user=Depends(require_permission(Permission.ADVOCATE_SELF_PROFILE_WRITE)),
+) -> dict[str, object]:
+    request_id = getattr(request.state, "request_id", None)
+    if user.role != Role.ADVOCATE.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "forbidden",
+                "message": "only advocate accounts may claim cases",
+            },
+        )
+
+    document = get_document(payload.document_id) or get_persisted_document(payload.document_id)
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "document_not_found", "message": "document not found"},
+        )
+
+    link = user_persistence.claim_advocate_case(
+        advocate_user_id=user.id,
+        document_id=payload.document_id,
+        role=payload.role,
+    )
+    return success(
+        data={"item": link.model_dump()},
+        request_id=request_id,
+        message="advocate_case_claimed",
+    )
+
+
+@router.delete("/me/cases/{document_id}")
+async def unclaim_advocate_case_route(
+    request: Request,
+    document_id: UUID,
+    user=Depends(require_permission(Permission.ADVOCATE_SELF_PROFILE_WRITE)),
+) -> dict[str, object]:
+    request_id = getattr(request.state, "request_id", None)
+    if user.role != Role.ADVOCATE.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "forbidden",
+                "message": "only advocate accounts may unclaim cases",
+            },
+        )
+
+    deleted = user_persistence.unclaim_advocate_case(
+        advocate_user_id=user.id,
+        document_id=document_id,
+    )
+    return success(
+        data={"deleted": deleted},
+        request_id=request_id,
+        message="advocate_case_unclaimed",
+    )
+
+
+@router.post("/{user_id}/cases/{document_id}/verify", response_model=AdvocateCaseLinkEnvelope)
+async def verify_advocate_case_route(
+    request: Request,
+    user_id: UUID,
+    document_id: UUID,
+    caller=Depends(require_permission(Permission.ADVOCATE_VERIFY)),
+) -> dict[str, object]:
+    request_id = getattr(request.state, "request_id", None)
+    link = user_persistence.verify_advocate_case(
+        advocate_user_id=user_id,
+        document_id=document_id,
+        verified_by_user_id=caller.id,
+    )
+    if link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "case_link_not_found", "message": "case link not found"},
+        )
+    return success(
+        data={"item": link.model_dump()},
+        request_id=request_id,
+        message="advocate_case_verified",
+    )
 
 
 @router.post("/{user_id}/verify", response_model=AdvocateProfileEnvelope)
