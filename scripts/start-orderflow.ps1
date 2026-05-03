@@ -126,6 +126,40 @@ function Wait-ForPort {
     }
 }
 
+function Stop-LocalPortListeners {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Port,
+        [Parameter(Mandatory = $true)]
+        [string]$ServiceName
+    )
+
+    if ($DryRun) {
+        Write-Host "Would stop listeners on port $Port for $ServiceName" -ForegroundColor Yellow
+        return
+    }
+
+    $listeners = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+    if (-not $listeners) {
+        return
+    }
+
+    $processIds = $listeners | Select-Object -ExpandProperty OwningProcess -Unique
+    foreach ($processId in $processIds) {
+        if (-not $processId -or $processId -le 0) {
+            continue
+        }
+        try {
+            Stop-Process -Id $processId -Force -ErrorAction Stop
+            Write-Host "$ServiceName listener stopped (PID $processId)." -ForegroundColor Yellow
+        } catch {
+            Write-Host "Warning: failed to stop PID $processId for ${ServiceName}: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
+    Start-Sleep -Seconds 1
+}
+
 function Start-LoggedProcess {
     param(
         [Parameter(Mandatory = $true)]
@@ -366,6 +400,75 @@ function Ensure-Backend {
     Wait-ForPort -Port $backendPort -ServiceName 'Backend'
 }
 
+function Ensure-DemoAdvocateSeed {
+    $pythonExe = Get-PythonExe
+    Write-Step 'Ensuring demo advocate profiles are seeded'
+
+    if ($DryRun) {
+        Write-Host "Would run: $pythonExe -m scripts.seed_demo_advocates" -ForegroundColor Yellow
+        return
+    }
+
+    Push-Location $BackendDir
+    try {
+        & $pythonExe -m scripts.seed_demo_advocates
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Demo advocate seeding failed.'
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-DemoSeedLogin {
+    param(
+        [string]$BaseUrl = 'http://localhost:8000',
+        [string]$Email = 'gov.reviewer@orderflow.example',
+        [string]$Password = 'Orderflow@123'
+    )
+
+    if ($DryRun) {
+        return $false
+    }
+
+    $uri = "$BaseUrl/api/v1/auth/login"
+    $body = @{
+        email = $Email
+        password = $Password
+    } | ConvertTo-Json -Compress
+
+    try {
+        $response = Invoke-RestMethod -Method Post -Uri $uri -ContentType 'application/json' -Body $body
+        return [bool]($response -and $response.ok -eq $true)
+    } catch {
+        return $false
+    }
+}
+
+function Ensure-DemoSeedLoginReady {
+    if ($DryRun) {
+        Write-Step 'Would verify demo seed login against backend auth endpoint'
+        return
+    }
+
+    Write-Step 'Verifying demo seed login'
+    if (Test-DemoSeedLogin) {
+        Write-Host 'Demo seed login check passed.'
+        return
+    }
+
+    Write-Host 'Demo seed login check failed; restarting backend to align runtime with seeded credentials.' -ForegroundColor Yellow
+    Stop-LocalPortListeners -Port 8000 -ServiceName 'Backend'
+    Ensure-Backend
+    Ensure-DemoAdvocateSeed
+
+    if (-not (Test-DemoSeedLogin)) {
+        throw 'Demo seed login check still failing after backend restart. Ensure backend uses the same database as the seeder.'
+    }
+
+    Write-Host 'Demo seed login check passed after backend restart.'
+}
+
 function Ensure-Worker {
     if (Test-CommandLineLike -Pattern 'orderflow_worker.main') {
         Write-Step 'Worker already started; skipping'
@@ -428,6 +531,8 @@ if ($Force -and -not $DryRun) {
 Ensure-Infra
 Ensure-Temporal
 Ensure-Backend
+Ensure-DemoAdvocateSeed
+Ensure-DemoSeedLoginReady
 Ensure-Worker
 Ensure-Frontend
 
@@ -439,3 +544,11 @@ Write-Host 'Backend:     http://localhost:8000/health'
 Write-Host 'Temporal:    localhost:7233'
 Write-Host "Logs:        $LogRoot"
 Write-Host 'Intel layer: CLI-only; run it manually from app/intelligence when needed.'
+Write-Host ''
+Write-Host 'Demo seed profiles (email / password):' -ForegroundColor Yellow
+Write-Host '  Government reviewer (can approve advocates):'
+Write-Host '    gov.reviewer@orderflow.example / Orderflow@123'
+Write-Host '  Advocate (government approved):'
+Write-Host '    adv.approved@orderflow.example / Orderflow@123'
+Write-Host '  Advocate (not approved yet / pending):'
+Write-Host '    adv.pending@orderflow.example / Orderflow@123'
