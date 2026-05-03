@@ -74,6 +74,9 @@ function AdvocateCard({ advocate }: { advocate: AdvocateDirectoryItem }) {
           {p.years_of_experience !== null && (
             <span>{p.years_of_experience}y exp</span>
           )}
+          {(advocate.case_count ?? 0) > 0 && (
+            <span>{advocate.case_count} case{advocate.case_count === 1 ? "" : "s"}</span>
+          )}
           {p.consultation_fee_min_inr !== null && (
             <span>
               ₹{p.consultation_fee_min_inr.toLocaleString()}
