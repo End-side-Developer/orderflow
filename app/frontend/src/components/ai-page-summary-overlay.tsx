@@ -18,6 +18,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiErrorBanner } from "@/components/ai-error-banner";
+import { CaseFlowGraph } from "@/components/case-flow-graph";
+import { TtsControls } from "@/components/tts-controls";
 import { getPageInsight, type ApiFailure, type PageInsightData } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +29,8 @@ interface AiPageSummaryOverlayProps {
   currentPage: number;
   pageText: string;
   documentId: string;
+  preferredLanguage?: string | null;
+  onJumpToPage?: (page: number) => void;
 }
 
 const CATEGORY_VARIANT: Record<string, "accent" | "warn" | "good" | "destructive" | "muted"> = {
@@ -45,7 +49,13 @@ function complexityTone(score: number): { label: string; indicatorClass: string;
   return { label: "High", indicatorClass: "bg-destructive", textClass: "text-destructive" };
 }
 
-export function AiPageSummaryOverlay({ currentPage, pageText, documentId }: AiPageSummaryOverlayProps) {
+export function AiPageSummaryOverlay({
+  currentPage,
+  pageText,
+  documentId,
+  preferredLanguage,
+  onJumpToPage,
+}: AiPageSummaryOverlayProps) {
   const [summary, setSummary] = useState<PageInsight | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiFailure | null>(null);
@@ -115,6 +125,12 @@ export function AiPageSummaryOverlay({ currentPage, pageText, documentId }: AiPa
           ) : (
             <CardDescription>AI-extracted insight for this page.</CardDescription>
           )}
+          <TtsControls
+            text={summary?.brief ?? ""}
+            preferredLanguage={preferredLanguage}
+            resetSignal={`${documentId}-${currentPage}`}
+            className="mt-2"
+          />
         </div>
         <Button
           variant="ghost"
@@ -255,28 +271,12 @@ export function AiPageSummaryOverlay({ currentPage, pageText, documentId }: AiPa
 
             <TabsContent value="flow" className="m-0 flex flex-col gap-3 p-4">
               <Section label="Procedural flow">
-                {summary.procedural_flow.length > 0 ? (
-                  <ol className="flex flex-col gap-2">
-                    {summary.procedural_flow.map((step) => (
-                      <li
-                        key={step.step}
-                        className="flex items-start gap-3 rounded-md border border-border bg-muted/30 p-3"
-                      >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                          {step.step}
-                        </span>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-semibold text-foreground">
-                            {step.title}
-                          </span>
-                          <span className="text-sm text-muted-foreground">{step.detail}</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <EmptyMessage text="No procedural flow identified on this page." />
-                )}
+                <CaseFlowGraph
+                  documentId={documentId}
+                  currentPage={currentPage}
+                  onNodePageJump={onJumpToPage}
+                  compact
+                />
               </Section>
             </TabsContent>
           </ScrollArea>
