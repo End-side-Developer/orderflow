@@ -111,6 +111,266 @@ def test_download_document_contract(monkeypatch) -> None:
     assert response.content == b"pdf bytes here"
 
 
+def test_document_advocate_recommendations_contract(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+
+    document = DocumentRecord(
+        id=document_id,
+        source_file_name="criminal-case.pdf",
+        source_file_type="application/pdf",
+        source_file_size=1280,
+        object_key="documents/mock/criminal-case.pdf",
+        checksum_sha256="f" * 64,
+        workflow_run_id=None,
+        status="ready",
+        metadata={
+            "cis": {
+                "court_name": "High Court of Delhi",
+                "state": "Delhi",
+                "case_type": "Criminal Revision Petition",
+            }
+        },
+        created_at=now,
+        updated_at=now,
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_list_advocates(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return 0, []
+
+    monkeypatch.setattr("orderflow_api.api.routes.documents.get_document", lambda _: None)
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.get_persisted_document",
+        lambda value: document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_page_summaries",
+        lambda _document_id: [],
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.user_persistence.list_advocates",
+        fake_list_advocates,
+    )
+
+    response = client.get(f"/api/v1/documents/{document_id}/advocate-recommendations")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["message"] == "advocate_recommendations"
+    assert payload["data"]["document_id"] == str(document_id)
+    assert payload["data"]["filters"]["jurisdiction_level"] == "high_court"
+    assert payload["data"]["filters"]["jurisdiction_state"] == "Delhi"
+    assert payload["data"]["filters"]["specialization"] == "criminal"
+    assert payload["data"]["filters"]["language"] == "en"
+    assert payload["data"]["items"] == []
+    assert captured["only_verified"] is True
+    assert captured["limit"] == 5
+    assert captured["sort"] == "rating"
+
+
+def test_document_advocates_contract(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+
+    document = DocumentRecord(
+        id=document_id,
+        source_file_name="case-file.pdf",
+        source_file_type="application/pdf",
+        source_file_size=1100,
+        object_key="documents/mock/case-file.pdf",
+        checksum_sha256="1" * 64,
+        workflow_run_id=None,
+        status="ready",
+        metadata={},
+        created_at=now,
+        updated_at=now,
+    )
+
+    monkeypatch.setattr("orderflow_api.api.routes.documents.get_document", lambda _: None)
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.get_persisted_document",
+        lambda value: document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.user_persistence.list_document_advocates",
+        lambda _document_id, status=None, limit=50, offset=0: (0, []),
+    )
+
+    response = client.get(f"/api/v1/documents/{document_id}/advocates")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["message"] == "document_advocates"
+    assert payload["data"]["document_id"] == str(document_id)
+    assert payload["data"]["total"] == 0
+    assert payload["data"]["items"] == []
+
+
+def test_document_case_flow_contract(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+
+    document = DocumentRecord(
+        id=document_id,
+        source_file_name="flow-source.pdf",
+        source_file_type="application/pdf",
+        source_file_size=1300,
+        object_key="documents/mock/flow-source.pdf",
+        checksum_sha256="2" * 64,
+        workflow_run_id=None,
+        status="ready",
+        metadata={},
+        created_at=now,
+        updated_at=now,
+    )
+
+    monkeypatch.setattr("orderflow_api.api.routes.documents.get_document", lambda _: None)
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.get_persisted_document",
+        lambda value: document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_page_summaries",
+        lambda _document_id: [],
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_persisted_obligations",
+        lambda _document_id: [],
+    )
+
+    response = client.get(f"/api/v1/documents/{document_id}/case-flow")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["message"] == "case_flow_graph"
+    assert payload["data"]["document_id"] == str(document_id)
+    assert payload["data"]["nodes"] == []
+    assert payload["data"]["edges"] == []
+
+
+def test_document_case_flow_uses_cached_graph(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    cached_nodes = [
+        {
+            "id": "event-1",
+            "node_type": "event",
+            "label": "Page 1",
+            "detail": "Initial listing",
+            "page_ref": 1,
+        }
+    ]
+    cached_edges = []
+
+    document = DocumentRecord(
+        id=document_id,
+        source_file_name="flow-cached.pdf",
+        source_file_type="application/pdf",
+        source_file_size=1300,
+        object_key="documents/mock/flow-cached.pdf",
+        checksum_sha256="4" * 64,
+        workflow_run_id=None,
+        status="ready",
+        metadata={},
+        case_flow_graph={"nodes": cached_nodes, "edges": cached_edges},
+        created_at=now,
+        updated_at=now,
+    )
+
+    monkeypatch.setattr("orderflow_api.api.routes.documents.get_document", lambda _: None)
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.get_persisted_document",
+        lambda value: document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_page_summaries",
+        lambda _document_id: (_ for _ in ()).throw(AssertionError("should not read summaries")),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_persisted_obligations",
+        lambda _document_id: (_ for _ in ()).throw(AssertionError("should not read obligations")),
+    )
+
+    response = client.get(f"/api/v1/documents/{document_id}/case-flow")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["nodes"] == cached_nodes
+    assert payload["data"]["edges"] == cached_edges
+
+
+def test_document_case_flow_persists_generated_graph(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+
+    document = DocumentRecord(
+        id=document_id,
+        source_file_name="flow-generated.pdf",
+        source_file_type="application/pdf",
+        source_file_size=1300,
+        object_key="documents/mock/flow-generated.pdf",
+        checksum_sha256="5" * 64,
+        workflow_run_id=None,
+        status="ready",
+        metadata={},
+        case_flow_graph=None,
+        created_at=now,
+        updated_at=now,
+    )
+    generated_graph = {
+        "nodes": [
+            {
+                "id": "event-1",
+                "node_type": "event",
+                "label": "Page 1",
+                "detail": "Generated graph node",
+                "page_ref": 1,
+            }
+        ],
+        "edges": [],
+    }
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("orderflow_api.api.routes.documents.get_document", lambda _: None)
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.get_persisted_document",
+        lambda value: document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_page_summaries",
+        lambda _document_id: [],
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.list_persisted_obligations",
+        lambda _document_id: [],
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.extract_case_flow",
+        lambda metadata, summaries, obligations: generated_graph,
+    )
+
+    def fake_set_document_case_flow_graph(doc_id, graph):  # noqa: ANN001
+        captured["document_id"] = doc_id
+        captured["graph"] = graph
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.documents.set_document_case_flow_graph",
+        fake_set_document_case_flow_graph,
+    )
+
+    response = client.get(f"/api/v1/documents/{document_id}/case-flow")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["nodes"] == generated_graph["nodes"]
+    assert payload["data"]["edges"] == generated_graph["edges"]
+    assert captured["document_id"] == document_id
+    assert captured["graph"] == generated_graph
+
+
 def test_list_obligations_contract() -> None:
     create_response = client.post(
         "/api/v1/documents",
@@ -276,9 +536,16 @@ def test_openapi_exposes_t11_a007_contract_paths() -> None:
     assert "/api/v1/documents" in paths
     assert "/api/v1/documents/{document_id}" in paths
     assert "/api/v1/documents/{document_id}/download" in paths
+    assert "/api/v1/documents/{document_id}/advocates" in paths
+    assert "/api/v1/documents/{document_id}/advocate-recommendations" in paths
+    assert "/api/v1/documents/{document_id}/case-flow" in paths
     assert "/api/v1/documents/upload" in paths
     assert "/api/v1/documents/intake/indian-ecourts/lookup" in paths
     assert "/api/v1/documents/intake/indian-ecourts" in paths
+    assert "/api/v1/advocates/{user_id}/cases" in paths
+    assert "/api/v1/advocates/me/cases" in paths
+    assert "/api/v1/advocates/me/cases/{document_id}" in paths
+    assert "/api/v1/advocates/{user_id}/cases/{document_id}/verify" in paths
     assert "/api/v1/exports/action-plan" in paths
     assert "/api/v1/extractions/intake/run" in paths
     assert "/api/v1/clauses" in paths
