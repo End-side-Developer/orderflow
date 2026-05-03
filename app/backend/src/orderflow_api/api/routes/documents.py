@@ -3,26 +3,42 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import ValidationError
 
+from orderflow_api.api import user_persistence
 from orderflow_api.api.dependencies.auth import require_permission
 from orderflow_api.api.response import success
 from orderflow_api.core.auth.permissions import Permission
 from orderflow_api.api.indian_ecourts_lookup import lookup_indian_ecourts_prefill
 from orderflow_api.api.extraction_engine import decode_document_text
+from orderflow_api.api.ai_extraction import extract_case_flow
 from orderflow_api.api.intake_adapter import build_indian_ecourts_document_payload
+from orderflow_api.api.page_summary_engine import infer_advocate_specialization_from_signals
+from orderflow_api.api.page_summary_persistence import list_page_summaries
+from orderflow_api.api.extraction_persistence import list_persisted_obligations
 from orderflow_api.api.document_persistence import (
     get_persisted_document,
     persist_uploaded_document,
     list_all_persisted_documents,
     find_document_by_checksum,
     delete_all_documents,
+    set_document_case_flow_graph,
 )
 from orderflow_api.api.stub_repository import create_document, get_document
 from orderflow_api.core.language_service import detect_language
 from orderflow_api.core.storage import build_object_storage_client, get_object_bytes
 from orderflow_api.schemas.documents import (
+    AdvocateRecommendationFilters,
+    AdvocateRecommendationsData,
+    AdvocateRecommendationsEnvelope,
+    CaseFlowData,
+    CaseFlowEdge,
+    CaseFlowEnvelope,
+    CaseFlowNode,
+    DocumentAdvocatesData,
+    DocumentAdvocatesEnvelope,
+    DocumentRecord,
     DocumentCreateRequest,
     DocumentEnvelope,
     DocumentsListEnvelope,
@@ -30,6 +46,7 @@ from orderflow_api.schemas.documents import (
     IndianECourtsLookupEnvelope,
     IndianECourtsLookupRequest,
 )
+from orderflow_api.schemas.advocates import ADVOCATE_SPECIALIZATIONS
 
 router = APIRouter(tags=["documents"])
 
@@ -119,6 +136,131 @@ async def download_document_route(
         response.headers["x-request-id"] = request_id
     response.headers["Content-Disposition"] = f'attachment; filename="{document.source_file_name}"'
     return response
+
+
+@router.get(
+    "/documents/{document_id}/advocates",
+    response_model=DocumentAdvocatesEnvelope,
+)
+async def list_document_advocates_route(
+    request: Request,
+    document_id: UUID,
+    status_filter: str | None = Query(default=None, alias="status", pattern="^(claimed|verified)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _user=Depends(require_permission(Permission.CASE_READ)),
+) -> dict[str, object]:
+    document = get_document(document_id)
+    if document is None:
+        document = get_persisted_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    total, items = user_persistence.list_document_advocates(
+        document_id,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+    request_id = getattr(request.state, "request_id", None)
+    payload = DocumentAdvocatesData(document_id=document_id, total=total, items=items)
+    return success(data=payload.model_dump(), request_id=request_id, message="document_advocates")
+
+
+@router.get(
+    "/documents/{document_id}/advocate-recommendations",
+    response_model=AdvocateRecommendationsEnvelope,
+)
+async def document_advocate_recommendations_route(
+    request: Request,
+    document_id: UUID,
+    _user=Depends(require_permission(Permission.CASE_READ)),
+) -> dict[str, object]:
+    document = get_document(document_id)
+    if document is None:
+        document = get_persisted_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    specialization = _derive_document_specialization(document)
+    jurisdiction_state = _derive_jurisdiction_state(document)
+    jurisdiction_level = _derive_jurisdiction_level(document)
+    language = document.auto_detected_language or document.source_language or None
+
+    total, items = user_persistence.list_advocates(
+        specialization=specialization,
+        jurisdiction_state=jurisdiction_state,
+        jurisdiction_level=jurisdiction_level,
+        language=language,
+        sort="rating",
+        only_verified=True,
+        limit=5,
+        offset=0,
+    )
+
+    request_id = getattr(request.state, "request_id", None)
+    payload = AdvocateRecommendationsData(
+        document_id=document.id,
+        total=total,
+        filters=AdvocateRecommendationFilters(
+            specialization=specialization,
+            jurisdiction_state=jurisdiction_state,
+            jurisdiction_level=jurisdiction_level,
+            language=language,
+        ),
+        items=items,
+    )
+    return success(
+        data=payload.model_dump(),
+        request_id=request_id,
+        message="advocate_recommendations",
+    )
+
+
+@router.get(
+    "/documents/{document_id}/case-flow",
+    response_model=CaseFlowEnvelope,
+)
+async def get_document_case_flow_route(
+    request: Request,
+    document_id: UUID,
+    _user=Depends(require_permission(Permission.CASE_READ)),
+) -> dict[str, object]:
+    document = get_document(document_id)
+    persisted_document = False
+    if document is None:
+        document = get_persisted_document(document_id)
+        persisted_document = document is not None
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    cached_graph = _coerce_case_flow_graph(getattr(document, "case_flow_graph", None))
+    if cached_graph is None:
+        summaries = list_page_summaries(document_id)
+        obligations = list_persisted_obligations(document_id)
+        graph_payload = extract_case_flow(
+            metadata=_coerce_metadata(document.metadata),
+            summaries=summaries,
+            obligations=obligations,
+        )
+        cached_graph = _coerce_case_flow_graph(graph_payload)
+        if persisted_document and cached_graph is not None:
+            try:
+                set_document_case_flow_graph(document_id, cached_graph)
+            except Exception:
+                # Rendering the flow is more important than cache persistence.
+                pass
+
+    if cached_graph is None:
+        nodes = []
+        edges = []
+    else:
+        nodes = [CaseFlowNode.model_validate(item) for item in cached_graph["nodes"]]
+        edges = [CaseFlowEdge.model_validate(item) for item in cached_graph["edges"]]
+
+    request_id = getattr(request.state, "request_id", None)
+    payload = CaseFlowData(document_id=document_id, nodes=nodes, edges=edges)
+    return success(data=payload.model_dump(), request_id=request_id, message="case_flow_graph")
 
 
 @router.post(
@@ -299,6 +441,126 @@ def _parse_metadata(metadata: str | None) -> dict[str, object] | None:
         raise HTTPException(status_code=400, detail="Metadata must be a JSON object")
 
     return payload
+
+
+def _derive_document_specialization(document: DocumentRecord) -> str | None:
+    metadata = _coerce_metadata(document.metadata)
+    cis = _coerce_metadata(metadata.get("cis"))
+    additional = _coerce_metadata(metadata.get("additional_metadata"))
+
+    direct_candidates = [
+        _normalize_specialization(_coerce_text(metadata.get("inferred_specialization"))),
+        _normalize_specialization(_coerce_text(metadata.get("specialization"))),
+        _normalize_specialization(_coerce_text(cis.get("case_type"))),
+        _normalize_specialization(_coerce_text(additional.get("specialization"))),
+    ]
+    for candidate in direct_candidates:
+        if candidate:
+            return candidate
+
+    text_signals: list[str] = []
+    for key in ("case_type", "court_name", "bench"):
+        value = _coerce_text(cis.get(key))
+        if value:
+            text_signals.append(value)
+    for key in ("subject", "case_topic", "description"):
+        value = _coerce_text(additional.get(key))
+        if value:
+            text_signals.append(value)
+
+    try:
+        summaries = list_page_summaries(document.id)
+    except Exception:
+        summaries = []
+    for summary in summaries[:8]:
+        if summary.summary:
+            text_signals.append(summary.summary)
+        if summary.key_points:
+            text_signals.extend(summary.key_points[:3])
+
+    inferred = infer_advocate_specialization_from_signals(text=" ".join(text_signals))
+    return _normalize_specialization(inferred)
+
+
+def _derive_jurisdiction_state(document: DocumentRecord) -> str | None:
+    metadata = _coerce_metadata(document.metadata)
+    cis = _coerce_metadata(metadata.get("cis"))
+    additional = _coerce_metadata(metadata.get("additional_metadata"))
+    return (
+        _coerce_text(cis.get("state"))
+        or _coerce_text(additional.get("state"))
+        or _coerce_text(metadata.get("state"))
+    )
+
+
+def _derive_jurisdiction_level(document: DocumentRecord) -> str | None:
+    metadata = _coerce_metadata(document.metadata)
+    cis = _coerce_metadata(metadata.get("cis"))
+    court_name = (_coerce_text(cis.get("court_name")) or "").lower()
+
+    if "supreme" in court_name:
+        return "supreme"
+    if "high court" in court_name:
+        return "high_court"
+    if "district" in court_name or "sessions" in court_name:
+        return "district"
+    if "tribunal" in court_name:
+        return "tribunal"
+    return None
+
+
+def _normalize_specialization(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    alias_map = {
+        "constitutional_law": "constitutional",
+        "criminal_law": "criminal",
+        "civil_law": "civil",
+        "family_law": "family",
+        "labour_law": "labour",
+        "labor": "labour",
+        "labor_law": "labour",
+        "corporate_law": "corporate",
+        "consumer_law": "consumer",
+        "taxation": "tax",
+        "tax_law": "tax",
+    }
+    normalized = alias_map.get(normalized, normalized)
+    if normalized in ADVOCATE_SPECIALIZATIONS:
+        return normalized
+    return None
+
+
+def _coerce_metadata(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _coerce_text(value: object) -> str | None:
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    return None
+
+
+def _coerce_case_flow_graph(value: object) -> dict[str, list[dict[str, object]]] | None:
+    if not isinstance(value, dict):
+        return None
+    nodes = value.get("nodes")
+    edges = value.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return None
+    if not all(isinstance(node, dict) for node in nodes):
+        return None
+    if not all(isinstance(edge, dict) for edge in edges):
+        return None
+    return {
+        "nodes": [dict(node) for node in nodes],
+        "edges": [dict(edge) for edge in edges],
+    }
 
 
 def _merge_metadata(
