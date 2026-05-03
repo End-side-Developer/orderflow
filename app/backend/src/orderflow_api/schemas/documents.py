@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from orderflow_api.schemas.advocates import AdvocateCaseLinkRecord, AdvocateDirectoryItem
 
 DocumentStatus = Literal["uploaded", "processing", "ready", "failed"]
 SupportedLanguage = Literal["en", "hi", "ta", "te", "kn", "ml", "mr"]
@@ -34,6 +35,7 @@ class DocumentRecord(BaseModel):
     workflow_run_id: str | None = None
     status: DocumentStatus
     metadata: dict[str, Any] | None = None
+    case_flow_graph: dict[str, Any] | None = None
     source_language: SupportedLanguage = "en"
     auto_detected_language: SupportedLanguage | None = None
     language_confidence: float = 1.0
@@ -59,6 +61,68 @@ class DocumentsListEnvelope(BaseModel):
     message: str = "ok"
     request_id: str | None = None
     data: DocumentsListData
+
+
+class AdvocateRecommendationFilters(BaseModel):
+    specialization: str | None = None
+    jurisdiction_state: str | None = None
+    jurisdiction_level: str | None = None
+    language: str | None = None
+
+
+class AdvocateRecommendationsData(BaseModel):
+    document_id: UUID
+    total: int
+    filters: AdvocateRecommendationFilters
+    items: list[AdvocateDirectoryItem]
+
+
+class AdvocateRecommendationsEnvelope(BaseModel):
+    ok: Literal[True] = True
+    message: str = "ok"
+    request_id: str | None = None
+    data: AdvocateRecommendationsData
+
+
+class DocumentAdvocatesData(BaseModel):
+    document_id: UUID
+    total: int
+    items: list[AdvocateCaseLinkRecord]
+
+
+class DocumentAdvocatesEnvelope(BaseModel):
+    ok: Literal[True] = True
+    message: str = "ok"
+    request_id: str | None = None
+    data: DocumentAdvocatesData
+
+
+class CaseFlowNode(BaseModel):
+    id: str
+    node_type: Literal["party", "event", "order", "obligation"]
+    label: str
+    detail: str | None = None
+    page_ref: int | None = None
+
+
+class CaseFlowEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: str
+
+
+class CaseFlowData(BaseModel):
+    document_id: UUID
+    nodes: list[CaseFlowNode]
+    edges: list[CaseFlowEdge]
+
+
+class CaseFlowEnvelope(BaseModel):
+    ok: Literal[True] = True
+    message: str = "ok"
+    request_id: str | None = None
+    data: CaseFlowData
 
 
 class IndianECourtsCCMSEnvelope(BaseModel):
