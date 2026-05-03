@@ -22,6 +22,127 @@ from orderflow_api.schemas.page_summaries import (
 
 logger = logging.getLogger(__name__)
 
+_SPECIALIZATION_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "criminal": (
+        "criminal",
+        "fir",
+        "bail",
+        "ipc",
+        "crpc",
+        "arrest",
+        "custody",
+        "charge sheet",
+        "investigation officer",
+    ),
+    "civil": (
+        "civil",
+        "injunction",
+        "specific performance",
+        "decree",
+        "plaintiff",
+        "defendant",
+        "partition",
+        "civil suit",
+    ),
+    "family": (
+        "family",
+        "maintenance",
+        "matrimonial",
+        "custody of child",
+        "domestic violence",
+        "divorce",
+        "family court",
+    ),
+    "corporate": (
+        "corporate",
+        "contract",
+        "agreement",
+        "shareholder",
+        "insolvency",
+        "board resolution",
+        "company",
+        "corporate debtor",
+    ),
+    "tax": (
+        "tax",
+        "gst",
+        "income tax",
+        "assessment year",
+        "penalty",
+        "tax demand",
+        "it act",
+    ),
+    "labour": (
+        "labour",
+        "labor",
+        "industrial dispute",
+        "workman",
+        "wages",
+        "labour court",
+        "termination",
+        "gratuity",
+    ),
+    "ipr": (
+        "ipr",
+        "trademark",
+        "patent",
+        "copyright",
+        "intellectual property",
+        "infringement",
+        "design registration",
+    ),
+    "consumer": (
+        "consumer",
+        "consumer forum",
+        "deficiency in service",
+        "compensation",
+        "consumer complaint",
+        "refund",
+    ),
+    "constitutional": (
+        "constitutional",
+        "article 14",
+        "article 19",
+        "article 21",
+        "article 226",
+        "article 32",
+        "fundamental rights",
+        "writ petition",
+    ),
+}
+
+_CATEGORY_HINTS: dict[str, tuple[str, ...]] = {
+    "order/direction": ("civil", "constitutional"),
+    "legal analysis": ("constitutional", "civil"),
+    "argument": ("civil",),
+    "evidence": ("criminal",),
+}
+
+
+def infer_advocate_specialization_from_signals(
+    *,
+    page_category: str | None = None,
+    text: str | None = None,
+) -> str | None:
+    """Infer a directory specialization label from page-level legal signals."""
+    haystack = (text or "").lower()
+    scores = {name: 0 for name in _SPECIALIZATION_KEYWORDS}
+
+    for specialization, keywords in _SPECIALIZATION_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in haystack:
+                scores[specialization] += 1
+
+    category = (page_category or "").strip().lower()
+    for specialization in _CATEGORY_HINTS.get(category, ()):
+        if specialization in scores:
+            scores[specialization] += 1
+
+    top_specialization, top_score = max(scores.items(), key=lambda item: item[1])
+    if top_score <= 0:
+        return None
+    return top_specialization
+
 
 class PageSummaryExtractor:
     """
