@@ -23,6 +23,7 @@ _client = TestClient(app)
 _FIXED_NOW = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
 _ADVOCATE_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 _JUDGE_ID = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+_DOCUMENT_ID = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
 
 
 def _make_advocate_profile(
@@ -56,6 +57,24 @@ def _make_advocate_profile(
         created_at=_FIXED_NOW,
         updated_at=_FIXED_NOW,
     )
+
+
+def _make_case_link() -> dict[str, object]:
+    return {
+        "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "document_id": str(_DOCUMENT_ID),
+        "advocate_user_id": str(_ADVOCATE_ID),
+        "role": "counsel",
+        "status": "claimed",
+        "created_at": _FIXED_NOW.isoformat(),
+        "verified_at": None,
+        "verified_by_user_id": None,
+        "document_title": "sample.pdf",
+        "court_name": "High Court",
+        "order_date": "2026-04-20",
+        "advocate_full_name": "Test Advocate",
+        "advocate_photo_url": None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -294,3 +313,59 @@ def test_reject_advocate_as_citizen_returns_403(
         headers=bearer(citizen),
     )
     assert resp.status_code == 403
+
+
+def test_list_advocate_cases_calls_persistence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_list = MagicMock(return_value=(0, []))
+    monkeypatch.setattr(user_persistence, "list_advocate_cases", mock_list)
+    resp = _client.get(f"{_BASE}/{_ADVOCATE_ID}/cases?status=verified&limit=10&offset=5")
+    assert resp.status_code == 200
+    _, kwargs = mock_list.call_args
+    assert kwargs["status"] == "verified"
+    assert kwargs["limit"] == 10
+    assert kwargs["offset"] == 5
+
+
+def test_claim_case_forbidden_for_non_advocate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    citizen = make_user(role="citizen", status="active")
+    monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=citizen))
+    resp = _client.post(
+        f"{_BASE}/me/cases",
+        json={"document_id": str(_DOCUMENT_ID), "role": "counsel"},
+        headers=bearer(citizen),
+    )
+    assert resp.status_code == 403
+
+
+def test_claim_case_as_advocate_returns_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    advocate = make_user(user_id=str(_ADVOCATE_ID), role="advocate", status="active")
+    monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=advocate))
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.advocates.get_document",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.advocates.get_persisted_document",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        user_persistence,
+        "claim_advocate_case",
+        MagicMock(return_value=type("CaseLink", (), {"model_dump": lambda self: _make_case_link()})()),
+    )
+
+    resp = _client.post(
+        f"{_BASE}/me/cases",
+        json={"document_id": str(_DOCUMENT_ID), "role": "counsel"},
+        headers=bearer(advocate),
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["message"] == "advocate_case_claimed"
+    assert payload["data"]["item"]["document_id"] == str(_DOCUMENT_ID)
