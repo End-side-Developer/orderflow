@@ -453,12 +453,13 @@ export type CaseIntakeStartRequest = {
   bypass_cache?: boolean;
   pages_total?: number;
   current_concurrency?: number;
+  ai_provider?: "openai" | "anthropic" | "gemini" | "groq";
+  ai_model?: string;
 };
 
 export type DocumentSummaryDirectiveKind = "mandatory" | "advisory" | "needs_review";
 
 export type DocumentSummaryComplianceFlag = "yes" | "no" | "needs_review";
-
 export type DocumentSummaryFlowNodeType = "party" | "event" | "order" | "obligation";
 
 export type DocumentSummarySourceEvidence = {
@@ -927,20 +928,111 @@ export type PageAnnotationsListData = {
   items: PageAnnotation[];
 };
 
+export type PageSummaryHighlight = {
+  text: string;
+  significance: "critical" | "important" | "contextual";
+  relevance: string | null;
+};
+
+export type PageSummaryContextLink = {
+  page_number: number;
+  reason: string;
+};
+
+export type PageSummaryEntity = {
+  name: string;
+  entity_type: string | null;
+  role: string | null;
+  source_location: string | null;
+  confidence: number | null;
+};
+
+export type PageSummaryDate = {
+  date_text: string;
+  label: string | null;
+  source_location: string | null;
+  is_inferred: boolean;
+  confidence: number | null;
+};
+
+export type PageSummaryDirection = {
+  direction_text: string;
+  source_location: string | null;
+  directive_kind: "mandatory" | "advisory" | "needs_review";
+  compliance_required: "yes" | "no" | "needs_review";
+  confidence: number | null;
+};
+
+export type PageSummaryDepartment = {
+  name: string;
+  role: string | null;
+  source_location: string | null;
+  confidence: number | null;
+};
+
+export type PageSummaryRecord = {
+  id: string;
+  document_id: string;
+  page_number: number;
+  page_text: string;
+  summary: string;
+  key_points: string[];
+  important_highlights: PageSummaryHighlight[];
+  entities: PageSummaryEntity[];
+  dates: PageSummaryDate[];
+  directions: PageSummaryDirection[];
+  departments: PageSummaryDepartment[];
+  context_links: PageSummaryContextLink[];
+  obligation_ids: string[];
+  extracted_places: ExtractedPlace[];
+  confidence: number | null;
+  extraction_mode: "ai" | "deterministic";
+  ai_model: string | null;
+  ai_provider: string | null;
+  content_hash: string | null;
+  prompt_version: string | null;
+  source_excerpt: string | null;
+  ai_token_usage: Record<string, unknown> | null;
+  generated_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PageSummariesListData = {
+  document_id: string;
+  total_pages: number;
+  summary_count: number;
+  items: PageSummaryRecord[];
+};
+
 export async function listAnnotations(
   documentId: string,
 ): Promise<ApiResult<PageAnnotationsListData>> {
-  return apiGet<PageAnnotationsListData>(`/annotations/${documentId}`);
+  return apiGet<PageAnnotationsListData>(`/annotations/${encodeURIComponent(documentId)}`);
 }
 
 export async function generateAnnotations(
   documentId: string,
 ): Promise<ApiResult<PageAnnotationsListData>> {
-  return apiPostJson<object, PageAnnotationsListData>(`/annotations/${documentId}/generate`, {});
+  return apiPostJson<object, PageAnnotationsListData>(
+    `/annotations/${encodeURIComponent(documentId)}/generate`,
+    {},
+  );
 }
 
-export async function generatePageSummaries(documentId: string): Promise<ApiResult<unknown>> {
-  return apiPostJson<object, unknown>(`/summaries/${documentId}/generate`, {});
+export async function listPageSummaries(
+  documentId: string,
+): Promise<ApiResult<PageSummariesListData>> {
+  return apiGet<PageSummariesListData>(`/summaries/${encodeURIComponent(documentId)}`);
+}
+
+export async function generatePageSummaries(
+  documentId: string,
+): Promise<ApiResult<PageSummariesListData>> {
+  return apiPostJson<object, PageSummariesListData>(
+    `/summaries/${encodeURIComponent(documentId)}/generate`,
+    {},
+  );
 }
 
 export async function refreshSummaryPlaces<TSummaryData = unknown>(
@@ -962,7 +1054,7 @@ export async function updateAnnotationCoordinates(
   updates: AnnotationBboxUpdate[],
 ): Promise<ApiResult<{ updated_count: number }>> {
   return apiPostJson<{ updates: AnnotationBboxUpdate[] }, { updated_count: number }>(
-    `/annotations/${documentId}/coordinates`,
+    `/annotations/${encodeURIComponent(documentId)}/coordinates`,
     { updates },
   );
 }

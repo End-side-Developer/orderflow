@@ -34,6 +34,7 @@ export default function CaseWizardPage({
     data: progress,
     error: progressError,
     isLoading: progressLoading,
+    isPolling,
   } = useIntakeProgress(documentId);
 
   // Derive the backend stage
@@ -104,18 +105,21 @@ export default function CaseWizardPage({
   }
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden gap-4">
+    <div className="flex min-h-[calc(100vh-9rem)] w-full flex-col gap-4 overflow-hidden">
       <StageStepper
         currentStage={currentAllowedStage}
         activeStage={activeStage}
         onStageClick={handleStageClick}
       />
 
-      <div className="flex-1 flex gap-4 overflow-hidden">
-        {/* Left Pane: Stage Content */}
-        <div className="flex-1 flex flex-col bg-white rounded-lg border overflow-y-auto shadow-sm">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[minmax(420px,0.92fr)_minmax(560px,1.08fr)]">
+        <div className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-border bg-card shadow-sm">
           {activeStage === "extraction" && (
-            <PageExtractionPanel documentId={documentId} progress={progress} />
+            <PageExtractionPanel
+              documentId={documentId}
+              progress={progress}
+              isPolling={isPolling}
+            />
           )}
           {activeStage === "summary" && (
             <SummaryPanel documentId={documentId} />
@@ -137,8 +141,7 @@ export default function CaseWizardPage({
           )}
         </div>
 
-        {/* Right Pane: Persistent PDF Viewer */}
-        <div className="flex-1 flex flex-col bg-white rounded-lg border overflow-hidden shadow-sm">
+        <div className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm xl:min-h-0">
           {document ? (
             <PdfViewer
               documentId={documentId}

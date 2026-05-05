@@ -21,20 +21,16 @@ import {
 } from "@/components/ui/select";
 import {
   downloadDocument,
-  generateAnnotations,
-  generatePageSummaries,
   getDocument,
   intakeIndianECourtsDocument,
   lookupIndianECourtsIntake,
-  runIntakeExtraction,
-  startIntakeWorkflow,
+  startCaseIntake,
   uploadDocument,
   type IndianECourtsIntakeEnvelope,
-  type IntakeAiOptions,
 } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
-type UploadStage = "idle" | "uploading" | "extracting" | "workflow" | "success" | "error";
+type UploadStage = "idle" | "uploading" | "workflow" | "success" | "error";
 type SupportedLanguage = "en" | "hi" | "ta" | "te" | "kn" | "ml" | "mr";
 
 const languageOptions: Array<{ value: SupportedLanguage; label: string }> = [
@@ -56,7 +52,6 @@ type IndianECourtsMetadataRecord = {
 
 const AI_MODES = [
   { id: "backend_default", label: "Backend default", desc: "Configured provider" },
-  { id: "deterministic_only", label: "Deterministic only", desc: "No AI rules" },
   { id: "groq", label: "Groq", desc: "Free, fast" },
   { id: "openai", label: "OpenAI", desc: "High accuracy" },
   { id: "anthropic", label: "Anthropic", desc: "Claude models" },
@@ -131,7 +126,6 @@ function applyIndianECourtsEnvelopeToForm(
 const STAGE_VARIANT: Record<UploadStage, "muted" | "warn" | "good" | "destructive" | "accent"> = {
   idle: "muted",
   uploading: "accent",
-  extracting: "accent",
   workflow: "warn",
   success: "good",
   error: "destructive",
@@ -157,7 +151,6 @@ export default function UploadPage() {
   const stageLabel = useMemo(() => {
     return {
       uploading: "Uploading",
-      extracting: "Extracting",
       workflow: "Workflow",
       success: "Completed",
       error: "Error",
@@ -333,28 +326,10 @@ export default function UploadPage() {
     const cisDepartmentTags = String(formData.get("cis_department_tags") ?? "").trim();
     const aiMode = selectedAiMode;
     const aiModel = String(formData.get("ai_model") ?? "").trim();
-    const aiApiKey = String(formData.get("ai_api_key") ?? "").trim();
-    const aiTemperatureRaw = String(formData.get("ai_temperature") ?? "").trim();
-    const aiMaxObligationsRaw = String(formData.get("ai_max_obligations") ?? "").trim();
-
-    const aiOptions: IntakeAiOptions | undefined = (() => {
-      if (aiMode === "deterministic_only") return { enabled: false };
-      const options: IntakeAiOptions = { enabled: true };
-      if (aiMode === "openai" || aiMode === "anthropic" || aiMode === "gemini" || aiMode === "groq") {
-        options.provider = aiMode;
-      }
-      if (aiModel) options.model = aiModel;
-      if (aiApiKey) options.api_key = aiApiKey;
-      if (aiTemperatureRaw) {
-        const parsed = Number(aiTemperatureRaw);
-        if (!Number.isNaN(parsed)) options.temperature = parsed;
-      }
-      if (aiMaxObligationsRaw) {
-        const parsed = Number(aiMaxObligationsRaw);
-        if (!Number.isNaN(parsed)) options.max_obligations = parsed;
-      }
-      return options;
-    })();
+    const selectedProvider =
+      aiMode === "openai" || aiMode === "anthropic" || aiMode === "gemini" || aiMode === "groq"
+        ? aiMode
+        : undefined;
 
     setStage("uploading");
     setStatusText(
@@ -457,80 +432,41 @@ export default function UploadPage() {
       window.localStorage.setItem("orderflow:current_document_id", uploadResult.data.id);
     }
 
-    setStage("extracting");
-    setStatusText("Running intake extraction and clause-obligation generation…");
-    const extractionResult = await runIntakeExtraction(uploadResult.data.id, aiOptions);
+    setStage("workflow");
+    setStatusText("Starting page extraction workflow...");
+    const intakeResult = await startCaseIntake(uploadResult.data.id, {
+      ...(selectedProvider ? { ai_provider: selectedProvider } : {}),
+      ...(aiModel ? { ai_model: aiModel } : {}),
+    });
 
-    if (!extractionResult.ok) {
+    if (!intakeResult.ok) {
       setStage("error");
-      setErrorText(extractionResult.error.message);
-      setStatusText("Extraction trigger failed.");
+      setErrorText(intakeResult.error.message);
+      setStatusText("Intake workflow start failed.");
       return;
     }
 
     setStage("success");
-    setStatusText(
-      [
-        `Extraction completed (${extractionResult.data.extraction_mode}):`,
-        `${extractionResult.data.clause_count} clauses,`,
-        `${extractionResult.data.obligation_count} obligations.`,
-        extractionResult.data.ai_provider
-          ? `Provider: ${extractionResult.data.ai_provider}`
-          : undefined,
-        extractionResult.data.ai_reason ? `Note: ${extractionResult.data.ai_reason}` : undefined,
-      ]
-        .filter(Boolean)
-        .join(" "),
-    );
-
-    const extractionReason = extractionResult.data.ai_reason?.trim() ?? "";
-
-    setStage("workflow");
-    setStatusText("Generating page summaries and annotations…");
-    await generatePageSummaries(extractionResult.data.document_id);
-    await generateAnnotations(extractionResult.data.document_id);
-
-    setStatusText("Starting intake workflow run for orchestration tracking…");
-    const workflowResult = await startIntakeWorkflow(extractionResult.data.document_id);
-
-    if (!workflowResult.ok) {
-      setErrorText(`Workflow start warning: ${workflowResult.error.message}`);
-      setStatusText("Extraction succeeded, but workflow start failed. Continuing to Analyze.");
-    } else {
-      setStatusText(`Workflow started: ${workflowResult.data.run_id}`);
-    }
-
-    setStage("success");
+    setStatusText("Page extraction workflow started. Opening the case workspace...");
 
     if (typeof window !== "undefined") {
       window.localStorage.setItem(
         "orderflow:last_uploaded_document_id",
-        extractionResult.data.document_id,
+        uploadResult.data.id,
       );
       window.localStorage.setItem("orderflow:last_uploaded_document_label", file.name);
       window.localStorage.setItem(
         "orderflow:current_document_id",
-        extractionResult.data.document_id,
+        uploadResult.data.id,
       );
-      if (extractionReason) {
-        window.localStorage.setItem("orderflow:last_uploaded_ai_reason", extractionReason);
-      } else {
-        window.localStorage.removeItem("orderflow:last_uploaded_ai_reason");
-      }
-      if (!workflowResult.ok) {
-        window.localStorage.setItem(
-          "orderflow:last_uploaded_workflow_warning",
-          workflowResult.error.message,
-        );
-      } else {
-        window.localStorage.removeItem("orderflow:last_uploaded_workflow_warning");
-      }
+      window.localStorage.removeItem("orderflow:last_uploaded_ai_reason");
+      window.localStorage.removeItem("orderflow:last_uploaded_workflow_warning");
     }
 
-    router.push(`/case/${encodeURIComponent(extractionResult.data.document_id)}`);
+    router.push(`/case/${encodeURIComponent(uploadResult.data.id)}`);
   }
 
-  const submitting = stage === "uploading" || stage === "extracting" || stage === "workflow";
+  const submitting = stage === "uploading" || stage === "workflow";
 
   return (
     <div className="flex flex-col gap-6">
@@ -541,7 +477,7 @@ export default function UploadPage() {
           </span>
         }
         title="Upload a judgment to start the workflow"
-        subtitle="Pick a file or fetch from Indian eCourts. Extraction, summaries, annotations, and the orchestration run start automatically."
+        subtitle="Pick a file or fetch from Indian eCourts. Page extraction starts automatically in the case workflow."
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -801,40 +737,16 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field id="ai_model" label="AI model override (optional)">
-                <Input id="ai_model" name="ai_model" placeholder="gpt-4.1-mini" />
-              </Field>
-              <Field id="ai_api_key" label="API key override (optional)">
-                <Input id="ai_api_key" name="ai_api_key" type="password" />
-              </Field>
-              <Field id="ai_temperature" label="Temperature (0-1)">
-                <Input
-                  id="ai_temperature"
-                  name="ai_temperature"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="1"
-                  placeholder="0.1"
-                />
-              </Field>
-              <Field id="ai_max_obligations" label="Max obligations">
-                <Input
-                  id="ai_max_obligations"
-                  name="ai_max_obligations"
-                  type="number"
-                  min="1"
-                  max="300"
-                  placeholder="40"
-                />
+                <Input id="ai_model" name="ai_model" placeholder="gemini-2.0-flash" />
               </Field>
             </div>
 
             <div className="flex justify-end">
               <Button type="submit" disabled={submitting}>
                 <UploadCloud />
-                {submitting ? "Working…" : "Ingest and run extraction"}
+                {submitting ? "Working..." : "Ingest and start page extraction"}
               </Button>
             </div>
           </form>
@@ -869,9 +781,7 @@ export default function UploadPage() {
                     duplicateExistingId,
                   );
                 }
-                router.push(
-                  `/obligations?document_id=${encodeURIComponent(duplicateExistingId)}`,
-                );
+                router.push(`/case/${encodeURIComponent(duplicateExistingId)}`);
               }}
             >
               Open existing document

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { ChevronLeft, ChevronRight, Loader2, Minus, Plus } from "lucide-react";
 
+import { CachedPageExtractionSidebar } from "./cached-page-extraction-sidebar";
 import { PdfOverlayLayer } from "./pdf-overlay-layer";
-import { AiPageSummaryOverlay } from "./ai-page-summary-overlay";
-import { RecommendedAdvocatesPanel } from "./recommended-advocates-panel";
-import { getDocument, getAuthToken } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
+import { downloadDocument, listPageSummaries, type PageSummaryRecord } from "@/lib/api/client";
 import type { ExtractedPlace } from "./case-incidence-map";
 
 const CaseIncidenceMap = dynamic(
@@ -82,14 +83,44 @@ export function PdfViewer({
   const [scale, setScale] = useState(1.0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [textPositions, setTextPositions] = useState<PdfTextPosition[]>([]);
-  const [documentLanguage, setDocumentLanguage] = useState<string | null>(null);
+  const [pageSummaries, setPageSummaries] = useState<PageSummaryRecord[]>([]);
+  const [summariesLoading, setSummariesLoading] = useState(true);
+  const [summariesError, setSummariesError] = useState<string | null>(null);
 
   useEffect(() => {
     setCurrentPage(initialPage);
   }, [documentId, initialPage]);
 
-  // Extract text positions from all pages
+  const currentPageSummary = useMemo(
+    () => pageSummaries.find((summary) => summary.page_number === currentPage) ?? null,
+    [currentPage, pageSummaries],
+  );
+
+  const loadCachedPageSummaries = useCallback(async () => {
+    setSummariesLoading(true);
+    setSummariesError(null);
+
+    try {
+      const response = await listPageSummaries(documentId);
+      if (response.ok) {
+        setPageSummaries(response.data.items);
+      } else {
+        setPageSummaries([]);
+        setSummariesError(response.error.message);
+      }
+    } catch (requestError) {
+      setPageSummaries([]);
+      setSummariesError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not load cached page extractions.",
+      );
+    } finally {
+      setSummariesLoading(false);
+    }
+  }, [documentId]);
+
+  // Extract local text positions for deterministic highlight alignment only.
   async function extractAllTextPositions(pdfDoc: any) {
     const allPositions: PdfTextPosition[] = [];
 
@@ -119,7 +150,6 @@ export function PdfViewer({
       });
     }
 
-    setTextPositions(allPositions);
     onTextExtracted?.(allPositions);
     return allPositions;
   }
@@ -130,31 +160,13 @@ export function PdfViewer({
       try {
         setLoading(true);
         setError(null);
-        setDocumentLanguage(null);
 
-        const [response, documentResult] = await Promise.all([
-          fetch(
-            `${process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "http://localhost:8000/api/v1"}/documents/${documentId}/download`,
-            {
-              headers: {
-                ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
-              },
-            },
-          ),
-          getDocument(documentId),
+        const [downloadResult] = await Promise.all([
+          downloadDocument(documentId),
+          loadCachedPageSummaries(),
         ]);
 
-        if (documentResult.ok) {
-          setDocumentLanguage(
-            documentResult.data.auto_detected_language ?? documentResult.data.source_language ?? "en",
-          );
-        }
-
-        if (!response.ok) {
-          throw new Error(`Failed to download PDF: ${response.status}`);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
+        const arrayBuffer = await downloadResult.blob.arrayBuffer();
         const pdfjs = await getPdfJs();
         if (!pdfjs) throw new Error("Failed to load PDF library");
         const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
@@ -178,7 +190,7 @@ export function PdfViewer({
     // extractAllTextPositions is stable across renders for this component;
     // depending on documentId is the intended trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId]);
+  }, [documentId, loadCachedPageSummaries]);
 
   // Render current page
   useEffect(() => {
@@ -228,16 +240,21 @@ export function PdfViewer({
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', padding: '32px' }}>
-        <div style={{ color: '#4b5563' }}>Loading PDF...</div>
+      <div className="flex min-h-full items-center justify-center p-8">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="animate-spin" />
+          Loading PDF
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', padding: '32px' }}>
-        <div style={{ color: '#dc2626' }}>Error: {error}</div>
+      <div className="flex min-h-full items-center justify-center p-8">
+        <div className="max-w-md rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          Error: {error}
+        </div>
       </div>
     );
   }
@@ -251,94 +268,90 @@ export function PdfViewer({
   });
 
   return (
-    <div className="pdf-viewer">
-      {/* Toolbar */}
-      <div className="pdf-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button
+    <div className="flex min-h-0 flex-1 flex-col bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? 'default' : 'pointer', color: '#fff' }}
           >
+            <ChevronLeft data-icon="inline-start" />
             Previous
-          </button>
-          <span style={{ fontSize: '14px' }}>
+          </Button>
+          <span className="min-w-28 text-center text-sm font-medium text-card-foreground">
             Page {currentPage} of {totalPages}
           </span>
-          <button
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
-            style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', opacity: currentPage === totalPages ? 0.5 : 1, cursor: currentPage === totalPages ? 'default' : 'pointer', color: '#fff' }}
           >
             Next
-          </button>
+            <ChevronRight data-icon="inline-end" />
+          </Button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={() => handleZoom("out")}
             disabled={scale <= 0.5}
-            style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', opacity: scale <= 0.5 ? 0.5 : 1, cursor: scale <= 0.5 ? 'default' : 'pointer', color: '#fff' }}
           >
-            -
-          </button>
-          <span style={{ fontSize: '14px', width: '64px', textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
-          <button
+            <Minus data-icon="inline-start" />
+            Zoom
+          </Button>
+          <span className="w-14 text-center text-sm font-medium tabular-nums text-card-foreground">
+            {Math.round(scale * 100)}%
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={() => handleZoom("in")}
             disabled={scale >= 3.0}
-            style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', opacity: scale >= 3.0 ? 0.5 : 1, cursor: scale >= 3.0 ? 'default' : 'pointer', color: '#fff' }}
           >
-            +
-          </button>
+            <Plus data-icon="inline-start" />
+            Zoom
+          </Button>
         </div>
       </div>
 
-      {/* Canvas Container */}
-      <div className="pdf-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: '32px', padding: '24px', overflow: 'auto', height: "calc(100vh - 200px)", background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)" }}>
-
-        {/* PDF Document Viewer */}
-        <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0, transition: 'all 300ms', boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)", background: '#fff', borderRadius: '8px' }}>
-          <canvas ref={canvasRef} style={{ borderRadius: '8px', background: '#fff' }} />
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(280px,34%)]">
+        <div className="min-w-0 overflow-auto bg-background p-4">
+          <div className="relative mx-auto inline-block rounded-md bg-white shadow-2xl">
+            <canvas ref={canvasRef} className="rounded-md bg-white" />
           <PdfOverlayLayer
             annotations={annotations}
             currentPage={currentPage}
             scale={scale}
-            onAnnotationClick={(annotation) => {
-              console.log("Annotation clicked:", annotation);
-            }}
           />
+          </div>
         </div>
 
-        {/* AI Insight Sidebar */}
-        <div style={{ position: 'sticky', top: '24px', flexShrink: 0, zIndex: 10, width: "380px", display: "flex", flexDirection: "column", gap: "12px" }}>
-          <AiPageSummaryOverlay
+        <div className="min-h-0 min-w-0">
+          <CachedPageExtractionSidebar
             currentPage={currentPage}
-            pageText={textPositions.filter(t => t.page === currentPage).map(t => t.text).join(" ")}
-            documentId={documentId}
-            preferredLanguage={documentLanguage}
+            pageSummary={currentPageSummary}
+            loading={summariesLoading}
+            error={summariesError}
+            onRetry={() => void loadCachedPageSummaries()}
             onJumpToPage={handlePageChange}
           />
-          <RecommendedAdvocatesPanel documentId={documentId} />
           {currentPageHasPlaces ? (
             <details
               open
-              style={{
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: "12px",
-                background: "rgba(15,23,42,0.82)",
-                padding: "12px",
-              }}
+              className="border-l border-border bg-card px-4 pb-4"
             >
-              <summary
-                style={{
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  color: "#e2e8f0",
-                }}
-              >
+              <summary className="cursor-pointer py-3 text-sm font-semibold text-card-foreground">
                 Locations on this page
               </summary>
-              <div style={{ marginTop: "12px" }}>
+              <div>
                 <CaseIncidenceMap
                   places={places}
                   mode="single-page"
@@ -348,7 +361,6 @@ export function PdfViewer({
             </details>
           ) : null}
         </div>
-
       </div>
     </div>
   );

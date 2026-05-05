@@ -6,9 +6,20 @@ const REFRESH_COOKIE = "orderflow_refresh";
 
 // Paths that require a logged-in session (presence of refresh cookie)
 const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/admin"];
+const BLOCKED_LEGACY_PREFIXES = ["/document-summary", "/obligations"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const isBlockedLegacy = BLOCKED_LEGACY_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+
+  if (isBlockedLegacy) {
+    const dashboardUrl = new URL("/dashboard", request.url);
+    dashboardUrl.searchParams.set("legacy_flow", "blocked");
+    return NextResponse.redirect(dashboardUrl);
+  }
 
   const isProtected = PROTECTED_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),

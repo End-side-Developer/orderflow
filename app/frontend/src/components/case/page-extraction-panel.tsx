@@ -25,11 +25,13 @@ import {
 type PageExtractionPanelProps = {
   documentId: string;
   progress: ExtractionJobStatusData | null;
+  isPolling?: boolean;
 };
 
 export function PageExtractionPanel({
   documentId,
   progress,
+  isPolling = false,
 }: PageExtractionPanelProps) {
   const [isStarting, setIsStarting] = useState(false);
   const [isContinuing, setIsContinuing] = useState(false);
@@ -48,14 +50,25 @@ export function PageExtractionPanel({
   const cacheStatus = progress?.current_page_cache_status ?? excerpt.cacheStatus;
   const isPaused = Boolean(progress?.is_paused ?? progress?.paused_until);
   const retryMessage = buildRetryMessage(progress);
+  const failureReason = recordStringValue(
+    progress?.current_page_excerpt,
+    "error_message",
+  );
+  const failureCode = recordStringValue(progress?.current_page_excerpt, "error_code");
+  const technicalError = recordStringValue(
+    progress?.current_page_excerpt,
+    "technical_error_type",
+  );
   const canStart = !progress || stage === "pending";
   const canContinue = stage === "pages_done";
 
-  async function handleStartIntake() {
+  async function handleStartIntake(bypassCache = false) {
     setIsStarting(true);
     setActionError(null);
     try {
-      const response = await startCaseIntake(documentId);
+      const response = await startCaseIntake(documentId, {
+        bypass_cache: Boolean(bypassCache),
+      });
       if (!response.ok) {
         setActionError(response.error.message);
       }
@@ -103,6 +116,9 @@ export function PageExtractionPanel({
         </div>
         <Badge variant={canContinue ? "good" : "secondary"}>
           {stage.replaceAll("_", " ")}
+        </Badge>
+        <Badge variant={isPolling ? "muted" : "good"}>
+          {isPolling ? "Polling fallback" : "Live updates"}
         </Badge>
       </div>
 
@@ -159,6 +175,30 @@ export function PageExtractionPanel({
         <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
           {excerpt.text || "No excerpt available yet."}
         </p>
+        {failureReason ? (
+          <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+            <div className="font-semibold">Why it failed</div>
+            <div className="mt-1 leading-5">{failureReason}</div>
+            <div className="mt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleStartIntake(true)}
+                disabled={isStarting}
+              >
+                <RefreshCw className="mr-2 h-3 w-3" />
+                Retry intake
+              </Button>
+            </div>
+
+            {(failureCode || technicalError) ? (
+              <div className="mt-2 text-rose-700">
+                {failureCode ? <div>Code: {failureCode}</div> : null}
+                {technicalError ? <div>Type: {technicalError}</div> : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {cacheStatus ? (
           <Badge variant="muted" className="mt-3">
             {cacheStatus}
@@ -256,6 +296,11 @@ function skippedPagesText(value: unknown) {
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function recordStringValue(record: Record<string, unknown> | null | undefined, key: string) {
+  if (!record) return null;
+  return stringValue(record[key]);
 }
 
 function numberValue(value: unknown) {

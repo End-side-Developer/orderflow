@@ -11,7 +11,6 @@ import {
   FileText,
   GitBranch,
   Loader2,
-  MapPin,
   RefreshCw,
   Scale,
   Users,
@@ -30,8 +29,10 @@ import {
   DocumentSummaryImportantDate,
   DocumentSummaryResponsibleDepartment,
   DocumentSummarySourceEvidence,
+  PageSummaryRecord,
   generateCaseActionPlan,
   getCaseSummary,
+  listPageSummaries,
 } from "@/lib/api/client";
 
 type SummaryPanelProps = {
@@ -50,17 +51,18 @@ const CaseIncidenceMap = dynamic(
 
 export function SummaryPanel({ documentId }: SummaryPanelProps) {
   const [summary, setSummary] = useState<CaseDocumentSummaryData | null>(null);
+  const [pageSummaries, setPageSummaries] = useState<PageSummaryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingActionPlan, setIsGeneratingActionPlan] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const mapAvailable = Boolean(
-    summary?.map_data?.available && summary.map_data.places.length > 0,
-  );
   const confidencePercent = useMemo(
     () => clampPercent((summary?.confidence ?? 0) * 100),
     [summary?.confidence],
+  );
+  const mapAvailable = Boolean(
+    summary?.map_data?.available && summary.map_data.places.length > 0,
   );
   const needsHumanReview = confidencePercent < 70;
 
@@ -70,14 +72,15 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
     setError(null);
     setActionMessage(null);
 
-    void getCaseSummary(documentId)
-      .then((response) => {
+    void Promise.all([getCaseSummary(documentId), listPageSummaries(documentId)])
+      .then(([summaryResponse, pageResponse]) => {
         if (cancelled) return;
-        if (response.ok) {
-          setSummary(response.data);
+        if (summaryResponse.ok) {
+          setSummary(summaryResponse.data);
         } else {
-          setError(response.error.message);
+          setError(summaryResponse.error.message);
         }
+        setPageSummaries(pageResponse.ok ? pageResponse.data.items : []);
       })
       .catch((requestError) => {
         if (cancelled) return;
@@ -182,6 +185,16 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
           <AlertDescription>{actionMessage}</AlertDescription>
         </Alert>
       ) : null}
+
+      <section className="rounded-md border border-slate-200 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <FileText className="h-4 w-4 text-slate-500" />
+          <h3 className="text-sm font-semibold text-slate-900">
+            Page-wise summary
+          </h3>
+        </div>
+        <PageWiseSummaryList pages={pageSummaries} />
+      </section>
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
@@ -297,6 +310,117 @@ function Fact({ label, value }: { label: string; value: string | null }) {
       <div className="mt-1 break-words text-sm font-semibold text-slate-950">
         {value || "-"}
       </div>
+    </div>
+  );
+}
+
+function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
+  if (pages.length === 0) {
+    return <EmptyPanel label="No cached page-wise summaries found yet." />;
+  }
+
+  return (
+    <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1">
+      {[...pages]
+        .sort((a, b) => a.page_number - b.page_number)
+        .map((page) => (
+          <div key={page.id} className="rounded-md border border-slate-200 p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">Page {page.page_number}</Badge>
+                <Badge variant={page.extraction_mode === "ai" ? "accent" : "secondary"}>
+                  {page.extraction_mode}
+                </Badge>
+              </div>
+              {page.confidence != null ? (
+                <Badge variant={page.confidence >= 0.7 ? "good" : "warn"}>
+                  {clampPercent(page.confidence * 100)}%
+                </Badge>
+              ) : null}
+            </div>
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
+              {page.summary}
+            </p>
+            {page.key_points.length > 0 ? (
+              <ul className="mt-3 flex flex-col gap-2">
+                {page.key_points.slice(0, 4).map((point, index) => (
+                  <li key={`${point}-${index}`} className="text-sm leading-6 text-slate-700">
+                    {point}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {page.important_highlights.length > 0 ? (
+              <div className="mt-3 flex flex-col gap-2">
+                {page.important_highlights.slice(0, 2).map((highlight, index) => (
+                  <div key={`${highlight.text}-${index}`} className="rounded-md bg-slate-50 p-3">
+                    <div className="mb-1 flex flex-wrap gap-2">
+                      <Badge variant={highlight.significance === "critical" ? "warn" : "muted"}>
+                        {highlight.significance}
+                      </Badge>
+                    </div>
+                    <p className="line-clamp-3 break-words text-xs leading-5 text-slate-600">
+                      {highlight.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant="muted">{page.entities.length} entities</Badge>
+              <Badge variant="muted">{page.dates.length} dates</Badge>
+              <Badge variant="muted">{page.directions.length} directions</Badge>
+              <Badge variant="muted">{page.departments.length} departments</Badge>
+            </div>
+            {page.entities.length > 0 || page.dates.length > 0 || page.directions.length > 0 ? (
+              <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                <MiniList
+                  title="Entities"
+                  items={page.entities.map((entity) => entity.name)}
+                  empty="No entities cached."
+                />
+                <MiniList
+                  title="Dates"
+                  items={page.dates.map((date) => date.date_text)}
+                  empty="No dates cached."
+                />
+                <MiniList
+                  title="Directions"
+                  items={page.directions.map((direction) => direction.direction_text)}
+                  empty="No directions cached."
+                />
+              </div>
+            ) : null}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function MiniList({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+}) {
+  const visibleItems = items.filter(Boolean).slice(0, 3);
+  return (
+    <div className="rounded-md bg-slate-50 p-3">
+      <p className="mb-2 text-xs font-semibold uppercase text-slate-500">{title}</p>
+      {visibleItems.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {visibleItems.map((item, index) => (
+            <li key={`${item}-${index}`} className="line-clamp-2 text-xs leading-5 text-slate-600">
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-slate-500">{empty}</p>
+      )}
     </div>
   );
 }
@@ -432,8 +556,8 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
     return <EmptyPanel label="No flow graph found." />;
   }
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
         {graph.narrative_steps.map((step, index) => (
           <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-slate-50 p-3">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
