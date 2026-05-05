@@ -3,6 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowRight,
   Check,
   CheckCircle2,
   Edit3,
@@ -38,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CaseActionPlanData,
   CaseActionPlanReviewDecision,
+  finalizeCase,
   ObligationRecord,
   getCaseActionPlan,
   regenerateCaseActionPlanItem,
@@ -47,6 +49,7 @@ import {
 type ReviewPanelProps = {
   documentId: string;
   onNavigateToPage?: (pageNumber: number) => void;
+  onProceedToDashboard?: () => void;
 };
 
 type ActiveReviewForm =
@@ -56,7 +59,11 @@ type ActiveReviewForm =
 
 const EMPTY_ACTION_ITEMS: ObligationRecord[] = [];
 
-export function ReviewPanel({ documentId, onNavigateToPage }: ReviewPanelProps) {
+export function ReviewPanel({
+  documentId,
+  onNavigateToPage,
+  onProceedToDashboard,
+}: ReviewPanelProps) {
   const [actionPlan, setActionPlan] = useState<CaseActionPlanData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +78,7 @@ export function ReviewPanel({ documentId, onNavigateToPage }: ReviewPanelProps) 
   const [editOwner, setEditOwner] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [regenFeedback, setRegenFeedback] = useState("");
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   const loadActionPlan = useCallback(async () => {
     setIsLoading(true);
@@ -132,6 +140,8 @@ export function ReviewPanel({ documentId, onNavigateToPage }: ReviewPanelProps) 
 
   const items = actionPlan?.items ?? EMPTY_ACTION_ITEMS;
   const stats = useMemo(() => buildReviewStats(items), [items]);
+  const canProceedToDashboard =
+    Boolean(onProceedToDashboard) && stats.pending === 0 && stats.approvedOrEdited > 0;
 
   function startForm(item: ObligationRecord, kind: Exclude<ActiveReviewForm, null>["kind"]) {
     setActiveForm({ itemId: item.id, kind });
@@ -242,6 +252,37 @@ export function ReviewPanel({ documentId, onNavigateToPage }: ReviewPanelProps) 
       );
     } finally {
       setPendingItemId(null);
+    }
+  }
+
+  async function handleFinalizeAndProceed() {
+    if (!canProceedToDashboard || isFinalizing) {
+      return;
+    }
+
+    setIsFinalizing(true);
+    setError(null);
+
+    try {
+      const response = await finalizeCase(documentId, {
+        reviewer_name: reviewerName.trim() || undefined,
+        comments: comments.trim() || undefined,
+      });
+
+      if (response.ok) {
+        setMessage("Case finalized.");
+        onProceedToDashboard?.();
+      } else {
+        setError(response.error.message);
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not finalize the case.",
+      );
+    } finally {
+      setIsFinalizing(false);
     }
   }
 
@@ -412,10 +453,19 @@ export function ReviewPanel({ documentId, onNavigateToPage }: ReviewPanelProps) 
         }}
       />
 
-      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">
         <Button type="button" variant="outline" onClick={() => void loadActionPlan()}>
           <RefreshCw data-icon="inline-start" />
           Refresh review queue
+        </Button>
+        <Button
+          type="button"
+          variant={canProceedToDashboard ? "good" : "outline"}
+          onClick={() => void handleFinalizeAndProceed()}
+          disabled={!canProceedToDashboard || isFinalizing}
+        >
+          {isFinalizing ? "Finalizing..." : "Finalize case and open dashboard"}
+          <ArrowRight data-icon="inline-end" />
         </Button>
       </div>
     </div>

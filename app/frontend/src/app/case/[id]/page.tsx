@@ -134,6 +134,7 @@ export default function CaseWizardPage({
             <ReviewPanel
               documentId={documentId}
               onNavigateToPage={setPdfPage}
+              onProceedToDashboard={() => setActiveStage("dashboard")}
             />
           )}
           {activeStage === "dashboard" && (
