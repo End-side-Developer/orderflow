@@ -31,20 +31,26 @@ Completion only happens when evidence is attached and verified for relevance, da
 ### 3. Risk and Escalation Engine
 Track deadline pressure, blocked dependencies, and weak evidence so the system can warn before a miss happens.
 
-## Flow 1: Judgment to Verified Action
+## Flow 1: Cached Judgment to Verified Action Plan
 
 ```mermaid
 flowchart TD
-    A[Judgment arrives from CCMS or upload] --> B[Parse PDF and OCR]
-    B --> C[Extract obligations]
-    C --> D{Confidence high and citations complete?}
-    D -->|Yes| E[Create verified obligation ledger]
-    D -->|No| F[Send to human review]
-    F --> E
-    E --> G[Assign owner and deadline]
-    G --> H[Track proof and progress]
-    H --> I[Verify evidence]
-    I --> J[Mark complete or escalate]
+    A[Upload judgment PDF] --> B{Duplicate checksum?}
+    B -->|Yes| C[Open existing cached case]
+    B -->|No| D[Create document record]
+    C --> E[Reviewer clicks Intake]
+    D --> E
+    E --> F[Temporal extracts cached page summaries]
+    F --> G{Pages done?}
+    G -->|No| H[Show progress, retry, or pause state]
+    H --> F
+    G -->|Yes| I[Reviewer generates full summary]
+    I --> J[Reviewer generates action plan]
+    J --> K[Human reviews each item]
+    K --> L{All items decided?}
+    L -->|No| K
+    L -->|Yes| M[Finalize case]
+    M --> N[Trusted dashboard shows approved records only]
 ```
 
 ## Flow 2: Risk and Escalation Loop
@@ -119,17 +125,36 @@ For detailed setup and configuration, see [docs/language-support.md](docs/langua
 ## Demo Storyline
 
 1. Upload a judgment.
-2. OrderFlow extracts the key obligations.
-3. A reviewer confirms or edits low-confidence items.
-4. The system assigns owners, deadlines, and proof requirements.
-5. The risk board shows what is blocked, overdue, or likely to slip.
-6. Verified evidence closes the loop and moves the case to completion.
+2. Click Intake to start durable page extraction.
+3. Watch page progress, cache hits, retry pauses, and recovery state.
+4. Generate the full judgment summary only after pages are done.
+5. Generate the action plan from cached cited pages.
+6. Approve, edit, reject, or surgically regenerate individual action items.
+7. Finalize only after every action-plan item has a human decision.
+8. Open the trusted dashboard, which shows approved or edited records only.
 
 ## Current Build Status
 
-- Phase A tickets are complete.
-- Phase B extraction, citation, review, and risk wiring are already in place.
-- Next work focuses on workflow polling, escalation triggers, and reviewer audit trail.
+- The new gated case flow is implemented across FastAPI, Temporal worker, and the Next.js `/case/[id]` reviewer workspace.
+- Manual API-driven E2E passed on 2026-05-04: duplicate upload reuse, intake, page extraction, summary generation, action-plan generation, 18 human approvals, finalize, and trusted dashboard.
+- Cache behavior is covered by worker tests for page cache hits, prompt-version invalidation, resumability, full-summary cache hits, and action-plan one-shot behavior.
+- Same-PDF re-upload is blocked by checksum with `409 duplicate_document`, returning the existing document id instead of starting another extraction.
+- The trusted dashboard API rejects non-finalized cases and filters records server-side to human-approved or edited action-plan items.
+- Current caveat: the root `python scripts/quality_check.py` gate is not green yet. Frontend lint/typecheck pass, but Prettier, backend flake8, and backend Black cleanup are still required before final cutover.
+
+## Key Case Routes
+
+- `POST /api/v1/documents/upload`
+- `POST /api/v1/cases/{document_id}/intake/start`
+- `GET /api/v1/cases/{document_id}/intake/status`
+- `POST /api/v1/cases/{document_id}/summary/generate`
+- `GET /api/v1/cases/{document_id}/summary`
+- `POST /api/v1/cases/{document_id}/action-plan/generate`
+- `GET /api/v1/cases/{document_id}/action-plan`
+- `POST /api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review`
+- `POST /api/v1/cases/{document_id}/action-plan/items/{obligation_id}/regenerate`
+- `POST /api/v1/cases/{document_id}/finalize`
+- `GET /api/v1/cases/{document_id}/dashboard`
 
 ## Where To Continue
 

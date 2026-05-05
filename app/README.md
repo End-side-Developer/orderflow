@@ -4,9 +4,9 @@ This folder contains all implementation services for Theme 11 (OrderFlow).
 
 ## Service Boundaries
 
-- frontend: Reviewer-facing web UI (Next.js App Router).
-- backend: Domain API and persistence layer (FastAPI).
-- worker: Long-running orchestration and workflow workers (Temporal, LangGraph).
+- frontend: Reviewer-facing web UI and `/case/[id]` gated wizard (Next.js App Router).
+- backend: Domain API, gate checks, cache persistence, and trusted dashboard filtering (FastAPI).
+- worker: Long-running gated orchestration and cached extraction workers (Temporal, LangGraph).
 - intelligence: Extraction assets, prompts, and evaluation helpers.
 - data-pipelines: Batch and ingestion jobs.
 - infra: Local runtime stack and deployment configs.
@@ -41,4 +41,19 @@ This folder contains all implementation services for Theme 11 (OrderFlow).
 - T11-B-005 completed: upload to extraction trigger and obligation board wiring.
 - T11-B-006 completed: workflow run status integration and risk board stream wiring.
 - T11-B-007 completed: citation drill-down and reviewer decision actions.
-- Next in queue: T11-B-008 (workflow polling, escalation triggers, and reviewer audit trail).
+- New gated flow completed through manual E2E: upload or duplicate reuse, Intake,
+  cached page extraction, summary, action plan, mandatory item review, finalize,
+  and approved-only trusted dashboard.
+- Current quality caveat: root `python scripts/quality_check.py` is not green
+  because frontend Prettier, backend flake8, and backend Black cleanup remain.
+
+## Current Runtime Flow
+
+1. Frontend uploads a judgment and opens `/case/[id]`.
+2. Backend starts and gates case stages under `/api/v1/cases/{document_id}`.
+3. Worker runs the Temporal intake workflow and skips valid cached page summaries.
+4. Backend allows summary generation only after pages are done.
+5. Backend allows action-plan generation only after summary is done.
+6. Frontend submits human review decisions for every action-plan item.
+7. Backend finalizes only after all items are reviewed and at least one is approved or edited.
+8. Dashboard returns only approved or edited action records for finalized cases.
