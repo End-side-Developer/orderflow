@@ -5,7 +5,6 @@ export type RouteKey =
   | "intake"
   | "analyze"
   | "verify"
-  | "escalate"
   | "departments"
   | "public"
   | "dashboard"
@@ -68,17 +67,6 @@ export const ROUTES: RouteDescriptor[] = [
     inWorkflow: true,
     workflowIndex: 3,
     requiredRoles: ["advocate", "judge", "government"],
-  },
-  {
-    key: "escalate",
-    href: "/risk",
-    label: "Escalate",
-    simpleLabel: "Urgent issues",
-    helpText: "Items flagged as high-risk that need immediate review.",
-    description: "Triage risk-scored items and open escalations.",
-    inWorkflow: true,
-    workflowIndex: 4,
-    requiredRoles: ["judge", "government"],
   },
   {
     key: "departments",

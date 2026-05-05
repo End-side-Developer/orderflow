@@ -138,6 +138,40 @@ export type ObligationRiskFactor = {
 };
 
 export type ObligationRiskBand = "low" | "moderate" | "high" | "critical";
+export type ObligationNatureOfAction =
+  | "compliance"
+  | "directive"
+  | "investigation"
+  | "report_filing"
+  | "payment"
+  | "notice"
+  | "appointment"
+  | "submission"
+  | "document_submission"
+  | "compliance_report"
+  | "policy"
+  | "policy_decision"
+  | "reconsideration"
+  | "hearing"
+  | "hearing_review"
+  | "appeal_review"
+  | "record_update"
+  | "other";
+export type ObligationActionPlanStage =
+  | "extracted"
+  | "in_action_plan"
+  | "review_pending"
+  | "approved"
+  | "rejected"
+  | "edited";
+
+export type ObligationRegenerationEvent = {
+  at: string | null;
+  feedback: string | null;
+  prev_fields: Record<string, unknown>;
+  updated_fields: Record<string, unknown>;
+  actor_id: string | null;
+};
 
 export type ObligationRecord = {
   id: string;
@@ -157,6 +191,11 @@ export type ObligationRecord = {
   risk_score: number | null;
   risk_band: ObligationRiskBand | null;
   risk_factors: ObligationRiskFactor[];
+  nature_of_action: ObligationNatureOfAction | null;
+  action_plan_stage: ObligationActionPlanStage;
+  regen_count: number;
+  regen_history: ObligationRegenerationEvent[];
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 };
@@ -369,11 +408,280 @@ export type WorkbenchDocumentData = {
   recent_activity: WorkbenchActivityItem[];
 };
 
+export type ExtractionJobStage =
+  | "pending"
+  | "pages_extracting"
+  | "pages_done"
+  | "summary_pending"
+  | "summary_done"
+  | "action_plan_pending"
+  | "action_plan_done"
+  | "review_in_progress"
+  | "finalized";
+
+export type ExtractionJobError = {
+  code: string | null;
+  message: string | null;
+};
+
+export type ExtractionJobCurrentPageExcerpt = Record<string, unknown>;
+
+export type ExtractionJobStatusData = {
+  id: string | null;
+  document_id: string;
+  stage: ExtractionJobStage;
+  pages_total: number;
+  pages_completed: number;
+  current_page: number | null;
+  current_page_excerpt: ExtractionJobCurrentPageExcerpt | null;
+  percent: number;
+  status_message: string;
+  current_page_cache_status: string | null;
+  is_paused: boolean;
+  next_action: string | null;
+  error: ExtractionJobError | null;
+  retry_after_seconds: number | null;
+  paused_until: string | null;
+  current_concurrency: number;
+  started_at: string | null;
+  finalized_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type CaseIntakeStartRequest = {
+  bypass_cache?: boolean;
+  pages_total?: number;
+  current_concurrency?: number;
+};
+
+export type DocumentSummaryDirectiveKind = "mandatory" | "advisory" | "needs_review";
+
+export type DocumentSummaryComplianceFlag = "yes" | "no" | "needs_review";
+
+export type DocumentSummaryFlowNodeType = "party" | "event" | "order" | "obligation";
+
+export type DocumentSummarySourceEvidence = {
+  page_number: number | null;
+  paragraph_reference: string | null;
+  source_excerpt: string | null;
+  highlight_reference: string | null;
+  confidence: number | null;
+};
+
+export type DocumentSummaryCaseBasics = {
+  case_number: string | null;
+  court_name: string | null;
+  case_type: string | null;
+  order_date: string | null;
+  petitioner: string | null;
+  respondent: string | null;
+  judge_name: string | null;
+  department_involved: string | null;
+  disposal_status: string | null;
+  main_subject: string | null;
+  directive_summary: string | null;
+};
+
+export type DocumentSummaryDirective = {
+  direction_text: string;
+  source_page_number: number | null;
+  source_paragraph_reference: string | null;
+  source_excerpt: string | null;
+  confidence: number | null;
+  directive_kind: DocumentSummaryDirectiveKind;
+  compliance_required: DocumentSummaryComplianceFlag;
+  source_evidence: DocumentSummarySourceEvidence[];
+};
+
+export type DocumentSummaryImportantDate = {
+  label: string;
+  date_text: string | null;
+  source: string | null;
+  is_inferred: boolean;
+  confidence: number | null;
+  source_evidence: DocumentSummarySourceEvidence[];
+};
+
+export type DocumentSummaryEntity = {
+  name: string;
+  entity_type: string | null;
+  role: string | null;
+  source_page_number: number | null;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+};
+
+export type DocumentSummaryResponsibleDepartment = {
+  primary_department: string | null;
+  supporting_departments: string[];
+  legal_department_role: string | null;
+  petitioner: string | null;
+  respondent: string | null;
+  reason: string | null;
+  source_evidence: DocumentSummarySourceEvidence[];
+};
+
+export type DocumentSummaryFlowNode = {
+  id: string;
+  node_type: DocumentSummaryFlowNodeType;
+  label: string;
+  detail: string | null;
+  page_ref: number | null;
+};
+
+export type DocumentSummaryFlowEdge = {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+};
+
+export type DocumentSummaryFlowGraph = {
+  document_id: string;
+  nodes: DocumentSummaryFlowNode[];
+  edges: DocumentSummaryFlowEdge[];
+  narrative_steps: string[];
+};
+
+export type ExtractedPlaceType = "court" | "property" | "incident" | "address" | "jurisdiction" | "other";
+
+export type ExtractedPlaceGeocodeSource = "nominatim" | "cache" | "fallback_court_metadata" | "none";
+
+export type ExtractedPlace = {
+  id: string;
+  name: string;
+  normalized_name: string;
+  place_type: ExtractedPlaceType;
+  state: string | null;
+  district: string | null;
+  raw_text_span: string | null;
+  lat: number | null;
+  lng: number | null;
+  geocode_confidence: number;
+  geocode_source: ExtractedPlaceGeocodeSource;
+  source_page_number: number;
+  mention_count: number;
+};
+
+export type DocumentSummaryMapData = {
+  available: boolean;
+  reason: string | null;
+  places: ExtractedPlace[];
+  flow: Record<string, unknown>[];
+};
+
+export type DocumentSummaryData = {
+  id: string | null;
+  document_id: string;
+  case_basics: DocumentSummaryCaseBasics;
+  overview: string;
+  key_directives: DocumentSummaryDirective[];
+  important_dates: DocumentSummaryImportantDate[];
+  entities_involved: DocumentSummaryEntity[];
+  responsible_departments: DocumentSummaryResponsibleDepartment[];
+  flow_graph: DocumentSummaryFlowGraph | null;
+  map_data: DocumentSummaryMapData | null;
+  confidence: number | null;
+  prompt_version: string | null;
+  ai_model: string | null;
+  ai_provider: string | null;
+  generated_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type CaseDocumentSummaryData = DocumentSummaryData;
+
+export type CaseActionPlanData = ObligationsPayload;
+
+export type CaseDashboardGroup = {
+  responsible_department: string;
+  total: number;
+  items: ObligationRecord[];
+};
+
+export type CaseDashboardData = {
+  document_id: string;
+  total: number;
+  approved_total: number;
+  edited_total: number;
+  groups: CaseDashboardGroup[];
+};
+
+export type CaseDashboardParams = {
+  department?: string;
+  priority?: ObligationRecord["priority"];
+  deadline?: string;
+  status?: ObligationRecord["status"];
+  case_type?: string;
+  court?: string;
+  responsible_authority?: string;
+};
+
+export type CaseFinalizeRequest = {
+  reviewer_name?: string;
+  comments?: string;
+};
+
+export type CaseFinalizeData = {
+  document_id: string;
+  stage: "finalized";
+  approved_count: number;
+  edited_count: number;
+  rejected_count: number;
+  finalized_at: string | null;
+};
+
+export type CaseActionPlanReviewDecision = "approve" | "edit" | "reject";
+
+export type CaseActionPlanReviewRequest = {
+  decision: CaseActionPlanReviewDecision;
+  reviewer_name?: string;
+  edited_fields?: Partial<
+    Pick<ObligationRecord, "title" | "description" | "owner_hint" | "status" | "nature_of_action">
+  >;
+  rejection_reason?: string;
+  comments?: string;
+};
+
+export type CaseActionPlanReviewData = {
+  document_id: string;
+  obligation_id: string;
+  decision: CaseActionPlanReviewDecision;
+  action_plan_stage: ObligationActionPlanStage;
+  obligation: ObligationRecord | null;
+  reviewer_name: string | null;
+  rejection_reason: string | null;
+  reviewed_at: string | null;
+  comments: string | null;
+};
+
+export type CaseActionPlanRegenerateRequest = {
+  feedback: string;
+  reviewer_name?: string;
+};
+
+export type CaseActionPlanRegenerateData = {
+  document_id: string;
+  obligation_id: string;
+  action_plan_stage: ObligationActionPlanStage;
+  regen_count: number;
+  obligation: ObligationRecord | null;
+  updated_fields: Record<string, unknown>;
+  regenerated_at: string | null;
+};
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 // Auth handlers registered by <AuthProvider> to avoid a circular store ↔ client import.
 let _getToken: () => string | null = () => null;
 let _doRefresh: () => Promise<string | null> = () => Promise.resolve(null);
+
+/** Public accessor for the current auth token (for direct fetch calls outside requestApi). */
+export function getAuthToken(): string | null {
+  return _getToken();
+}
 
 export function registerAuthHandlers(
   getToken: () => string | null,
@@ -442,7 +750,13 @@ async function parseResponse<T>(response: Response): Promise<ApiResult<T>> {
   }
 
   // Automatically wrap raw data payloads that don't use ApiEnvelope
-  if (response.ok && payload && typeof payload === "object" && !("ok" in payload) && !("error" in payload)) {
+  if (
+    response.ok &&
+    payload &&
+    typeof payload === "object" &&
+    !("ok" in payload) &&
+    !("error" in payload)
+  ) {
     return {
       ok: true,
       message: "ok",
@@ -625,10 +939,17 @@ export async function generateAnnotations(
   return apiPostJson<object, PageAnnotationsListData>(`/annotations/${documentId}/generate`, {});
 }
 
-export async function generatePageSummaries(
-  documentId: string,
-): Promise<ApiResult<unknown>> {
+export async function generatePageSummaries(documentId: string): Promise<ApiResult<unknown>> {
   return apiPostJson<object, unknown>(`/summaries/${documentId}/generate`, {});
+}
+
+export async function refreshSummaryPlaces<TSummaryData = unknown>(
+  documentId: string,
+): Promise<ApiResult<TSummaryData>> {
+  return apiPostJson<object, TSummaryData>(
+    `/summaries/${encodeURIComponent(documentId)}/places/refresh`,
+    {},
+  );
 }
 
 export type AnnotationBboxUpdate = {
@@ -677,14 +998,21 @@ export async function downloadDocument(documentId: string): Promise<DocumentDown
   const requestId = createRequestId();
 
   try {
+    const headers: Record<string, string> = {
+      "x-request-id": requestId,
+      "x-client-service": "orderflow-frontend",
+      "x-client-path": path,
+    };
+    const token = _getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       method: "GET",
       cache: "no-store",
-      headers: {
-        "x-request-id": requestId,
-        "x-client-service": "orderflow-frontend",
-        "x-client-path": path,
-      },
+      credentials: "include",
+      headers,
     });
 
     if (!response.ok) {
@@ -707,6 +1035,11 @@ export type ActionPlanDownloadResult = {
   contentType: string | null;
 };
 
+export type CaseBundlePdfOptions = {
+  include_summary_map?: boolean;
+  include_per_page_maps?: boolean;
+};
+
 export async function downloadActionPlan(
   documentId: string,
   language: ExportLanguage,
@@ -723,14 +1056,21 @@ export async function downloadActionPlan(
   const requestId = createRequestId();
 
   try {
+    const headers: Record<string, string> = {
+      "x-request-id": requestId,
+      "x-client-service": "orderflow-frontend",
+      "x-client-path": path,
+    };
+    const token = _getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       method: "GET",
       cache: "no-store",
-      headers: {
-        "x-request-id": requestId,
-        "x-client-service": "orderflow-frontend",
-        "x-client-path": path,
-      },
+      credentials: "include",
+      headers,
     });
 
     if (!response.ok) {
@@ -745,6 +1085,77 @@ export async function downloadActionPlan(
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : "Action plan download request failed");
   }
+}
+
+export async function downloadCaseBundlePdf(
+  documentId: string,
+  options: CaseBundlePdfOptions = {},
+): Promise<ActionPlanDownloadResult> {
+  const path = "/exports/case-bundle/pdf";
+  const url = `${apiBaseUrl}${path}`;
+  const requestId = createRequestId();
+  const payload = {
+    document_id: documentId,
+    include_summary_map: options.include_summary_map ?? true,
+    include_per_page_maps: options.include_per_page_maps ?? true,
+  };
+
+  try {
+    const headers = new Headers({
+      "content-type": "application/json",
+      "x-request-id": requestId,
+      "x-client-service": "orderflow-frontend",
+      "x-client-path": path,
+    });
+    const token = _getToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 401 && token) {
+      const newToken = await _doRefresh();
+      if (newToken) {
+        headers.set("Authorization", `Bearer ${newToken}`);
+        const retryResponse = await fetch(url, {
+          method: "POST",
+          cache: "no-store",
+          credentials: "include",
+          headers,
+          body: JSON.stringify(payload),
+        });
+        return parseBlobDownload(retryResponse, "Case bundle PDF download request failed");
+      }
+    }
+
+    return parseBlobDownload(response, "Case bundle PDF download request failed");
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "Case bundle PDF download request failed",
+    );
+  }
+}
+
+async function parseBlobDownload(
+  response: Response,
+  fallbackMessage: string,
+): Promise<ActionPlanDownloadResult> {
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return {
+    blob: await response.blob(),
+    fileName: parseContentDispositionFilename(response.headers.get("content-disposition")),
+    contentType: response.headers.get("content-type"),
+  };
 }
 
 export async function runIntakeExtraction(
@@ -781,6 +1192,118 @@ export async function getIntakeWorkflowStatus(
 
 export async function getWorkflowRun(runId: string): Promise<ApiResult<WorkflowRunRecord>> {
   return apiGet<WorkflowRunRecord>(`/workflows/runs/${encodeURIComponent(runId)}`);
+}
+
+function caseRoute(documentId: string, suffix: string): string {
+  return `/cases/${encodeURIComponent(documentId)}${suffix}`;
+}
+
+function appendQuery(path: string, params?: Record<string, string | undefined>): string {
+  const query = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value) query.set(key, value);
+  });
+  const suffix = query.toString();
+  return suffix ? `${path}?${suffix}` : path;
+}
+
+export function getCaseIntakeEventsUrl(documentId: string): string {
+  return `${apiBaseUrl}${caseRoute(documentId, "/intake/events")}`;
+}
+
+export async function startCaseIntake(
+  documentId: string,
+  payload: CaseIntakeStartRequest = {},
+): Promise<ApiResult<ExtractionJobStatusData>> {
+  return apiPostJson<CaseIntakeStartRequest, ExtractionJobStatusData>(
+    caseRoute(documentId, "/intake/start"),
+    payload,
+  );
+}
+
+export async function getCaseIntakeStatus(
+  documentId: string,
+): Promise<ApiResult<ExtractionJobStatusData>> {
+  return apiGet<ExtractionJobStatusData>(caseRoute(documentId, "/intake/status"));
+}
+
+export async function generateCaseSummary(
+  documentId: string,
+): Promise<ApiResult<ExtractionJobStatusData>> {
+  return apiPostJson<Record<string, never>, ExtractionJobStatusData>(
+    caseRoute(documentId, "/summary/generate"),
+    {},
+  );
+}
+
+export async function getCaseSummary(
+  documentId: string,
+): Promise<ApiResult<CaseDocumentSummaryData>> {
+  return apiGet<CaseDocumentSummaryData>(caseRoute(documentId, "/summary"));
+}
+
+export async function generateCaseActionPlan(
+  documentId: string,
+): Promise<ApiResult<ExtractionJobStatusData>> {
+  return apiPostJson<Record<string, never>, ExtractionJobStatusData>(
+    caseRoute(documentId, "/action-plan/generate"),
+    {},
+  );
+}
+
+export async function getCaseActionPlan(
+  documentId: string,
+): Promise<ApiResult<CaseActionPlanData>> {
+  return apiGet<CaseActionPlanData>(caseRoute(documentId, "/action-plan"));
+}
+
+export async function reviewCaseActionPlanItem(
+  documentId: string,
+  obligationId: string,
+  payload: CaseActionPlanReviewRequest,
+): Promise<ApiResult<CaseActionPlanReviewData>> {
+  return apiPostJson<CaseActionPlanReviewRequest, CaseActionPlanReviewData>(
+    caseRoute(documentId, `/action-plan/items/${encodeURIComponent(obligationId)}/review`),
+    payload,
+  );
+}
+
+export async function regenerateCaseActionPlanItem(
+  documentId: string,
+  obligationId: string,
+  payload: CaseActionPlanRegenerateRequest,
+): Promise<ApiResult<CaseActionPlanRegenerateData>> {
+  return apiPostJson<CaseActionPlanRegenerateRequest, CaseActionPlanRegenerateData>(
+    caseRoute(documentId, `/action-plan/items/${encodeURIComponent(obligationId)}/regenerate`),
+    payload,
+  );
+}
+
+export async function finalizeCase(
+  documentId: string,
+  payload: CaseFinalizeRequest = {},
+): Promise<ApiResult<CaseFinalizeData>> {
+  return apiPostJson<CaseFinalizeRequest, CaseFinalizeData>(
+    caseRoute(documentId, "/finalize"),
+    payload,
+  );
+}
+
+export async function getCaseDashboard(
+  documentId: string,
+  params?: CaseDashboardParams,
+): Promise<ApiResult<CaseDashboardData>> {
+  return apiGet<CaseDashboardData>(
+    appendQuery(caseRoute(documentId, "/dashboard"), {
+      department: params?.department,
+      priority: params?.priority,
+      deadline: params?.deadline,
+      status: params?.status,
+      case_type: params?.case_type,
+      court: params?.court,
+      responsible_authority: params?.responsible_authority,
+    }),
+  );
 }
 
 export async function listObligations(documentId: string): Promise<ApiResult<ObligationsPayload>> {
@@ -859,9 +1382,7 @@ export type RouteDirectiveData = {
   rationale: string;
 };
 
-export async function routeDirective(
-  text: string,
-): Promise<ApiResult<RouteDirectiveData>> {
+export async function routeDirective(text: string): Promise<ApiResult<RouteDirectiveData>> {
   return requestApi<RouteDirectiveData>("/routing/route", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -896,9 +1417,7 @@ export type DepartmentHealthData = {
   items: DepartmentHealthItem[];
 };
 
-export async function listDepartmentHealth(): Promise<
-  ApiResult<DepartmentHealthData>
-> {
+export async function listDepartmentHealth(): Promise<ApiResult<DepartmentHealthData>> {
   return apiGet<DepartmentHealthData>("/departments/health");
 }
 
@@ -1156,10 +1675,7 @@ export type PageInsightRequest = {
 export async function getPageInsight(
   payload: PageInsightRequest,
 ): Promise<ApiResult<PageInsightData>> {
-  return apiPostJson<PageInsightRequest, PageInsightData>(
-    "/intelligence/page-insight",
-    payload,
-  );
+  return apiPostJson<PageInsightRequest, PageInsightData>("/intelligence/page-insight", payload);
 }
 
 // ──── Adversarial Verifier (Devil's Advocate second-pass) ────
@@ -1255,10 +1771,7 @@ export async function registerUser(payload: RegisterRequest): Promise<ApiResult<
   return apiPostJson<RegisterRequest, RegisterData>("/auth/register", payload);
 }
 
-export async function loginUser(
-  email: string,
-  password: string,
-): Promise<ApiResult<LoginData>> {
+export async function loginUser(email: string, password: string): Promise<ApiResult<LoginData>> {
   return apiPostJson<{ email: string; password: string }, LoginData>("/auth/login", {
     email,
     password,
@@ -1456,8 +1969,7 @@ function normalizeAdvocateItem(raw: unknown): AdvocateDirectoryItem {
       ? (source.jurisdictions as AdvocateJurisdiction[])
       : [],
     verification_status:
-      source.verification_status === "pending" ||
-      source.verification_status === "rejected"
+      source.verification_status === "pending" || source.verification_status === "rejected"
         ? (source.verification_status as "pending" | "rejected")
         : "verified",
     verified_at: toNullableString(source.verified_at),
@@ -1523,7 +2035,8 @@ export async function listAdvocatesDirectory(
   if (params?.jurisdiction_level) query.set("jurisdiction_level", params.jurisdiction_level);
   if (params?.jurisdiction_state) query.set("jurisdiction_state", params.jurisdiction_state);
   if (params?.language) query.set("language", params.language);
-  if (params?.min_experience !== undefined) query.set("min_experience", String(params.min_experience));
+  if (params?.min_experience !== undefined)
+    query.set("min_experience", String(params.min_experience));
   if (params?.max_fee !== undefined) query.set("max_fee", String(params.max_fee));
   if (params?.sort) query.set("sort", params.sort);
   if (params?.limit !== undefined) query.set("limit", String(params.limit));
@@ -1556,9 +2069,7 @@ export async function getDocumentAdvocateRecommendations(
   };
 }
 
-export async function getDocumentCaseFlow(
-  documentId: string,
-): Promise<ApiResult<CaseFlowData>> {
+export async function getDocumentCaseFlow(documentId: string): Promise<ApiResult<CaseFlowData>> {
   return apiGet<CaseFlowData>(`/documents/${encodeURIComponent(documentId)}/case-flow`);
 }
 

@@ -10,11 +10,14 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardList,
+  Download,
   FileText,
   Link2,
   ListChecks,
   Lock,
+  MapPinned,
   Pencil,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   XCircle,
@@ -27,13 +30,7 @@ import { StatusPill } from "@/components/app/status-pill";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -52,28 +49,40 @@ import { JudgmentDecisionPanel } from "@/components/judgment-decision-panel";
 import { DocumentAdvocatesStrip } from "@/components/document-advocates-strip";
 import {
   apiGet,
+  downloadCaseBundlePdf,
   extractPageObligations,
   getDocument,
   getIntakeWorkflowStatus,
   listAnnotations,
+  refreshSummaryPlaces,
   reviewObligation,
   updateAnnotationCoordinates,
   type AnnotationBboxUpdate,
   type ExtractedObligation,
   type PageAnnotation,
 } from "@/lib/api/client";
-import type { Annotation as PdfAnnotation, PdfTextPosition } from "@/components/pdf-viewer";
+import type { PdfTextPosition } from "@/components/pdf-viewer";
+import type { ExtractedPlace } from "@/components/case-incidence-map";
 import { cn } from "@/lib/utils";
 
 import { InfoHint } from "@/components/info-hint";
 
-const PdfViewer = dynamic(
-  () => import("@/components/pdf-viewer").then((mod) => mod.PdfViewer),
+const PdfViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => mod.PdfViewer), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-96 items-center justify-center text-sm text-muted-foreground">
+      Loading PDF viewer…
+    </div>
+  ),
+});
+
+const CaseIncidenceMap = dynamic(
+  () => import("@/components/case-incidence-map").then((mod) => mod.CaseIncidenceMap),
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-96 items-center justify-center text-sm text-muted-foreground">
-        Loading PDF viewer…
+      <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+        Loading map...
       </div>
     ),
   },
@@ -98,6 +107,7 @@ interface PageSummary {
   important_highlights: HighlightItem[];
   context_links: ContextLink[];
   obligation_ids: string[];
+  extracted_places: ExtractedPlace[];
   confidence: number | null;
   extraction_mode: string;
   ai_model?: string;
@@ -167,6 +177,10 @@ function DocumentSummaryContent() {
   const [uploadReason, setUploadReason] = useState<string | null>(extractionReason);
   const [viewMode, setViewMode] = useState<"summary" | "pdf">("summary");
   const [annotations, setAnnotations] = useState<PageAnnotation[]>([]);
+  const [mapRefreshing, setMapRefreshing] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfExportError, setPdfExportError] = useState<string | null>(null);
 
   const [pageObligations, setPageObligations] = useState<Map<number, ExtractedObligation[]>>(
     new Map(),
@@ -239,9 +253,7 @@ function DocumentSummaryContent() {
           ]);
           const causeParts: string[] = [];
           const storedWorkflowWarning =
-            typeof window !== "undefined"
-              ? localStorage.getItem(LAST_WORKFLOW_WARNING_KEY)
-              : null;
+            typeof window !== "undefined" ? localStorage.getItem(LAST_WORKFLOW_WARNING_KEY) : null;
           const storedAiReason =
             typeof window !== "undefined" ? localStorage.getItem(LAST_AI_REASON_KEY) : null;
           const uploadNote = workflowWarning ?? storedWorkflowWarning ?? null;
@@ -285,13 +297,14 @@ function DocumentSummaryContent() {
           setLoading("error");
           return;
         }
-        setSummaries(res.data.items);
+        setSummaries(normalizePageSummaries(res.data.items));
         setCurrentPage(1);
         setLoading("success");
       } catch (e) {
         setError({
           message: e instanceof Error ? e.message : "Unknown error",
-          cause: "The summary request failed before the backend could return a structured response.",
+          cause:
+            "The summary request failed before the backend could return a structured response.",
         });
         setLoading("error");
       }
@@ -350,6 +363,15 @@ function DocumentSummaryContent() {
     };
   }, [docId, currentPage, loading, summaries, oblFetched]);
 
+  const allPlaces = useMemo(
+    () => summaries.flatMap((summary) => summary.extracted_places ?? []),
+    [summaries],
+  );
+  const hasPinnablePlaces = useMemo(
+    () => allPlaces.some((place) => typeof place.lat === "number" && typeof place.lng === "number"),
+    [allPlaces],
+  );
+
   async function handleTextExtracted(positions: PdfTextPosition[]) {
     if (!docId || annotations.length === 0) return;
     const updates: AnnotationBboxUpdate[] = [];
@@ -387,6 +409,42 @@ function DocumentSummaryContent() {
         if (rl.ok) setAnnotations(rl.data.items);
       }
     }
+  }
+
+  async function handleRefreshPlaces() {
+    if (!docId) return;
+    setMapRefreshing(true);
+    setMapError(null);
+    const result = await refreshSummaryPlaces<ApiResponse["data"]>(docId);
+    if (result.ok) {
+      setSummaries(normalizePageSummaries(result.data.items));
+    } else {
+      setMapError(result.error.message);
+    }
+    setMapRefreshing(false);
+  }
+
+  async function handleExportCaseBundle() {
+    if (!docId) return;
+    setPdfExporting(true);
+    setPdfExportError(null);
+    try {
+      const result = await downloadCaseBundlePdf(docId, {
+        include_summary_map: true,
+        include_per_page_maps: true,
+      });
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.fileName ?? `case-bundle-${docId}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setPdfExportError(error instanceof Error ? error.message : "Could not export PDF");
+    }
+    setPdfExporting(false);
   }
 
   async function handleReview(obl: ExtractedObligation, decision: "approved" | "rejected") {
@@ -506,12 +564,32 @@ function DocumentSummaryContent() {
           </span>
         }
         actions={
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "summary" | "pdf")}>
-            <TabsList>
-              <TabsTrigger value="summary">Analysis</TabsTrigger>
-              <TabsTrigger value="pdf">PDF view</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={mapRefreshing}
+              onClick={() => void handleRefreshPlaces()}
+            >
+              <RefreshCw />
+              {mapRefreshing ? "Refreshing..." : "Regenerate map"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pdfExporting}
+              onClick={() => void handleExportCaseBundle()}
+            >
+              <Download />
+              {pdfExporting ? "Exporting..." : "Export PDF"}
+            </Button>
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "summary" | "pdf")}>
+              <TabsList>
+                <TabsTrigger value="summary">Analysis</TabsTrigger>
+                <TabsTrigger value="pdf">PDF view</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         }
       />
 
@@ -525,6 +603,47 @@ function DocumentSummaryContent() {
 
       <DocumentAdvocatesStrip documentId={docId} />
 
+      {mapError ? (
+        <Alert variant="warn">
+          <AlertTriangle />
+          <AlertTitle>Map refresh warning</AlertTitle>
+          <AlertDescription>{mapError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {pdfExportError ? (
+        <Alert variant="warn">
+          <AlertTriangle />
+          <AlertTitle>PDF export warning</AlertTitle>
+          <AlertDescription>{pdfExportError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {viewMode === "summary" && hasPinnablePlaces ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <MapPinned className="h-4 w-4 text-muted-foreground" />
+              Case incidence flow
+            </CardTitle>
+            <CardDescription>
+              Page-ordered locations mentioned in this judgment, connected as the case moves through
+              the document.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CaseIncidenceMap
+              places={allPlaces}
+              mode="flow"
+              onPlaceClick={(pageNumber) => {
+                const index = summaries.findIndex((summary) => summary.page_number === pageNumber);
+                if (index >= 0) setCurrentPage(index + 1);
+              }}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
       {viewMode === "pdf" ? (
         <PdfViewer
           documentId={docId}
@@ -532,6 +651,7 @@ function DocumentSummaryContent() {
           initialPage={currentPage}
           annotations={annotations}
           onTextExtracted={handleTextExtracted}
+          places={allPlaces}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
@@ -633,7 +753,7 @@ function PageSidebar({
           <div className="flex flex-col gap-1 pr-2">
             {summaries.map((s, i) => {
               const obls = pageObligations.get(s.page_number);
-              const oblCount = obls ? obls.length : s.obligation_ids?.length ?? 0;
+              const oblCount = obls ? obls.length : (s.obligation_ids?.length ?? 0);
               const active = currentPage === i + 1;
               return (
                 <Button
@@ -743,8 +863,8 @@ function PageDetail(props: {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <ClipboardList className="h-4 w-4 text-muted-foreground" /> Obligations on this page
-              ({pageObligations.length})
+              <ClipboardList className="h-4 w-4 text-muted-foreground" /> Obligations on this page (
+              {pageObligations.length})
             </CardTitle>
             <CardDescription>
               Verify each item before it moves forward in the workflow.
@@ -796,7 +916,10 @@ function PageDetail(props: {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                        <Badge variant={PRIORITY_VARIANT[obl.priority] ?? "muted"} className="uppercase">
+                        <Badge
+                          variant={PRIORITY_VARIANT[obl.priority] ?? "muted"}
+                          className="uppercase"
+                        >
                           {obl.priority}
                         </Badge>
                         <Badge variant={reviewVariant}>{reviewLabel}</Badge>
@@ -832,17 +955,25 @@ function PageDetail(props: {
                   ) : null}
 
                   <div className="grid grid-cols-3 gap-2">
-                    <ConfidenceCell label="Directive" value={obl.confidence_components.directive_signal} />
-                    <ConfidenceCell label="Entity" value={obl.confidence_components.entity_presence} />
-                    <ConfidenceCell label="Temporal" value={obl.confidence_components.temporal_signal} />
+                    <ConfidenceCell
+                      label="Directive"
+                      value={obl.confidence_components.directive_signal}
+                    />
+                    <ConfidenceCell
+                      label="Entity"
+                      value={obl.confidence_components.entity_presence}
+                    />
+                    <ConfidenceCell
+                      label="Temporal"
+                      value={obl.confidence_components.temporal_signal}
+                    />
                   </div>
 
-                  {(obl.owner_hint || obl.due_date) ? (
+                  {obl.owner_hint || obl.due_date ? (
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       {obl.owner_hint ? (
                         <span>
-                          Owner:{" "}
-                          <strong className="text-foreground">{obl.owner_hint}</strong>
+                          Owner: <strong className="text-foreground">{obl.owner_hint}</strong>
                         </span>
                       ) : null}
                       {obl.due_date ? (
@@ -956,7 +1087,8 @@ function EditObligationDialog({
         <DialogHeader>
           <DialogTitle>Edit obligation</DialogTitle>
           <DialogDescription>
-            Refine the AI-extracted text before approving. Saved edits go forward as the verified record.
+            Refine the AI-extracted text before approving. Saved edits go forward as the verified
+            record.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
@@ -1002,4 +1134,11 @@ function getStringMetadataValue(
     if (typeof value === "string" && value.trim().length > 0) return value.trim();
   }
   return null;
+}
+
+function normalizePageSummaries(items: PageSummary[]): PageSummary[] {
+  return items.map((item) => ({
+    ...item,
+    extracted_places: item.extracted_places ?? [],
+  }));
 }

@@ -527,11 +527,7 @@ export default function UploadPage() {
       }
     }
 
-    const query = new URLSearchParams({ document_id: extractionResult.data.document_id });
-    if (extractionReason) query.set("extraction_reason", extractionReason);
-    if (workflowResult.ok) query.set("workflow_run_id", workflowResult.data.run_id);
-    else query.set("workflow_warning", workflowResult.error.message);
-    router.push(`/document-summary?${query.toString()}`);
+    router.push(`/case/${encodeURIComponent(extractionResult.data.document_id)}`);
   }
 
   const submitting = stage === "uploading" || stage === "extracting" || stage === "workflow";

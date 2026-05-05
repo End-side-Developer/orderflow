@@ -6,7 +6,20 @@ import dynamic from "next/dynamic";
 import { PdfOverlayLayer } from "./pdf-overlay-layer";
 import { AiPageSummaryOverlay } from "./ai-page-summary-overlay";
 import { RecommendedAdvocatesPanel } from "./recommended-advocates-panel";
-import { getDocument } from "@/lib/api/client";
+import { getDocument, getAuthToken } from "@/lib/api/client";
+import type { ExtractedPlace } from "./case-incidence-map";
+
+const CaseIncidenceMap = dynamic(
+  () => import("./case-incidence-map").then((mod) => mod.CaseIncidenceMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ padding: "16px", color: "#94a3b8", fontSize: "13px" }}>
+        Loading locations...
+      </div>
+    ),
+  },
+);
 
 // Dynamic import of pdfjs-dist to avoid SSR issues
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
@@ -51,9 +64,17 @@ interface PdfViewerProps {
   initialPage?: number;
   annotations?: Annotation[];
   onTextExtracted?: (positions: PdfTextPosition[]) => void;
+  places?: ExtractedPlace[];
 }
 
-export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotations = [], onTextExtracted }: PdfViewerProps) {
+export function PdfViewer({
+  documentId,
+  onPageChange,
+  initialPage = 1,
+  annotations = [],
+  onTextExtracted,
+  places = [],
+}: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdf, setPdf] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(initialPage);
@@ -114,6 +135,11 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
         const [response, documentResult] = await Promise.all([
           fetch(
             `${process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "http://localhost:8000/api/v1"}/documents/${documentId}/download`,
+            {
+              headers: {
+                ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
+              },
+            },
           ),
           getDocument(documentId),
         ]);
@@ -216,6 +242,14 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
     );
   }
 
+  const currentPageHasPlaces = places.some((place) => {
+    return (
+      place.source_page_number === currentPage &&
+      typeof place.lat === "number" &&
+      typeof place.lng === "number"
+    );
+  });
+
   return (
     <div className="pdf-viewer">
       {/* Toolbar */}
@@ -260,7 +294,7 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
 
       {/* Canvas Container */}
       <div className="pdf-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: '32px', padding: '24px', overflow: 'auto', height: "calc(100vh - 200px)", background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)" }}>
-        
+
         {/* PDF Document Viewer */}
         <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0, transition: 'all 300ms', boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)", background: '#fff', borderRadius: '8px' }}>
           <canvas ref={canvasRef} style={{ borderRadius: '8px', background: '#fff' }} />
@@ -276,7 +310,7 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
 
         {/* AI Insight Sidebar */}
         <div style={{ position: 'sticky', top: '24px', flexShrink: 0, zIndex: 10, width: "380px", display: "flex", flexDirection: "column", gap: "12px" }}>
-          <AiPageSummaryOverlay 
+          <AiPageSummaryOverlay
             currentPage={currentPage}
             pageText={textPositions.filter(t => t.page === currentPage).map(t => t.text).join(" ")}
             documentId={documentId}
@@ -284,8 +318,37 @@ export function PdfViewer({ documentId, onPageChange, initialPage = 1, annotatio
             onJumpToPage={handlePageChange}
           />
           <RecommendedAdvocatesPanel documentId={documentId} />
+          {currentPageHasPlaces ? (
+            <details
+              open
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: "12px",
+                background: "rgba(15,23,42,0.82)",
+                padding: "12px",
+              }}
+            >
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: "#e2e8f0",
+                }}
+              >
+                Locations on this page
+              </summary>
+              <div style={{ marginTop: "12px" }}>
+                <CaseIncidenceMap
+                  places={places}
+                  mode="single-page"
+                  currentPage={currentPage}
+                />
+              </div>
+            </details>
+          ) : null}
         </div>
-        
+
       </div>
     </div>
   );

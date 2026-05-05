@@ -10,7 +10,6 @@ import {
   ArrowRight,
   ChevronDown,
   Download,
-  ExternalLink,
   RefreshCw,
 } from "lucide-react";
 
@@ -395,13 +394,6 @@ function ObligationsContent() {
     return grouped;
   }, [items]);
 
-  const riskQuery = useMemo(() => {
-    if (!documentId) return "";
-    const query = new URLSearchParams({ document_id: documentId });
-    if (workflowRunId) query.set("workflow_run_id", workflowRunId);
-    return query.toString();
-  }, [documentId, workflowRunId]);
-
   const openEscalations = useMemo(() => {
     return items
       .filter((item) => item.escalation?.open)
@@ -524,14 +516,6 @@ function ObligationsContent() {
                 <Link href={`/obligations?document_id=${encodeURIComponent(nextDocument.id)}`}>
                   Next
                   <ArrowRight />
-                </Link>
-              </Button>
-            ) : null}
-            {riskQuery ? (
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/risk?${riskQuery}`}>
-                  <ExternalLink />
-                  Open Escalate
                 </Link>
               </Button>
             ) : null}

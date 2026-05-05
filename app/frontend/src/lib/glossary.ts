@@ -10,11 +10,6 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     originalLabel: "Obligations",
     helpText: "Required actions a court has ordered. Review them and mark them done with proof.",
   },
-  escalate: {
-    simpleLabel: "Urgent issues",
-    originalLabel: "Escalate",
-    helpText: "Items flagged as high-risk that need immediate review.",
-  },
   triage: {
     simpleLabel: "Sort by urgency",
     originalLabel: "Triage",

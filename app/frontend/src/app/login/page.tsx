@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import { loginUser } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth/store";
@@ -13,6 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginShell />}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") ?? "/dashboard";
@@ -102,6 +110,24 @@ export default function LoginPage() {
               </Link>
             </p>
           </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function LoginShell() {
+  return (
+    <div className="flex min-h-[70vh] items-center justify-center">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Sign in</CardTitle>
+          <CardDescription>Enter your credentials to access OrderFlow.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+            Loading...
+          </div>
         </CardContent>
       </Card>
     </div>
