@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 WorkflowRunStatus = Literal["started", "completed", "failed"]
@@ -12,6 +12,10 @@ WorkflowRunStatus = Literal["started", "completed", "failed"]
 
 class StartIntakeWorkflowRequest(BaseModel):
     document_id: UUID
+    bypass_cache: bool = Field(
+        default=False,
+        description="If True, ignores existing cached extractions and generates fresh results.",
+    )
 
 
 class WorkflowRunRecord(BaseModel):

@@ -109,13 +109,23 @@ async def start_intake_workflow_route(
 
     try:
         client = await get_temporal_client()
+        workflow_input = {
+            "document_id": str(payload.document_id),
+            "source_language": document.source_language,
+            "translated_text_stored": "true" if document.translated_text_stored else "false",
+            "bypass_cache": "true" if payload.bypass_cache else "false",
+        }
+        # Pass pages_total from document metadata if available
+        pages_total = (
+            document.metadata.get("pages_total") if document.metadata else None
+        )
+        if pages_total is not None:
+            workflow_input["pages_total"] = str(pages_total)
+            workflow_input["total_pages"] = str(pages_total)
+
         handle = await client.start_workflow(
             "orderflow-intake-workflow",
-            {
-                "document_id": str(payload.document_id),
-                "source_language": document.source_language,
-                "translated_text_stored": "true" if document.translated_text_stored else "false",
-            },
+            workflow_input,
             id=workflow_id,
             task_queue=settings.orderflow_api_temporal_task_queue,
         )
@@ -130,7 +140,7 @@ async def start_intake_workflow_route(
         run_id=run_id,
         task_queue=settings.orderflow_api_temporal_task_queue,
         status="started",
-        metadata={"source": "api"},
+        metadata={"source": "api", "bypass_cache": payload.bypass_cache},
     )
     set_document_workflow_run_id(payload.document_id, run_id)
 
@@ -148,7 +158,10 @@ def _extract_run_id(handle: object) -> str:
         if isinstance(value, str) and value:
             return value
 
-    return uuid4().hex
+    raise HTTPException(
+        status_code=502,
+        detail="Temporal workflow handle has no run_id attribute. The workflow may not have started correctly.",
+    )
 
 
 async def _reconcile_run_with_temporal(run_record):
@@ -205,8 +218,7 @@ def _map_temporal_status_to_run_status(temporal_status: object) -> str:
     if "COMPLETED" in status_name:
         return "completed"
     if any(
-        token in status_name
-        for token in ("FAILED", "CANCEL", "TERMINATED", "TIMED_OUT", "TIMEOUT")
+        token in status_name for token in ("FAILED", "CANCEL", "TERMINATED", "TIMED_OUT", "TIMEOUT")
     ):
         return "failed"
 

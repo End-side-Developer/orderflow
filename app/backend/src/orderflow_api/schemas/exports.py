@@ -40,3 +40,9 @@ class ActionPlanExportEnvelope(BaseModel):
     message: str = "ok"
     request_id: str | None = None
     data: ActionPlanExportData
+
+
+class CaseBundlePdfRequest(BaseModel):
+    document_id: UUID
+    include_per_page_maps: bool = True
+    include_summary_map: bool = True

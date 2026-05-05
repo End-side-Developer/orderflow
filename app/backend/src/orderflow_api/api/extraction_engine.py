@@ -58,6 +58,7 @@ _INDIC_SCRIPT_RANGES: tuple[tuple[int, int], ...] = (
     (0x0C80, 0x0CFF),  # Kannada
     (0x0D00, 0x0D7F),  # Malayalam
 )
+_SOURCE_EXCERPT_CHARS = 240
 
 
 @dataclass(frozen=True)
@@ -227,6 +228,7 @@ def extract_obligations(clauses: list[ParsedClause], document_id: UUID) -> list[
                     "source": "structured-obligation-extractor-v1",
                     "extractor_version": "structured-v1",
                     "clause_index": clause.clause_index,
+                    "source_evidence": _build_source_evidence(clause),
                     "structured_fields": {
                         "owner_hint": structured.owner_hint,
                         "action_phrase": structured.action_phrase,
@@ -263,12 +265,36 @@ def build_clause_span_token(
     return f"p{page_number}:c{clause_index}:{span_start}-{span_end}"
 
 
+def _build_source_evidence(clause: ParsedClause) -> dict[str, object]:
+    excerpt_source = clause.text or clause.normalized_text
+    return {
+        "page_number": clause.page_number,
+        "clause_index": clause.clause_index,
+        "clause_span": build_clause_span_token(
+            clause_index=clause.clause_index,
+            page_number=clause.page_number,
+            span_start=clause.span_start,
+            span_end=clause.span_end,
+        ),
+        "excerpt": _truncate_text(excerpt_source, _SOURCE_EXCERPT_CHARS),
+    }
+
+
+def _truncate_text(value: str | None, max_chars: int) -> str | None:
+    if not value:
+        return None
+    if len(value) <= max_chars:
+        return value
+    return value[:max_chars].rstrip() + "..."
+
+
 def _iter_pages(raw_text: str) -> list[tuple[int, str, int]]:
     pages: list[tuple[int, str, int]] = []
     cursor = 0
 
     for page_number, page_text in enumerate(raw_text.split("\f"), start=1):
-        pages.append((page_number, page_text, cursor))
+        normalized_page_text = _normalize_document_text(page_text)
+        pages.append((page_number, normalized_page_text, cursor))
         cursor += len(page_text) + 1
 
     return pages

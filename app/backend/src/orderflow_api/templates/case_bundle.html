@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OrderFlow Case Bundle</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 18mm 16mm;
+      }
+
+      body {
+        color: #111827;
+        font-family: "Inter", "Noto Sans", Arial, sans-serif;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      h1,
+      h2,
+      h3 {
+        color: #0f172a;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
+
+      h2 {
+        border-bottom: 1px solid #cbd5e1;
+        font-size: 18px;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+      }
+
+      h3 {
+        font-size: 14px;
+        margin: 14px 0 6px;
+      }
+
+      .muted {
+        color: #64748b;
+      }
+
+      .cover {
+        page-break-after: always;
+      }
+
+      .meta-grid {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: 1fr 1fr;
+        margin: 18px 0;
+      }
+
+      .meta-item,
+      .place-list,
+      .map-block {
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 10px;
+      }
+
+      .meta-label {
+        color: #64748b;
+        display: block;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .map-block {
+        margin: 16px 0;
+      }
+
+      .map-block img {
+        display: block;
+        height: auto;
+        width: 100%;
+      }
+
+      .page-section {
+        page-break-before: always;
+      }
+
+      ul {
+        margin: 6px 0 0 18px;
+        padding: 0;
+      }
+
+      li {
+        margin-bottom: 4px;
+      }
+
+      .highlight {
+        border-left: 3px solid #2563eb;
+        margin: 8px 0;
+        padding: 6px 8px;
+      }
+
+      .place-chip {
+        display: inline-block;
+        margin: 0 4px 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="cover">
+      <p class="muted">OrderFlow verified action handoff</p>
+      <h1>Case Bundle</h1>
+      <p>{{ document.source_file_name }}</p>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Document ID</span>
+          {{ document.id }}
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Generated At</span>
+          {{ generated_at }}
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Court</span>
+          {{ metadata.court_name or "Not provided" }}
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">State / District</span>
+          {{ [metadata.state, metadata.district] | select | join(", ") or "Not provided" }}
+        </div>
+      </div>
+
+      {% if summary_map_data_uri %}
+      <div class="map-block">
+        <h2>Document Location Flow</h2>
+        <img src="{{ summary_map_data_uri }}" alt="Case incidence flow map" />
+      </div>
+      {% endif %}
+    </section>
+
+    {% for page in pages %}
+    <section class="page-section">
+      <h2>Page {{ page.record.page_number }}</h2>
+      <p>{{ page.record.summary }}</p>
+
+      {% if page.page_map_data_uri %}
+      <div class="map-block">
+        <h3>Locations On This Page</h3>
+        <img src="{{ page.page_map_data_uri }}" alt="Page {{ page.record.page_number }} location map" />
+      </div>
+      {% endif %}
+
+      {% if page.record.key_points %}
+      <h3>Key Points</h3>
+      <ul>
+        {% for key_point in page.record.key_points %}
+        <li>{{ key_point }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      {% if page.record.important_highlights %}
+      <h3>Important Highlights</h3>
+      {% for highlight in page.record.important_highlights %}
+      <div class="highlight">
+        <strong>{{ highlight.significance | title }}:</strong> {{ highlight.text }}
+        {% if highlight.relevance %}
+        <br /><span class="muted">{{ highlight.relevance }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% if page.record.extracted_places %}
+      <h3>Extracted Places</h3>
+      <div class="place-list">
+        {% for place in page.record.extracted_places %}
+        <span class="place-chip">
+          {{ place.name }} ({{ place.place_type }}, page {{ place.source_page_number }})
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </body>
+</html>

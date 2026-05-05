@@ -7,6 +7,9 @@ Stack: FastAPI + Pydantic settings.
 - Obligation CRUD and lifecycle APIs.
 - Evidence validation and escalation services.
 - Audit/event logging.
+- Gated case-stage transitions for the verified action-plan flow.
+- Cache-aware page summary, document summary, and action-plan persistence.
+- Trusted dashboard filtering so only human-approved or edited records are exposed after finalization.
 
 ## Implemented in T11-A-002
 - Runnable FastAPI app skeleton in `src/orderflow_api`.
@@ -113,6 +116,32 @@ Stack: FastAPI + Pydantic settings.
 - Lookup flow notes:
 	- Resolves Delhi High Court public judgment links from URL/token/case-id patterns.
 	- eCourts case-status forms are captcha-protected, so this lookup uses public judgment links and PDF heuristics.
+
+## Implemented in New Gated Case Flow
+
+- Duplicate document upload guard:
+	- `POST /api/v1/documents/upload` returns `409 duplicate_document` with the existing document id when the checksum already exists.
+- Case-stage orchestration routes:
+	- `POST /api/v1/cases/{document_id}/intake/start`
+	- `GET /api/v1/cases/{document_id}/intake/status`
+	- `POST /api/v1/cases/{document_id}/summary/generate`
+	- `GET /api/v1/cases/{document_id}/summary`
+	- `POST /api/v1/cases/{document_id}/action-plan/generate`
+	- `GET /api/v1/cases/{document_id}/action-plan`
+	- `POST /api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review`
+	- `POST /api/v1/cases/{document_id}/action-plan/items/{obligation_id}/regenerate`
+	- `POST /api/v1/cases/{document_id}/finalize`
+	- `GET /api/v1/cases/{document_id}/dashboard`
+- Gate behavior:
+	- Summary generation requires `pages_done`.
+	- Action-plan generation requires `summary_done`.
+	- Finalization requires every action-plan item to be reviewed and at least one item approved or edited.
+	- Dashboard requires `finalized` and filters server-side to approved or edited action-plan records.
+- Cache behavior:
+	- Page summaries use content hash, prompt version, model, and provider context.
+	- Document summaries are cached per document and generation context.
+	- Action plans are cached as obligation lifecycle rows; per-item regeneration uses only cached cited page summaries.
+- Manual verification on 2026-05-04 reached `finalized` with 18 approved action-plan records and dashboard total 18.
 
 ## Implemented in Current Iteration (Multi-AI Extraction)
 - Intake extraction request now supports optional AI config payload:

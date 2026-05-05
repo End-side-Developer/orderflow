@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -32,6 +32,51 @@ from orderflow_api.schemas.workflows import WorkflowRunRecord
 
 
 client = TestClient(app)
+
+
+def _case_action_obligation(
+    document_id,
+    obligation_id,
+    *,
+    title="Submit compliance report",
+    description="Submit compliance report with proof.",
+    owner_hint="District Office",
+    due_date=None,
+    status="draft",
+    priority="high",
+    review_state="pending_review",
+    action_plan_stage="in_action_plan",
+    nature_of_action="compliance_report",
+    regen_count=0,
+    regen_history=None,
+    risk_score=None,
+    risk_band=None,
+    metadata=None,
+):
+    now = datetime.now(UTC)
+    return ObligationRecord(
+        id=obligation_id,
+        document_id=document_id,
+        obligation_code="AP-001",
+        title=title,
+        description=description,
+        owner_hint=owner_hint,
+        due_date=due_date,
+        status=status,
+        priority=priority,
+        review_state=review_state,
+        confidence=0.86,
+        citation=ObligationCitation(page_number=2, clause_span="p2:c1:10-80"),
+        risk_score=risk_score,
+        risk_band=risk_band,
+        nature_of_action=nature_of_action,
+        action_plan_stage=action_plan_stage,
+        regen_count=regen_count,
+        regen_history=regen_history or [],
+        metadata=metadata or {},
+        created_at=now,
+        updated_at=now,
+    )
 
 
 def test_health_returns_request_and_trace_headers() -> None:
@@ -560,6 +605,567 @@ def test_openapi_exposes_t11_a007_contract_paths() -> None:
     assert "/api/v1/workbench/documents/{document_id}" in paths
 
 
+def test_openapi_exposes_nf_07_case_route_paths() -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json().get("paths", {})
+    expected_paths = {
+        "/api/v1/cases/{document_id}/intake/start": "post",
+        "/api/v1/cases/{document_id}/intake/status": "get",
+        "/api/v1/cases/{document_id}/intake/events": "get",
+        "/api/v1/cases/{document_id}/summary/generate": "post",
+        "/api/v1/cases/{document_id}/summary": "get",
+        "/api/v1/cases/{document_id}/action-plan/generate": "post",
+        "/api/v1/cases/{document_id}/action-plan": "get",
+        "/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review": "post",
+        "/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/regenerate": "post",
+        "/api/v1/cases/{document_id}/finalize": "post",
+        "/api/v1/cases/{document_id}/dashboard": "get",
+    }
+
+    for path, method in expected_paths.items():
+        assert path in paths
+        assert method in paths[path]
+
+
+def test_case_intake_status_returns_pending_before_intake_job(monkeypatch) -> None:
+    document_id = uuid4()
+
+    monkeypatch.setattr(
+        "orderflow_api.api.intake_orchestrator.get_persisted_document",
+        lambda value: SimpleNamespace(id=value) if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.intake_orchestrator.get_extraction_job",
+        lambda _: None,
+    )
+
+    response = client.get(f"/api/v1/cases/{document_id}/intake/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "case_intake_status"
+    assert payload["data"]["document_id"] == str(document_id)
+    assert payload["data"]["id"] is None
+    assert payload["data"]["stage"] == "pending"
+    assert payload["data"]["status_message"] == "Ready to begin intake."
+    assert payload["data"]["next_action"] == "Start intake."
+
+
+def test_case_summary_generate_rejects_before_pages_done_with_409(
+    monkeypatch,
+) -> None:
+    document_id = uuid4()
+    extracting_job = SimpleNamespace(stage="pages_extracting")
+
+    monkeypatch.setattr(
+        "orderflow_api.api.intake_orchestrator.get_persisted_document",
+        lambda value: SimpleNamespace(id=value) if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.intake_orchestrator.get_extraction_job",
+        lambda value: extracting_job if value == document_id else None,
+    )
+
+    def fail_stage_update(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("summary generation must not advance before pages_done")
+
+    monkeypatch.setattr(
+        "orderflow_api.api.intake_orchestrator.update_extraction_job_stage",
+        fail_stage_update,
+    )
+
+    response = client.post(f"/api/v1/cases/{document_id}/summary/generate")
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_stage_transition"
+    assert str(document_id) in payload["error"]["message"]
+    assert "from pages_extracting to summary_pending" in payload["error"]["message"]
+    assert "expected pages_done" in payload["error"]["message"]
+    assert payload["error"]["details"] == {"status_code": 409}
+
+
+def test_legacy_intelligence_extract_obligations_empty_text_contract() -> None:
+    document_id = uuid4()
+
+    response = client.post(
+        "/api/v1/intelligence/extract-obligations",
+        json={
+            "document_id": str(document_id),
+            "page_number": 1,
+            "text": "   ",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["document_id"] == str(document_id)
+    assert payload["page_number"] == 1
+    assert payload["obligations"] == []
+    assert payload["average_confidence"] == 0.0
+    assert payload["gate_decision"] == "pass"
+    assert payload["requires_human_review"] is False
+    assert payload["extraction_mode"] == "deterministic"
+
+
+def test_legacy_intelligence_review_obligation_contract() -> None:
+    response = client.post(
+        "/api/v1/intelligence/review-obligation",
+        json={
+            "obligation_code": "OBL-P1-001",
+            "review_decision": "approved",
+            "edited_title": "Submit revised compliance report",
+            "edited_description": "Submit the revised report with exhibits.",
+            "review_note": "Checked by reviewer.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "obligation_code": "OBL-P1-001",
+        "review_decision": "approved",
+        "review_note": "Checked by reviewer.",
+        "edited_title": "Submit revised compliance report",
+        "edited_description": "Submit the revised report with exhibits.",
+        "message": "Obligation approved and will move forward in the workflow.",
+    }
+
+
+def test_case_action_plan_review_approve_route_updates_item(monkeypatch) -> None:
+    document_id = uuid4()
+    obligation_id = uuid4()
+    existing = _case_action_obligation(document_id, obligation_id)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.submit_review",
+        lambda _: SimpleNamespace(stage="review_in_progress"),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.audit_actor_from_request",
+        lambda _: ("user", "reviewer-123"),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.get_persisted_obligation_by_id",
+        lambda _: existing,
+    )
+
+    def fake_update_persisted_obligation(obligation_id, **values):  # noqa: ANN001
+        captured["update"] = values
+        return _case_action_obligation(
+            document_id,
+            obligation_id,
+            review_state=values["review_state"],
+            action_plan_stage=values["action_plan_stage"],
+        )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.update_persisted_obligation",
+        fake_update_persisted_obligation,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.record_persisted_obligation_audit_event",
+        lambda **kwargs: captured.setdefault("audit", kwargs),
+    )
+
+    response = client.post(
+        f"/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review",
+        json={
+            "decision": "approve",
+            "reviewer_name": "Reviewer One",
+            "comments": "Citation checked.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "case_action_plan_item_reviewed"
+    assert payload["data"]["decision"] == "approve"
+    assert payload["data"]["action_plan_stage"] == "approved"
+    assert payload["data"]["reviewer_name"] == "Reviewer One"
+    assert payload["data"]["comments"] == "Citation checked."
+    assert captured["update"] == {
+        "review_state": "approved",
+        "action_plan_stage": "approved",
+    }
+    assert captured["audit"]["actor_id"] == "reviewer-123"
+    assert captured["audit"]["payload"]["decision"] == "approve"
+    assert captured["audit"]["payload"]["reviewer_name"] == "Reviewer One"
+    assert captured["audit"]["payload"]["reviewed_at"]
+
+
+def test_case_action_plan_review_edit_route_updates_human_fields(monkeypatch) -> None:
+    document_id = uuid4()
+    obligation_id = uuid4()
+    existing = _case_action_obligation(document_id, obligation_id)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.submit_review",
+        lambda _: SimpleNamespace(stage="review_in_progress"),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.get_persisted_obligation_by_id",
+        lambda _: existing,
+    )
+
+    def fake_update_persisted_obligation(obligation_id, **values):  # noqa: ANN001
+        captured["update"] = values
+        return _case_action_obligation(
+            document_id,
+            obligation_id,
+            title=values["title"],
+            description=values["description"],
+            owner_hint=values["owner_hint"],
+            status=values["status"],
+            nature_of_action=values["nature_of_action"],
+            review_state=values["review_state"],
+            action_plan_stage=values["action_plan_stage"],
+        )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.update_persisted_obligation",
+        fake_update_persisted_obligation,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.record_persisted_obligation_audit_event",
+        lambda **kwargs: captured.setdefault("audit", kwargs),
+    )
+
+    response = client.post(
+        f"/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review",
+        json={
+            "decision": "edit",
+            "reviewer_name": "Reviewer Two",
+            "edited_fields": {
+                "title": "Submit corrected compliance report",
+                "description": "Submit corrected report with annexures.",
+                "owner_hint": "Compliance Cell",
+                "status": "active",
+                "nature_of_action": "compliance_report",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["decision"] == "edit"
+    assert payload["data"]["action_plan_stage"] == "edited"
+    assert payload["data"]["obligation"]["title"] == "Submit corrected compliance report"
+    assert payload["data"]["obligation"]["description"] == (
+        "Submit corrected report with annexures."
+    )
+    assert captured["update"] == {
+        "review_state": "approved",
+        "action_plan_stage": "edited",
+        "title": "Submit corrected compliance report",
+        "description": "Submit corrected report with annexures.",
+        "owner_hint": "Compliance Cell",
+        "status": "active",
+        "nature_of_action": "compliance_report",
+    }
+    assert captured["audit"]["payload"]["edited_field_keys"] == [
+        "description",
+        "nature_of_action",
+        "owner_hint",
+        "status",
+        "title",
+    ]
+    assert captured["audit"]["payload"]["original_fields"]["title"] == (
+        "Submit compliance report"
+    )
+    assert captured["audit"]["payload"]["updated_fields"]["title"] == (
+        "Submit corrected compliance report"
+    )
+    assert captured["audit"]["payload"]["updated_fields"]["action_plan_stage"] == "edited"
+
+
+def test_case_action_plan_review_reject_route_requires_and_returns_reason(
+    monkeypatch,
+) -> None:
+    document_id = uuid4()
+    obligation_id = uuid4()
+    existing = _case_action_obligation(document_id, obligation_id)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.submit_review",
+        lambda _: SimpleNamespace(stage="review_in_progress"),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.get_persisted_obligation_by_id",
+        lambda _: existing,
+    )
+
+    def fake_update_persisted_obligation(obligation_id, **values):  # noqa: ANN001
+        captured["update"] = values
+        return _case_action_obligation(
+            document_id,
+            obligation_id,
+            review_state=values["review_state"],
+            action_plan_stage=values["action_plan_stage"],
+        )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.update_persisted_obligation",
+        fake_update_persisted_obligation,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.record_persisted_obligation_audit_event",
+        lambda **kwargs: captured.setdefault("audit", kwargs),
+    )
+
+    missing_reason = client.post(
+        f"/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review",
+        json={"decision": "reject"},
+    )
+    assert missing_reason.status_code == 422
+
+    response = client.post(
+        f"/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/review",
+        json={
+            "decision": "reject",
+            "reviewer_name": "Reviewer Three",
+            "rejection_reason": "Source citation does not support this item.",
+            "comments": "Remove from trusted dashboard.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["decision"] == "reject"
+    assert payload["data"]["action_plan_stage"] == "rejected"
+    assert payload["data"]["rejection_reason"] == (
+        "Source citation does not support this item."
+    )
+    assert captured["update"] == {
+        "review_state": "rejected",
+        "action_plan_stage": "rejected",
+    }
+    assert captured["audit"]["payload"]["rejection_reason"] == (
+        "Source citation does not support this item."
+    )
+    assert captured["audit"]["payload"]["reviewed_at"]
+
+
+def test_case_action_plan_regenerate_updates_only_item_from_cached_cited_pages(
+    monkeypatch,
+) -> None:
+    document_id = uuid4()
+    obligation_id = uuid4()
+    summary_id = uuid4()
+    existing = _case_action_obligation(
+        document_id,
+        obligation_id,
+        description="Original AI action item.",
+        regen_count=1,
+        metadata={"action_plan_source_evidence": {"page_number": 2}},
+    )
+    other_obligation_id = uuid4()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.regenerate_action_item",
+        lambda **kwargs: SimpleNamespace(
+            job=SimpleNamespace(stage="review_in_progress"),
+            obligation=existing,
+            feedback=kwargs["feedback"],
+        ),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.list_page_summaries",
+        lambda _: [
+            SimpleNamespace(
+                id=summary_id,
+                document_id=document_id,
+                page_number=2,
+                summary="Page 2 says compliance report must include annexures.",
+                key_points=["Annexures required"],
+                source_excerpt="The cached cited page mentions annexures.",
+            ),
+            SimpleNamespace(
+                id=uuid4(),
+                document_id=document_id,
+                page_number=3,
+                summary="Uncited page that must not be used.",
+                key_points=[],
+                source_excerpt="Do not use this page.",
+            ),
+        ],
+    )
+
+    def fake_update_persisted_obligation(obligation_id, **values):  # noqa: ANN001
+        captured["updated_obligation_id"] = obligation_id
+        captured["update"] = values
+        return _case_action_obligation(
+            document_id,
+            obligation_id,
+            description=values["description"],
+            review_state=values["review_state"],
+            action_plan_stage=values["action_plan_stage"],
+            regen_count=values["regen_count"],
+            regen_history=values["regen_history"],
+            metadata=values["metadata"],
+        )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.update_persisted_obligation",
+        fake_update_persisted_obligation,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.record_persisted_obligation_audit_event",
+        lambda **kwargs: captured.setdefault("audit", kwargs),
+    )
+
+    response = client.post(
+        f"/api/v1/cases/{document_id}/action-plan/items/{obligation_id}/regenerate",
+        json={
+            "feedback": "Mention annexures and send it back for review.",
+            "reviewer_name": "Reviewer Four",
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["message"] == "case_action_plan_item_regenerated"
+    assert captured["updated_obligation_id"] == obligation_id
+    assert captured["updated_obligation_id"] != other_obligation_id
+    update_values = captured["update"]
+    assert update_values["regen_count"] == 2
+    assert update_values["action_plan_stage"] == "review_pending"
+    assert update_values["review_state"] == "pending_review"
+    assert "Page 2 says compliance report" in update_values["description"]
+    assert "Uncited page" not in update_values["description"]
+    assert update_values["metadata"]["last_regeneration"]["source"] == (
+        "cached_page_summaries_only"
+    )
+    assert update_values["metadata"]["last_regeneration"]["source_page_numbers"] == [2]
+    assert update_values["metadata"]["last_regeneration"]["source_summary_ids"] == [
+        str(summary_id)
+    ]
+    assert update_values["regen_history"][-1]["prev_fields"]["description"] == (
+        "Original AI action item."
+    )
+    assert update_values["regen_history"][-1]["updated_fields"]["action_plan_stage"] == (
+        "review_pending"
+    )
+    assert payload["data"]["regen_count"] == 2
+    assert payload["data"]["action_plan_stage"] == "review_pending"
+    assert "description" in payload["data"]["updated_fields"]
+    assert captured["audit"]["action"] == "action_plan.item.regenerated"
+    assert captured["audit"]["payload"]["source"] == "cached_page_summaries_only"
+
+
+def test_case_dashboard_returns_only_approved_grouped_and_filterable_items(
+    monkeypatch,
+) -> None:
+    document_id = uuid4()
+    approved_id = uuid4()
+    edited_id = uuid4()
+    rejected_id = uuid4()
+    pending_id = uuid4()
+    approved = _case_action_obligation(
+        document_id,
+        approved_id,
+        title="Release salary arrears",
+        owner_hint="Education Department",
+        due_date=date(2026, 6, 1),
+        status="active",
+        priority="critical",
+        review_state="approved",
+        action_plan_stage="approved",
+        nature_of_action="payment",
+        risk_score=82,
+        risk_band="high",
+        metadata={"case_basics": {"case_type": "writ", "court": "High Court"}},
+    )
+    edited = _case_action_obligation(
+        document_id,
+        edited_id,
+        title="Submit health compliance report",
+        owner_hint="Health Department",
+        due_date=date(2026, 7, 15),
+        status="active",
+        priority="medium",
+        review_state="approved",
+        action_plan_stage="edited",
+        metadata={"case_basics": {"case_type": "writ", "court": "High Court"}},
+    )
+    rejected = _case_action_obligation(
+        document_id,
+        rejected_id,
+        owner_hint="Education Department",
+        review_state="rejected",
+        action_plan_stage="rejected",
+    )
+    pending = _case_action_obligation(
+        document_id,
+        pending_id,
+        owner_hint="Education Department",
+        review_state="pending_review",
+        action_plan_stage="in_action_plan",
+    )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.get_job_status",
+        lambda _: SimpleNamespace(stage="finalized"),
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.cases.list_persisted_obligations",
+        lambda _: [approved, edited, rejected, pending],
+    )
+
+    response = client.get(f"/api/v1/cases/{document_id}/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "case_dashboard"
+    assert payload["data"]["total"] == 2
+    assert payload["data"]["approved_total"] == 1
+    assert payload["data"]["edited_total"] == 1
+    groups = {
+        group["responsible_department"]: group for group in payload["data"]["groups"]
+    }
+    assert sorted(groups) == ["Education Department", "Health Department"]
+    education_item = groups["Education Department"]["items"][0]
+    assert education_item["id"] == str(approved_id)
+    assert education_item["due_date"] == "2026-06-01"
+    assert education_item["priority"] == "critical"
+    assert education_item["status"] == "active"
+    assert education_item["risk_score"] == 82
+    assert education_item["citation"]["clause_span"] == "p2:c1:10-80"
+    all_item_ids = {
+        item["id"]
+        for group in payload["data"]["groups"]
+        for item in group["items"]
+    }
+    assert str(rejected_id) not in all_item_ids
+    assert str(pending_id) not in all_item_ids
+
+    filtered_response = client.get(
+        f"/api/v1/cases/{document_id}/dashboard",
+        params={
+            "department": "health",
+            "priority": "medium",
+            "status": "active",
+            "case_type": "writ",
+            "court": "high",
+        },
+    )
+
+    assert filtered_response.status_code == 200
+    filtered_payload = filtered_response.json()
+    assert filtered_payload["data"]["total"] == 1
+    assert filtered_payload["data"]["groups"][0]["responsible_department"] == (
+        "Health Department"
+    )
+    assert filtered_payload["data"]["groups"][0]["items"][0]["id"] == str(edited_id)
+
+
 def test_workbench_overview_contract(monkeypatch) -> None:
     now = datetime.now(UTC)
     document_id = uuid4()
@@ -1055,6 +1661,63 @@ def test_get_intake_workflow_status_contract(monkeypatch) -> None:
     assert payload["data"]["run_id"] == run_id
 
 
+def test_get_intake_workflow_status_uses_latest_run_fallback(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    run_id = "latest-run"
+
+    document = DocumentRecord(
+        id=document_id,
+        source_file_name="sample.txt",
+        source_file_type="text/plain",
+        source_file_size=12,
+        object_key="documents/mock/sample.txt",
+        checksum_sha256="a" * 64,
+        workflow_run_id=None,
+        status="processing",
+        metadata={"source": "test"},
+        created_at=now,
+        updated_at=now,
+    )
+
+    run_record = WorkflowRunRecord(
+        id=uuid4(),
+        document_id=document_id,
+        workflow_type="intake",
+        workflow_id="orderflow-intake-workflow-latest",
+        run_id=run_id,
+        task_queue="orderflow-default",
+        status="completed",
+        metadata={"source": "latest-run-fallback"},
+        started_at=now,
+        completed_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.workflows.get_persisted_document",
+        lambda value: document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.workflows.get_latest_workflow_run_for_document",
+        lambda value: run_record if value == document_id else None,
+    )
+
+    response = client.get(
+        "/api/v1/workflows/intake/status",
+        params={"document_id": str(document_id)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["message"] == "workflow_status"
+    assert payload["data"]["document_id"] == str(document_id)
+    assert payload["data"]["run_id"] == run_id
+    assert payload["data"]["status"] == "completed"
+
+
 def test_get_workflow_run_by_id_contract(monkeypatch) -> None:
     now = datetime.now(UTC)
     run_id = "run-by-id"
@@ -1265,6 +1928,73 @@ def test_list_obligations_supports_persisted_records(monkeypatch) -> None:
     assert payload["data"]["items"][0]["confidence_annotations"]["extractor_version"] == (
         "structured-v1"
     )
+
+
+def test_legacy_obligations_route_preserves_action_plan_lifecycle_fields(
+    monkeypatch,
+) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    persisted_document = DocumentRecord(
+        id=document_id,
+        source_file_name="action-plan-lifecycle.pdf",
+        source_file_type="application/pdf",
+        source_file_size=100,
+        object_key="documents/mock/action-plan-lifecycle.pdf",
+        checksum_sha256="a" * 64,
+        workflow_run_id=None,
+        status="ready",
+        metadata={"source": "test"},
+        created_at=now,
+        updated_at=now,
+    )
+    persisted_obligation = _case_action_obligation(
+        document_id,
+        uuid4(),
+        title="File verified compliance report",
+        action_plan_stage="review_pending",
+        nature_of_action="compliance_report",
+        regen_count=2,
+        regen_history=[
+            {
+                "at": now.isoformat(),
+                "feedback": "Clarify owner and due date.",
+                "prev_fields": {"owner_hint": "Office"},
+                "updated_fields": {"owner_hint": "District Office"},
+                "actor_id": "reviewer-1",
+            }
+        ],
+        metadata={"lifecycle_source": "case_action_plan"},
+    )
+
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.obligations.get_document",
+        lambda value: None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.obligations.get_persisted_document",
+        lambda value: persisted_document if value == document_id else None,
+    )
+    monkeypatch.setattr(
+        "orderflow_api.api.routes.obligations.list_persisted_obligations",
+        lambda document_id=None: [persisted_obligation],
+    )
+
+    response = client.get(
+        "/api/v1/obligations",
+        params={"document_id": str(document_id)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    item = payload["data"]["items"][0]
+    assert item["title"] == "File verified compliance report"
+    assert item["review_state"] == "pending_review"
+    assert item["action_plan_stage"] == "review_pending"
+    assert item["nature_of_action"] == "compliance_report"
+    assert item["regen_count"] == 2
+    assert item["regen_history"][0]["feedback"] == "Clarify owner and due date."
+    assert item["metadata"]["lifecycle_source"] == "case_action_plan"
 
 
 def test_list_clauses_supports_persisted_filters(monkeypatch) -> None:

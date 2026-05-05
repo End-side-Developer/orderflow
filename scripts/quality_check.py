@@ -44,7 +44,7 @@ def main() -> int:
         Check(name="Frontend tests", command=[npm_cmd, "run", "test"], cwd=frontend_dir),
         Check(
             name="Backend lint",
-            command=[python_cmd, "-m", "flake8", "src", "tests"],
+            command=[python_cmd, "-m", "flake8", "--jobs", "1", "src", "tests"],
             cwd=backend_dir,
         ),
         Check(

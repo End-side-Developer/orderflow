@@ -28,7 +28,13 @@ class IntakeAiOptions(BaseModel):
     enabled: bool | None = None
     provider: Literal["openai", "anthropic", "gemini", "groq"] | None = None
     model: str | None = Field(default=None, min_length=1, max_length=120)
-    api_key: str | None = Field(default=None, min_length=8, max_length=512)
+    api_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=512,
+        exclude=True,
+        description="Will not be serialized into metadata to prevent secret leakage.",
+    )
     temperature: float | None = Field(default=None, ge=0.0, le=1.0)
     max_obligations: int | None = Field(default=None, ge=1, le=300)
 
@@ -36,6 +42,10 @@ class IntakeAiOptions(BaseModel):
 class IntakeExtractionRequest(BaseModel):
     document_id: UUID
     ai: IntakeAiOptions | None = None
+    bypass_cache: bool = Field(
+        default=False,
+        description="If True, bypasses any existing cached extractions and forces regeneration.",
+    )
 
 
 class IntakeExtractionResult(BaseModel):

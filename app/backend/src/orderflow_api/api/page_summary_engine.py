@@ -10,13 +10,21 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
-from typing import Any
-from uuid import UUID, uuid4
+from typing import Any, AsyncGenerator
+from uuid import UUID
 
+from orderflow_api.api.geocoding_service import build_extracted_places, geocode_places
+from orderflow_api.api.page_summary_persistence import (
+    MAX_PAGE_SUMMARY_SOURCE_EXCERPT_CHARS,
+    create_page_summary,
+    get_cached_page_summary,
+)
+from orderflow_api.core.config import settings
+from orderflow_api.core.gemini_client import call_gemini_json, extract_gemini_text
+from orderflow_api.core.hash_utils import calculate_page_content_hash
+from orderflow_api.core.ai_versions import PAGE_EXTRACTION_PROMPT_VERSION
 from orderflow_api.schemas.page_summaries import (
-    ContextLink,
-    HighlightItem,
+    ExtractedPlace,
     PageSummaryRecord,
 )
 
@@ -118,6 +126,67 @@ _CATEGORY_HINTS: dict[str, tuple[str, ...]] = {
     "evidence": ("criminal",),
 }
 
+_KNOWN_INDIAN_PLACE_NAMES = (
+    "Delhi",
+    "New Delhi",
+    "Mumbai",
+    "Bengaluru",
+    "Bangalore",
+    "Chennai",
+    "Kolkata",
+    "Hyderabad",
+    "Pune",
+    "Ahmedabad",
+    "Jaipur",
+    "Lucknow",
+    "Patna",
+    "Bhopal",
+    "Indore",
+    "Gurugram",
+    "Gurgaon",
+    "Noida",
+    "Chandigarh",
+    "Kochi",
+    "Thiruvananthapuram",
+    "Guwahati",
+    "Cuttack",
+)
+
+_KNOWN_INDIAN_STATES = (
+    "Andhra Pradesh",
+    "Arunachal Pradesh",
+    "Assam",
+    "Bihar",
+    "Chhattisgarh",
+    "Goa",
+    "Gujarat",
+    "Haryana",
+    "Himachal Pradesh",
+    "Jharkhand",
+    "Karnataka",
+    "Kerala",
+    "Madhya Pradesh",
+    "Maharashtra",
+    "Manipur",
+    "Meghalaya",
+    "Mizoram",
+    "Nagaland",
+    "Odisha",
+    "Punjab",
+    "Rajasthan",
+    "Sikkim",
+    "Tamil Nadu",
+    "Telangana",
+    "Tripura",
+    "Uttar Pradesh",
+    "Uttarakhand",
+    "West Bengal",
+    "Delhi",
+    "Jammu and Kashmir",
+    "Ladakh",
+    "Puducherry",
+)
+
 
 def infer_advocate_specialization_from_signals(
     *,
@@ -142,6 +211,12 @@ def infer_advocate_specialization_from_signals(
     if top_score <= 0:
         return None
     return top_specialization
+
+
+def _snippet(text: str, start: int, end: int, *, radius: int = 60) -> str:
+    left = max(0, start - radius)
+    right = min(len(text), end + radius)
+    return re.sub(r"\s+", " ", text[left:right]).strip()
 
 
 class PageSummaryExtractor:
@@ -182,7 +257,8 @@ class PageSummaryExtractor:
         document_id: UUID,
         pages: dict[int, str],
         obligations: dict[int, list[UUID]] | None = None,
-    ) -> list[PageSummaryRecord]:
+        bypass_cache: bool = False,
+    ) -> AsyncGenerator[PageSummaryRecord, None]:
         """
         Extract summaries for all pages.
 
@@ -191,19 +267,44 @@ class PageSummaryExtractor:
             pages: {page_number: page_text}
             obligations: {page_number: [obligation_ids]} (optional)
 
-        Returns:
-            List of PageSummaryRecord objects ordered by page number
+        Yields:
+            PageSummaryRecord objects ordered by page number
         """
         if obligations is None:
             obligations = {}
 
-        summaries = []
         total_pages = len(pages)
 
         for page_num in sorted(pages.keys()):
             page_text = pages[page_num]
+            content_hash = calculate_page_content_hash(page_text)
 
             try:
+                # Check cache before AI call
+                cached_summary = None
+                if not bypass_cache:
+                    cached_summary = get_cached_page_summary(
+                        document_id=document_id,
+                        page_number=page_num,
+                        content_hash=content_hash,
+                        prompt_version=PAGE_EXTRACTION_PROMPT_VERSION,
+                        ai_model=self.model,
+                        ai_provider=self.ai_provider,
+                    )
+
+                # Get obligations on this page
+                page_obligations = obligations.get(page_num, [])
+
+                if cached_summary is not None:
+                    # Update obligations if caller passed new ones
+                    cached_summary.obligation_ids = page_obligations
+                    yield cached_summary
+                    logger.info(
+                        f"Cache hit for page {page_num}/{total_pages}",
+                        extra={"document_id": str(document_id)},
+                    )
+                    continue
+
                 # AI call for this page
                 extraction = await self._ai_extract_page(
                     page_num=page_num,
@@ -220,45 +321,96 @@ class PageSummaryExtractor:
 
                 # Get obligations on this page
                 page_obligations = obligations.get(page_num, [])
+                raw_places = extraction.get("places", [])
+                place_candidates = (
+                    [item for item in raw_places if isinstance(item, dict)]
+                    if isinstance(raw_places, list)
+                    else []
+                )
+                extracted_places = geocode_places(
+                    build_extracted_places(place_candidates, page_number=page_num)
+                )
 
-                # Create summary record
-                summary_record = PageSummaryRecord(
-                    id=uuid4(),
+                # Create and persist summary record
+                summary_record = create_page_summary(
                     document_id=document_id,
                     page_number=page_num,
                     page_text=page_text,
                     summary=extraction.get("summary", ""),
                     key_points=extraction.get("key_points", []),
-                    important_highlights=[
-                        HighlightItem(**h)
-                        for h in extraction.get("highlights", [])
-                    ],
-                    context_links=[ContextLink(**link) for link in context_links],
+                    important_highlights=extraction.get("highlights", []),
+                    context_links=[link for link in context_links],
                     obligation_ids=page_obligations,
+                    extracted_places=extracted_places,
                     confidence=extraction.get("confidence", 0.85),
                     extraction_mode="ai",
                     ai_model=self.model,
                     ai_provider=self.ai_provider,
-                    generated_at=datetime.utcnow(),
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    content_hash=content_hash,
+                    prompt_version=PAGE_EXTRACTION_PROMPT_VERSION,
+                    source_excerpt=page_text[:MAX_PAGE_SUMMARY_SOURCE_EXCERPT_CHARS],
                 )
 
-                summaries.append(summary_record)
+                yield summary_record
                 logger.info(
                     f"Extracted summary for page {page_num}/{total_pages}",
                     extra={"document_id": str(document_id)},
                 )
 
-            except Exception as e:
+            except Exception as exc:
                 logger.error(
-                    f"Failed to extract summary for page {page_num}: {e}",
+                    "Failed to extract summary for page %s: %s",
+                    page_num,
+                    type(exc).__name__,
                     extra={"document_id": str(document_id)},
                 )
                 # Continue with next page on error
                 continue
 
-        return summaries
+    async def extract_places_for_page(
+        self,
+        *,
+        page_num: int,
+        page_text: str,
+        state_hint: str | None = None,
+        district_hint: str | None = None,
+        court_fallback_query: str | None = None,
+    ) -> list[ExtractedPlace]:
+        """Refresh only map-ready place extraction for an existing page."""
+        candidates: list[dict[str, Any]] = []
+
+        try:
+            extraction = await self._ai_extract_places_only(
+                page_num=page_num,
+                page_text=page_text,
+                state_hint=state_hint,
+                district_hint=district_hint,
+            )
+            raw_places = extraction.get("places", [])
+            if isinstance(raw_places, list):
+                candidates = [item for item in raw_places if isinstance(item, dict)]
+        except Exception as exc:
+            logger.warning(
+                "AI place extraction failed for page %s (provider=%s): %s: %s",
+                page_num,
+                self.ai_provider,
+                type(exc).__name__,
+                exc,
+            )
+
+        if not candidates:
+            candidates = self._deterministic_place_candidates(
+                page_text,
+                state_hint=state_hint,
+                district_hint=district_hint,
+            )
+
+        places = build_extracted_places(candidates, page_number=page_num)
+        return geocode_places(
+            places,
+            state_hint=state_hint,
+            court_fallback_query=court_fallback_query,
+        )
 
     async def _ai_extract_page(
         self,
@@ -285,12 +437,24 @@ class PageSummaryExtractor:
                 return await self._call_openai(system_prompt, user_prompt)
             elif self.ai_provider == "anthropic":
                 return await self._call_anthropic(system_prompt, user_prompt)
+            elif self.ai_provider == "gemini":
+                return await self._call_gemini(system_prompt, user_prompt)
             else:
                 raise ValueError(f"Unsupported AI provider: {self.ai_provider}")
-        except Exception as e:
-            logger.error(f"AI extraction failed: {e}")
+        except Exception as exc:
+            logger.error(
+                "AI extraction failed for page %s (provider=%s, model=%s): %s: %s",
+                page_num,
+                self.ai_provider,
+                self.model,
+                type(exc).__name__,
+                exc,
+            )
             # Fallback to deterministic extraction
-            return self._deterministic_extract_page(page_text)
+            result = self._deterministic_extract_page(page_text)
+            result["ai_fallback"] = True
+            result["ai_fallback_reason"] = f"{type(exc).__name__}: {exc}"
+            return result
 
     def _build_system_prompt(self) -> str:
         """System prompt for AI page analysis."""
@@ -311,6 +475,12 @@ Your task is to analyze pages of judgment documents and extract:
    - Include significance level (critical/important/contextual)
    - Explain why it matters for decision-making
 
+4. PLACES: Identify Indian places that physically exist and could be plotted on a map
+   - Include courts, cities, districts, property addresses, incident sites, and jurisdictions
+   - Skip abstract references such as "petitioner's residence" without a town or address
+   - Prefer the most specific form available
+   - Same place mentioned multiple times: return once with mention_count
+
 Return valid JSON with this exact structure:
 {
     "summary": "string (2-3 sentences, preserving legal context)",
@@ -320,6 +490,16 @@ Return valid JSON with this exact structure:
             "text": "exact quote or key phrase",
             "significance": "critical|important|contextual",
             "relevance": "one sentence explaining why this matters"
+        }
+    ],
+    "places": [
+        {
+            "name": "raw place mention",
+            "place_type": "court|property|incident|address|jurisdiction|other",
+            "state": "state name or null",
+            "district": "district name or null",
+            "raw_text_span": "short source snippet or null",
+            "mention_count": 1
         }
     ],
     "confidence": 0.85
@@ -343,12 +523,13 @@ Remember: Legal precision is critical. Don't lose context."""
     async def _call_openai(self, system: str, user: str) -> dict[str, Any]:
         """Call OpenAI API for page analysis."""
         try:
-            import openai
+            from openai import AsyncOpenAI
         except ImportError:
             raise ImportError("openai package required for OpenAI provider")
 
         try:
-            response = await openai.ChatCompletion.acreate(
+            client = AsyncOpenAI(api_key=self.api_key)
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system},
@@ -362,8 +543,8 @@ Remember: Legal precision is critical. Don't lose context."""
             result = json.loads(content)
             return result
 
-        except json.JSONDecodeError as e:
-            logger.error(f"OpenAI returned invalid JSON: {e}")
+        except json.JSONDecodeError as exc:
+            logger.error("OpenAI returned invalid JSON: %s", type(exc).__name__)
             raise ValueError("AI response was not valid JSON")
 
     async def _call_anthropic(self, system: str, user: str) -> dict[str, Any]:
@@ -386,9 +567,98 @@ Remember: Legal precision is critical. Don't lose context."""
             result = json.loads(content)
             return result
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Anthropic returned invalid JSON: {e}")
+        except json.JSONDecodeError as exc:
+            logger.error("Anthropic returned invalid JSON: %s", type(exc).__name__)
             raise ValueError("AI response was not valid JSON")
+
+    async def _call_gemini(self, system: str, user: str) -> dict[str, Any]:
+        """Call shared Gemini client for page analysis."""
+        api_key = self.api_key or settings.orderflow_ai_gemini_api_key
+        if not api_key:
+            raise ValueError("Missing Gemini API key for page summary extraction")
+
+        response = call_gemini_json(
+            api_key=api_key,
+            model=self.model or settings.orderflow_ai_default_model,
+            prompt=f"{system}\n\n{user}",
+            temperature=self.temperature,
+            max_output_tokens=settings.orderflow_ai_gemini_max_output_tokens,
+            request_label="page summary extraction",
+        )
+        content = extract_gemini_text(response)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            logger.error("Gemini returned invalid page summary JSON: %s", type(exc).__name__)
+            raise ValueError("AI response was not valid JSON") from exc
+
+    async def _ai_extract_places_only(
+        self,
+        *,
+        page_num: int,
+        page_text: str,
+        state_hint: str | None,
+        district_hint: str | None,
+    ) -> dict[str, Any]:
+        system_prompt = self._build_places_system_prompt()
+        user_prompt = self._build_places_user_prompt(
+            page_num=page_num,
+            page_text=page_text,
+            state_hint=state_hint,
+            district_hint=district_hint,
+        )
+
+        if self.ai_provider == "openai":
+            return await self._call_openai(system_prompt, user_prompt)
+        if self.ai_provider == "anthropic":
+            return await self._call_anthropic(system_prompt, user_prompt)
+        if self.ai_provider == "gemini":
+            return await self._call_gemini(system_prompt, user_prompt)
+        return {"places": []}
+
+    def _build_places_system_prompt(self) -> str:
+        return """You are a legal document analyst extracting map-ready places.
+Return strict JSON only:
+{
+  "places": [
+    {
+      "name": "raw place mention",
+      "place_type": "court|property|incident|address|jurisdiction|other",
+      "state": "state name or null",
+      "district": "district name or null",
+      "raw_text_span": "short source snippet or null",
+      "mention_count": 1
+    }
+  ]
+}
+
+Rules:
+- Identify Indian places that physically exist and could be plotted on a map.
+- Include courts, cities, districts, property addresses, incident sites, and jurisdictions.
+- Skip abstract references such as "petitioner's residence" without a town or address.
+- Prefer the most specific form available.
+- Return each same-place mention once with mention_count set to its page count."""
+
+    def _build_places_user_prompt(
+        self,
+        *,
+        page_num: int,
+        page_text: str,
+        state_hint: str | None,
+        district_hint: str | None,
+    ) -> str:
+        hints = []
+        if state_hint:
+            hints.append(f"State hint: {state_hint}")
+        if district_hint:
+            hints.append(f"District hint: {district_hint}")
+        hint_text = "\n".join(hints) if hints else "No metadata hints available."
+        return f"""Extract map-ready places from page {page_num}.
+
+{hint_text}
+
+Page text:
+{page_text[: settings.orderflow_ai_gemini_page_insight_prompt_chars]}"""
 
     def _deterministic_extract_page(self, page_text: str) -> dict[str, Any]:
         """
@@ -418,8 +688,50 @@ Remember: Legal precision is critical. Don't lose context."""
             "summary": summary if summary else "Analysis of judgment page.",
             "key_points": key_points if key_points else ["No explicit key points extracted."],
             "highlights": [],
+            "places": [],
             "confidence": 0.3,  # Low confidence for fallback
         }
+
+    def _deterministic_place_candidates(
+        self,
+        page_text: str,
+        *,
+        state_hint: str | None,
+        district_hint: str | None,
+    ) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+
+        for match in re.finditer(
+            r"\b(?:High Court of|District Court(?: at| of)?|Court of)\s+([A-Z][A-Za-z\s]{2,60})",
+            page_text,
+        ):
+            candidates.append(
+                {
+                    "name": match.group(0).strip(" ,.;:"),
+                    "place_type": "court",
+                    "state": state_hint,
+                    "district": district_hint,
+                    "raw_text_span": _snippet(page_text, match.start(), match.end()),
+                    "mention_count": 1,
+                }
+            )
+
+        for place_name in (*_KNOWN_INDIAN_PLACE_NAMES, *_KNOWN_INDIAN_STATES):
+            pattern = re.compile(rf"\b{re.escape(place_name)}\b", re.IGNORECASE)
+            for match in pattern.finditer(page_text):
+                matched_name = match.group(0)
+                candidates.append(
+                    {
+                        "name": matched_name,
+                        "place_type": "jurisdiction",
+                        "state": matched_name if place_name in _KNOWN_INDIAN_STATES else state_hint,
+                        "district": district_hint,
+                        "raw_text_span": _snippet(page_text, match.start(), match.end()),
+                        "mention_count": 1,
+                    }
+                )
+
+        return candidates
 
     def _find_context_links(
         self,
@@ -470,9 +782,7 @@ Remember: Legal precision is critical. Don't lose context."""
 
             if overlap > keyword_threshold:
                 # Avoid duplicates
-                if not any(
-                    link["page_number"] == other_page_num for link in links
-                ):
+                if not any(link["page_number"] == other_page_num for link in links):
                     links.append(
                         {
                             "page_number": other_page_num,

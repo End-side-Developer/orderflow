@@ -48,6 +48,9 @@ from orderflow_api.schemas.documents import (
 )
 from orderflow_api.schemas.advocates import ADVOCATE_SPECIALIZATIONS
 
+import io
+from pypdf import PdfReader
+
 router = APIRouter(tags=["documents"])
 
 
@@ -321,6 +324,11 @@ async def upload_document_route(
     )
     metadata_dict = _merge_metadata(metadata_dict, language_metadata)
 
+    # Compute PDF page count for intake workflow progress tracking
+    pages_total = _count_pdf_pages(payload, file.content_type)
+    if pages_total > 0:
+        metadata_dict["pages_total"] = pages_total
+
     try:
         document = persist_uploaded_document(
             source_file_name=source_file_name,
@@ -410,6 +418,11 @@ async def intake_indian_ecourts_route(
         source_language_override=source_language,
     )
     metadata = _merge_metadata(metadata, language_metadata)
+
+    # Compute PDF page count for intake workflow progress tracking
+    pages_total = _count_pdf_pages(payload, resolved_file_type)
+    if pages_total > 0:
+        metadata["pages_total"] = pages_total
 
     try:
         document = persist_uploaded_document(
@@ -649,3 +662,14 @@ def _parse_indian_ecourts_envelope(envelope: str) -> IndianECourtsIntakeRequest:
             "errors": last_errors or [],
         },
     )
+
+
+def _count_pdf_pages(payload: bytes, source_file_type: str | None) -> int:
+    """Return the number of pages in a PDF payload, or 0 if not a PDF."""
+    if source_file_type and "pdf" not in source_file_type.lower():
+        return 0
+    try:
+        reader = PdfReader(io.BytesIO(payload))
+        return len(reader.pages)
+    except Exception:
+        return 0

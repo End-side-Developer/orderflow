@@ -26,6 +26,44 @@ class Settings(BaseSettings):
         default="default",
         validation_alias="ORDERFLOW_WORKER_TEMPORAL_NAMESPACE",
     )
+    orderflow_intake_min_concurrency: int = Field(
+        default=1,
+        validation_alias="ORDERFLOW_INTAKE_MIN_CONCURRENCY",
+        ge=1,
+    )
+    orderflow_intake_max_concurrency: int = Field(
+        default=4,
+        validation_alias="ORDERFLOW_INTAKE_MAX_CONCURRENCY",
+        ge=1,
+    )
+    orderflow_ai_default_provider: str = Field(
+        default="gemini",
+        validation_alias="ORDERFLOW_AI_DEFAULT_PROVIDER",
+    )
+    orderflow_ai_default_model: str = Field(
+        default="gemini-2.0-flash",
+        validation_alias="ORDERFLOW_AI_DEFAULT_MODEL",
+    )
+    orderflow_ai_gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias="ORDERFLOW_AI_GEMINI_API_KEY",
+    )
+    orderflow_ai_groq_api_key: str | None = Field(
+        default=None,
+        validation_alias="ORDERFLOW_AI_GROQ_API_KEY",
+    )
+    orderflow_ai_openai_api_key: str | None = Field(
+        default=None,
+        validation_alias="ORDERFLOW_AI_OPENAI_API_KEY",
+    )
+    orderflow_ai_anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias="ORDERFLOW_AI_ANTHROPIC_API_KEY",
+    )
+    orderflow_ai_timeout_seconds: int = Field(
+        default=45,
+        validation_alias="ORDERFLOW_AI_TIMEOUT_SECONDS",
+    )
 
 
 @lru_cache

@@ -6,6 +6,7 @@ failures transparently fall back to an empty list. We test both paths.
 Note: the route module uses `from X import Y` — patches must target the route
 module's local names, not the source modules.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -25,7 +26,20 @@ _client = TestClient(app)
 _FIXED_NOW = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_obligation(obligation_id: str = "00000000-0000-0000-0000-000000000001") -> ObligationRecord:
+@pytest.fixture(autouse=True)
+def _no_live_obligation_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep public route tests independent from the developer's local DB."""
+    monkeypatch.setattr(
+        public_route,
+        "list_persisted_obligations",
+        MagicMock(return_value=[]),
+    )
+    monkeypatch.setattr(public_route, "list_stub_obligations", MagicMock(return_value=[]))
+
+
+def _make_obligation(
+    obligation_id: str = "00000000-0000-0000-0000-000000000001",
+) -> ObligationRecord:
     """Return an ObligationRecord; annotate_obligations_with_risk requires attribute access."""
     return ObligationRecord(
         id=UUID(obligation_id),

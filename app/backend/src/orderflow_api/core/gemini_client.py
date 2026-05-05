@@ -415,36 +415,6 @@ def call_gemini_json(
     max_output_tokens: int,
     request_label: str,
 ) -> dict[str, object]:
-    if settings.orderflow_ai_default_provider == "groq" and settings.orderflow_ai_groq_api_key:
-        import httpx
-        try:
-            with httpx.Client(http2=True, headers={
-                "Authorization": f"Bearer {settings.orderflow_ai_groq_api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            }) as client:
-                res = client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    json={
-                        "model": settings.orderflow_ai_default_model or "llama-3.3-70b-versatile",
-                        "response_format": {"type": "json_object"},
-                        "temperature": temperature,
-                        "messages": [
-                            {"role": "system", "content": "You are a legal AI assistant. Output ONLY valid JSON."},
-                            {"role": "user", "content": prompt}
-                        ]
-                    },
-                    timeout=settings.orderflow_ai_timeout_seconds
-                )
-                res.raise_for_status()
-                data = res.json()
-                content = data["choices"][0]["message"]["content"]
-                return {"candidates": [{"content": {"parts": [{"text": content}]}}]}
-        except httpx.HTTPStatusError as exc:
-            raise GeminiError(f"groq replacement failed: {exc}", "groq_failed", http_status=exc.response.status_code, retryable=False) from exc
-        except Exception as exc:
-            raise GeminiError(f"groq replacement failed: {exc}", "groq_failed", http_status=500, retryable=False) from exc
-
     encoded_model = urllib_parse.quote(model, safe="")
     reserve_tokens = estimate_text_tokens(prompt) + max(max_output_tokens, 1)
     reservation = _GEMINI_QUOTA_GUARD.reserve(tokens=reserve_tokens)
@@ -522,3 +492,53 @@ def call_gemini_json(
         actual_tokens=extract_gemini_total_tokens(parsed),
     )
     return parsed
+
+
+def call_groq_json(
+    *,
+    api_key: str,
+    model: str | None = None,
+    prompt: str,
+    temperature: float,
+    request_label: str,
+) -> dict[str, object]:
+    """Call Groq's OpenAI-compatible chat completions endpoint."""
+    import httpx
+
+    resolved_model = model or settings.orderflow_ai_default_model or "llama-3.3-70b-versatile"
+    try:
+        with httpx.Client(http2=True, headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }) as client:
+            res = client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json={
+                    "model": resolved_model,
+                    "response_format": {"type": "json_object"},
+                    "temperature": temperature,
+                    "messages": [
+                        {"role": "system", "content": "You are a legal AI assistant. Output ONLY valid JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                },
+                timeout=settings.orderflow_ai_timeout_seconds,
+            )
+            res.raise_for_status()
+            data = res.json()
+            content = data["choices"][0]["message"]["content"]
+            return {"candidates": [{"content": {"parts": [{"text": content}]}}]}
+    except httpx.HTTPStatusError as exc:
+        raise GeminiError(
+            f"Groq request failed: {exc}",
+            "groq_failed",
+            http_status=exc.response.status_code,
+            retryable=False,
+        ) from exc
+    except Exception as exc:
+        raise GeminiError(
+            f"Groq request failed: {exc}",
+            "groq_failed",
+            http_status=500,
+            retryable=False,
+        ) from exc

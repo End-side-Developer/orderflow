@@ -3,18 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import json
+import logging
 import re
 from typing import Any
 from urllib import error as urllib_error
-from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 from uuid import UUID, uuid4
+
+logger = logging.getLogger(__name__)
 
 from orderflow_api.api.extraction_engine import (
     ParsedClause,
     ParsedObligation,
     build_clause_span_token,
-    extract_obligations as extract_obligations_deterministic,
 )
 from orderflow_api.core.config import settings
 from orderflow_api.core.gemini_client import call_gemini_json, extract_gemini_text
@@ -23,6 +24,8 @@ from orderflow_api.schemas.extractions import IntakeAiOptions
 _SUPPORTED_PROVIDERS = {"openai", "anthropic", "gemini", "groq"}
 # _REMOTE_FALLBACK_ORDER = ("groq", "gemini", "openai", "anthropic")
 _REMOTE_FALLBACK_ORDER = ()
+_SOURCE_EXCERPT_CHARS = 240
+
 
 @dataclass(frozen=True)
 class AiExtractionAttempt:
@@ -104,9 +107,7 @@ def maybe_extract_obligations_with_ai(
         if fallback_attempt.reason:
             fallback_reasons.append(fallback_attempt.reason)
 
-    reason_parts = [
-        part for part in [primary_attempt.reason, *fallback_reasons] if part
-    ]
+    reason_parts = [part for part in [primary_attempt.reason, *fallback_reasons] if part]
     return AiExtractionAttempt(
         obligations=[],
         attempted=True,
@@ -146,9 +147,7 @@ def _resolve_ai_selection(
     requested_max = ai_options.max_obligations if ai_options is not None else None
 
     provider = forced_provider or settings.orderflow_ai_default_provider.strip().lower()
-    requested_provider = (
-        requested_provider.strip().lower() if requested_provider else None
-    )
+    requested_provider = requested_provider.strip().lower() if requested_provider else None
 
     if forced_provider is None and allow_override and requested_provider:
         provider = requested_provider
@@ -191,6 +190,12 @@ def _resolve_ai_selection(
         api_key = requested_key.strip()
 
     if provider in {"openai", "anthropic", "gemini", "groq"} and not api_key:
+        logger.warning(
+            "AI extraction disabled: missing API key for provider '%s'. "
+            "Set ORDERFLOW_AI_%s_API_KEY env var or pass one in request.",
+            provider,
+            provider.upper(),
+        )
         return _AiSelection(
             enabled=False,
             provider=provider,
@@ -207,13 +212,9 @@ def _resolve_ai_selection(
         )
 
     temperature = (
-        requested_temperature
-        if allow_override and requested_temperature is not None
-        else 0.1
+        requested_temperature if allow_override and requested_temperature is not None else 0.1
     )
-    max_obligations = (
-        requested_max if allow_override and requested_max is not None else 40
-    )
+    max_obligations = requested_max if allow_override and requested_max is not None else 40
     max_clauses = settings.orderflow_ai_max_clauses
     max_clause_chars = 1000
 
@@ -269,9 +270,7 @@ def _attempt_remote_provider(
     selection: _AiSelection,
 ) -> AiExtractionAttempt:
     try:
-        candidates = _extract_candidates_with_remote_provider(
-            clauses=clauses, selection=selection
-        )
+        candidates = _extract_candidates_with_remote_provider(clauses=clauses, selection=selection)
         obligations = _materialize_ai_obligations(
             clauses=clauses,
             document_id=document_id,
@@ -318,6 +317,8 @@ def _extract_candidates_with_remote_provider(
         {
             "clause_index": clause.clause_index,
             "page_number": clause.page_number,
+            "span_start": clause.span_start,
+            "span_end": clause.span_end,
             "text": clause.normalized_text[: selection.max_clause_chars],
         }
         for clause in selected_clauses
@@ -349,7 +350,16 @@ def _build_prompt(clauses: list[dict[str, object]], max_obligations: int) -> str
         "Return strict JSON only with this schema: "
         '{"obligations":[{"clause_index":int,"title":str,"description":str,'
         '"owner_hint":str|null,"due_date":"YYYY-MM-DD"|null,'
-        '"priority":"low|medium|high|critical","confidence":0..1}]}. '
+        '"priority":"low|medium|high|critical","confidence":0..1,'
+        '"source_evidence":{"page_number":int|null,"clause_index":int,'
+        '"clause_span":str|null,"excerpt":str}}]}. '
+        "Use source_evidence values from the matching clause index; excerpt must be a "
+        "short verbatim quote. If span_start/end are provided, set clause_span to "
+        "p{page_number}:c{clause_index}:{span_start}-{span_end}; otherwise use "
+        "clause-{clause_index}. For appeal, review, limitation, or legal remedy "
+        "items, phrase the action as a legal-review task only; never present final "
+        "legal advice or say an appeal must be filed. Use language like "
+        "'review with authorized legal counsel'. "
         f"Limit to {max_obligations} obligations. Do not include markdown. "
         f"Clauses: {json.dumps(clauses, ensure_ascii=True)}"
     )
@@ -452,15 +462,18 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
             "Groq SDK or httpx not installed. Run: pip install groq httpx"
         ) from exc
 
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/123.0.0.0 Safari/537.36"
+    )
     client = Groq(
         api_key=selection.api_key,
         timeout=settings.orderflow_ai_timeout_seconds,
         http_client=httpx.Client(
             http2=True,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-            }
-        )
+            headers={"User-Agent": user_agent},
+        ),
     )
     completion = client.chat.completions.create(
         model=selection.model,
@@ -469,7 +482,10 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
         messages=[
             {
                 "role": "system",
-                "content": "You are a legal obligation extraction assistant. Return only valid JSON.",
+                "content": (
+                    "You are a legal obligation extraction assistant. "
+                    "Return only valid JSON."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
@@ -485,9 +501,7 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
     return content
 
 
-def _post_json(
-    *, url: str, headers: dict[str, str], payload: dict[str, Any]
-) -> dict[str, Any]:
+def _post_json(*, url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
     base_headers = {
         "content-type": "application/json",
         "accept": "application/json",
@@ -565,13 +579,9 @@ def _materialize_ai_obligations(
         due_date = _safe_date(candidate.get("due_date"))
         priority = _safe_priority(candidate.get("priority"))
         default_confidence = (
-            float(clause.confidence)
-            if isinstance(clause.confidence, (int, float))
-            else 0.7
+            float(clause.confidence) if isinstance(clause.confidence, (int, float)) else 0.7
         )
-        confidence = _safe_float(
-            candidate.get("confidence"), default=default_confidence
-        )
+        confidence = _safe_float(candidate.get("confidence"), default=default_confidence)
 
         obligations.append(
             ParsedObligation(
@@ -601,6 +611,7 @@ def _materialize_ai_obligations(
                     "ai_model": selection.model,
                     "ai_temperature": selection.temperature,
                     "clause_index": clause.clause_index,
+                    "source_evidence": _build_source_evidence(candidate, clause),
                 },
             )
         )
@@ -658,6 +669,38 @@ def _safe_priority(value: object) -> str:
         return lowered
 
     return "medium"
+
+
+def _truncate_text(value: str | None, max_chars: int) -> str | None:
+    if not value:
+        return None
+    if len(value) <= max_chars:
+        return value
+    return value[:max_chars].rstrip() + "..."
+
+
+def _build_source_evidence(
+    candidate: dict[str, object],
+    clause: ParsedClause,
+) -> dict[str, object]:
+    candidate_evidence = candidate.get("source_evidence")
+    excerpt = None
+    if isinstance(candidate_evidence, dict):
+        excerpt = _safe_text(candidate_evidence.get("excerpt"))
+    if not excerpt:
+        excerpt = clause.text or clause.normalized_text
+
+    return {
+        "page_number": clause.page_number,
+        "clause_index": clause.clause_index,
+        "clause_span": build_clause_span_token(
+            clause_index=clause.clause_index,
+            page_number=clause.page_number,
+            span_start=clause.span_start,
+            span_end=clause.span_end,
+        ),
+        "excerpt": _truncate_text(excerpt, _SOURCE_EXCERPT_CHARS),
+    }
 
 
 def extract_case_flow(

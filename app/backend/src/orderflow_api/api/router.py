@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from orderflow_api.api.routes.advocates import router as advocates_router
 from orderflow_api.api.routes.auth import router as auth_router
+from orderflow_api.api.routes.cases import router as cases_router
 from orderflow_api.api.routes.documents import router as documents_router
 from orderflow_api.api.routes.exports import router as exports_router
 from orderflow_api.api.routes.extractions import router as extractions_router
@@ -25,6 +26,7 @@ api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(advocates_router)
+api_router.include_router(cases_router)
 api_router.include_router(documents_router)
 api_router.include_router(exports_router)
 api_router.include_router(extractions_router)

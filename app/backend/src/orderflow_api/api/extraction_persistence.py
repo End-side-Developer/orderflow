@@ -62,11 +62,17 @@ OBLIGATIONS_TABLE = sa.Table(
     sa.Column("title", sa.String(length=300), nullable=False),
     sa.Column("description", sa.Text(), nullable=True),
     sa.Column("owner_hint", sa.String(length=200), nullable=True),
+    sa.Column("nature_of_action", sa.String(length=64), nullable=True),
     sa.Column("due_date", sa.Date(), nullable=True),
     sa.Column("status", sa.String(length=32), nullable=False),
     sa.Column("priority", sa.String(length=16), nullable=False),
     sa.Column("review_state", sa.String(length=32), nullable=False),
+    sa.Column(
+        "action_plan_stage", sa.String(length=32), nullable=False, server_default="extracted"
+    ),
     sa.Column("confidence", sa.Numeric(5, 4), nullable=True),
+    sa.Column("regen_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("regen_history", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -128,11 +134,15 @@ def replace_document_extraction(
             "title": _sanitize_database_text(obligation.title) or "Untitled obligation",
             "description": _sanitize_database_text(obligation.description),
             "owner_hint": _sanitize_database_text(obligation.owner_hint),
+            "nature_of_action": getattr(obligation, "nature_of_action", None),
             "due_date": obligation.due_date,
             "status": _sanitize_database_text(obligation.status) or "active",
             "priority": _sanitize_database_text(obligation.priority) or "medium",
             "review_state": _sanitize_database_text(obligation.review_state) or "pending_review",
+            "action_plan_stage": getattr(obligation, "action_plan_stage", "extracted"),
             "confidence": obligation.confidence,
+            "regen_count": getattr(obligation, "regen_count", 0),
+            "regen_history": _sanitize_database_json(getattr(obligation, "regen_history", None)),
             "metadata": _sanitize_database_json(
                 {
                     **(obligation.metadata if isinstance(obligation.metadata, dict) else {}),
@@ -298,8 +308,15 @@ def get_persisted_obligation_by_id(obligation_id: UUID) -> ObligationRecord | No
 def update_persisted_obligation(
     obligation_id: UUID,
     review_state: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
     owner_hint: str | None = None,
     status: str | None = None,
+    action_plan_stage: str | None = None,
+    nature_of_action: str | None = None,
+    regen_count: int | None = None,
+    regen_history: list[dict[str, object]] | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> ObligationRecord | None:
     with get_engine().connect() as connection:
         existing_row = (
@@ -319,12 +336,26 @@ def update_persisted_obligation(
         update_values["review_state"] = (
             _sanitize_database_text(review_state) or existing_row["review_state"]
         )
+    if title is not None:
+        update_values["title"] = _sanitize_database_text(title) or existing_row["title"]
+    if description is not None:
+        update_values["description"] = _sanitize_database_text(description)
     if owner_hint is not None:
         update_values["owner_hint"] = _sanitize_database_text(owner_hint)
     if status is not None:
         update_values["status"] = _sanitize_database_text(status) or existing_row["status"]
+    if action_plan_stage is not None:
+        update_values["action_plan_stage"] = (
+            _sanitize_database_text(action_plan_stage) or existing_row["action_plan_stage"]
+        )
+    if nature_of_action is not None:
+        update_values["nature_of_action"] = _sanitize_database_text(nature_of_action)
+    if regen_count is not None:
+        update_values["regen_count"] = regen_count
+    if regen_history is not None:
+        update_values["regen_history"] = _sanitize_database_json(regen_history)
 
-    if not update_values:
+    if not update_values and metadata is None:
         return get_persisted_obligation_by_id(obligation_id)
 
     next_status = str(update_values.get("status", existing_row["status"]))
@@ -332,9 +363,16 @@ def update_persisted_obligation(
     next_priority = str(existing_row["priority"])
     next_due_date = existing_row["due_date"]
 
-    metadata = existing_row["metadata"] if isinstance(existing_row["metadata"], dict) else {}
-    metadata = {
-        **metadata,
+    existing_metadata = (
+        existing_row["metadata"] if isinstance(existing_row["metadata"], dict) else {}
+    )
+    if metadata is not None:
+        existing_metadata = {
+            **existing_metadata,
+            **metadata,
+        }
+    next_metadata = {
+        **existing_metadata,
         "escalation": _build_escalation_signal_payload(
             due_date=next_due_date,
             status=next_status,
@@ -343,7 +381,7 @@ def update_persisted_obligation(
         ),
     }
 
-    update_values["metadata"] = metadata
+    update_values["metadata"] = _sanitize_database_json(next_metadata)
     update_values["updated_at"] = datetime.now(UTC)
 
     with get_engine().begin() as connection:
@@ -359,8 +397,10 @@ def update_persisted_obligation(
     return get_persisted_obligation_by_id(obligation_id)
 
 
-def record_persisted_obligation_audit_event(
-    obligation_id: UUID,
+def record_audit_event(
+    *,
+    entity_type: str,
+    entity_id: UUID | None,
     action: str,
     actor_type: str,
     actor_id: str | None,
@@ -370,8 +410,8 @@ def record_persisted_obligation_audit_event(
     with get_engine().begin() as connection:
         connection.execute(
             sa.insert(AUDIT_LOG_TABLE).values(
-                entity_type="obligation",
-                entity_id=obligation_id,
+                entity_type=_sanitize_database_text(entity_type) or "unknown_entity",
+                entity_id=entity_id,
                 action=_sanitize_database_text(action) or "unknown_action",
                 actor_type=_sanitize_database_text(actor_type) or "unknown_actor",
                 actor_id=_sanitize_database_text(actor_id),
@@ -380,6 +420,25 @@ def record_persisted_obligation_audit_event(
                 created_at=datetime.now(UTC),
             )
         )
+
+
+def record_persisted_obligation_audit_event(
+    obligation_id: UUID,
+    action: str,
+    actor_type: str,
+    actor_id: str | None,
+    request_id: str | None,
+    payload: dict[str, object] | None,
+) -> None:
+    record_audit_event(
+        entity_type="obligation",
+        entity_id=obligation_id,
+        action=action,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        request_id=request_id,
+        payload=payload,
+    )
 
 
 def list_persisted_obligation_audit_events(obligation_id: UUID) -> list[ObligationAuditEvent]:
@@ -533,6 +592,10 @@ def _to_obligation_record(row: RowMapping) -> ObligationRecord:
             )
         )
 
+    regen_history = row.get("regen_history")
+    if not isinstance(regen_history, list):
+        regen_history = []
+
     return ObligationRecord(
         id=row["id"],
         document_id=row["document_id"],
@@ -540,14 +603,19 @@ def _to_obligation_record(row: RowMapping) -> ObligationRecord:
         title=row["title"],
         description=row["description"],
         owner_hint=row["owner_hint"],
+        nature_of_action=row.get("nature_of_action"),
         due_date=row["due_date"],
         status=row["status"],
         priority=row["priority"],
         review_state=row["review_state"],
+        action_plan_stage=row.get("action_plan_stage") or "extracted",
         confidence=_to_float(row["confidence"]),
+        regen_count=row.get("regen_count") or 0,
+        regen_history=regen_history,
         confidence_annotations=confidence_annotations,
         escalation=escalation,
         citation=citation,
+        metadata=metadata,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

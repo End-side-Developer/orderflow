@@ -10,6 +10,34 @@ from pydantic import BaseModel, Field, model_validator
 ObligationStatus = Literal["draft", "active", "completed", "cancelled"]
 ObligationPriority = Literal["low", "medium", "high", "critical"]
 ObligationReviewState = Literal["pending_review", "approved", "rejected"]
+ObligationNatureOfAction = Literal[
+    "compliance",
+    "directive",
+    "investigation",
+    "report_filing",
+    "payment",
+    "notice",
+    "appointment",
+    "submission",
+    "document_submission",
+    "compliance_report",
+    "policy",
+    "policy_decision",
+    "reconsideration",
+    "hearing",
+    "hearing_review",
+    "appeal_review",
+    "record_update",
+    "other",
+]
+ObligationActionPlanStage = Literal[
+    "extracted",
+    "in_action_plan",
+    "review_pending",
+    "approved",
+    "rejected",
+    "edited",
+]
 EscalationLevel = Literal["none", "watch", "escalated", "critical"]
 
 
@@ -44,6 +72,14 @@ class ObligationRiskFactor(BaseModel):
     detail: str
 
 
+class ObligationRegenerationEvent(BaseModel):
+    at: datetime | None = None
+    feedback: str | None = None
+    prev_fields: dict[str, Any] = Field(default_factory=dict)
+    updated_fields: dict[str, Any] = Field(default_factory=dict)
+    actor_id: str | None = None
+
+
 class ObligationRecord(BaseModel):
     id: UUID
     document_id: UUID
@@ -62,6 +98,11 @@ class ObligationRecord(BaseModel):
     risk_score: int | None = Field(default=None, ge=0, le=100)
     risk_band: Literal["low", "moderate", "high", "critical"] | None = None
     risk_factors: list[ObligationRiskFactor] = Field(default_factory=list)
+    nature_of_action: ObligationNatureOfAction | None = None
+    action_plan_stage: ObligationActionPlanStage = "extracted"
+    regen_count: int = Field(default=0, ge=0)
+    regen_history: list[ObligationRegenerationEvent] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 

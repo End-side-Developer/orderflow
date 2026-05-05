@@ -151,6 +151,18 @@ class Settings(BaseSettings):
         default=4000,
         validation_alias="ORDERFLOW_AI_GEMINI_PAGE_INSIGHT_PROMPT_CHARS",
     )
+    orderflow_api_geocoder_user_agent: str = Field(
+        default="OrderFlow local development contact@example.invalid",
+        validation_alias="ORDERFLOW_API_GEOCODER_USER_AGENT",
+    )
+    orderflow_api_geocoder_timeout_seconds: int = Field(
+        default=10,
+        validation_alias="ORDERFLOW_API_GEOCODER_TIMEOUT_SECONDS",
+    )
+    orderflow_api_geocoder_pace_seconds: float = Field(
+        default=1.05,
+        validation_alias="ORDERFLOW_API_GEOCODER_PACE_SECONDS",
+    )
     orderflow_ai_max_clauses: int = Field(
         default=120,
         validation_alias="ORDERFLOW_AI_MAX_CLAUSES",

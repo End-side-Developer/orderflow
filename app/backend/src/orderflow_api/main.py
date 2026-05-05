@@ -10,7 +10,7 @@ from opentelemetry.trace.status import Status, StatusCode
 from orderflow_api.api.response import failure, success
 from orderflow_api.api.router import api_router
 from orderflow_api.core.config import settings
-from orderflow_api.core.telemetry import configure_tracing
+from orderflow_api.core.telemetry import configure_tracing, request_trace_attributes
 
 logger = logging.getLogger("orderflow_api")
 
@@ -53,6 +53,12 @@ def create_app() -> FastAPI:
             if client_path:
                 span.set_attribute("orderflow.client.path", client_path)
 
+            for key, value in request_trace_attributes(
+                request.url.path,
+                request.query_params,
+            ).items():
+                span.set_attribute(key, value)
+
             try:
                 response = await call_next(request)
             except Exception as exc:
@@ -78,7 +84,10 @@ def create_app() -> FastAPI:
         request_id = getattr(request.state, "request_id", None)
 
         # Routes can pass a dict detail like
-        #   raise HTTPException(status_code=429, detail={"code": "gemini_quota_exhausted", "message": "..."})
+        #   raise HTTPException(
+        #       status_code=429,
+        #       detail={"code": "gemini_quota_exhausted", "message": "..."},
+        #   )
         # to surface a stable machine-readable code (plus optional retry hints) to the UI.
         # String details retain the legacy "http_error" code for backwards compatibility.
         code = "http_error"

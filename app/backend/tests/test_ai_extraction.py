@@ -53,9 +53,7 @@ def _make_clause(*, clause_index: int, text: str) -> ParsedClause:
 def test_maybe_extract_obligations_with_ai_returns_disabled_reason(monkeypatch) -> None:
     _set_ai_settings(monkeypatch, orderflow_ai_enabled_default=False)
     document_id = uuid4()
-    clauses = [
-        _make_clause(clause_index=1, text="District administration shall file report.")
-    ]
+    clauses = [_make_clause(clause_index=1, text="District administration shall file report.")]
 
     result = ai_extraction.maybe_extract_obligations_with_ai(
         clauses=clauses,
@@ -139,9 +137,7 @@ def test_openai_selection_requires_api_key(monkeypatch) -> None:
         orderflow_ai_openai_api_key=None,
     )
     document_id = uuid4()
-    clauses = [
-        _make_clause(clause_index=1, text="District administration shall file report.")
-    ]
+    clauses = [_make_clause(clause_index=1, text="District administration shall file report.")]
 
     result = ai_extraction.maybe_extract_obligations_with_ai(
         clauses=clauses,
@@ -163,13 +159,9 @@ def test_openai_returns_no_actionable_obligations(monkeypatch) -> None:
         orderflow_ai_openai_api_key="sk-test-key",
     )
     document_id = uuid4()
-    clauses = [
-        _make_clause(clause_index=1, text="District administration shall file report.")
-    ]
+    clauses = [_make_clause(clause_index=1, text="District administration shall file report.")]
 
-    def fake_post_json(
-        *, url: str, headers: dict[str, str], payload: dict[str, object]
-    ):
+    def fake_post_json(*, url: str, headers: dict[str, str], payload: dict[str, object]):
         return {
             "choices": [
                 {
@@ -211,9 +203,7 @@ def test_openai_materializes_ai_obligation(monkeypatch) -> None:
         )
     ]
 
-    def fake_post_json(
-        *, url: str, headers: dict[str, str], payload: dict[str, object]
-    ):
+    def fake_post_json(*, url: str, headers: dict[str, str], payload: dict[str, object]):
         return {
             "choices": [
                 {
@@ -244,6 +234,23 @@ def test_openai_materializes_ai_obligation(monkeypatch) -> None:
     assert result.obligations[0].obligation_code == "OBL-AI-001"
     assert result.obligations[0].title == "Submit affidavit"
     assert result.obligations[0].metadata["ai_provider"] == "openai"
+    source = result.obligations[0].metadata["source_evidence"]
+    assert source["clause_index"] == 7
+    assert source["page_number"] == 1
+    assert "affidavit" in (source["excerpt"] or "")
+
+
+def test_action_plan_prompt_includes_source_evidence_schema() -> None:
+    prompt = ai_extraction._build_prompt(
+        [{"clause_index": 1, "page_number": 1, "text": "Sample clause"}],
+        3,
+    )
+
+    assert '"source_evidence"' in prompt
+    assert '"clause_span"' in prompt
+    assert '"excerpt"' in prompt
+    assert "never present final legal advice" in prompt
+    assert "authorized legal counsel" in prompt
 
 
 def test_gemini_selection_requires_api_key(monkeypatch) -> None:
@@ -255,9 +262,7 @@ def test_gemini_selection_requires_api_key(monkeypatch) -> None:
         orderflow_ai_gemini_api_key=None,
     )
     document_id = uuid4()
-    clauses = [
-        _make_clause(clause_index=1, text="District administration shall file report.")
-    ]
+    clauses = [_make_clause(clause_index=1, text="District administration shall file report.")]
 
     result = ai_extraction.maybe_extract_obligations_with_ai(
         clauses=clauses,
@@ -292,6 +297,7 @@ def test_gemini_selection_applies_quota_friendly_prompt_budget(monkeypatch) -> N
 
 
 def test_falls_back_to_gemini_when_openai_fails(monkeypatch) -> None:
+    monkeypatch.setattr(ai_extraction, "_REMOTE_FALLBACK_ORDER", ("gemini",))
     _set_ai_settings(
         monkeypatch,
         orderflow_ai_enabled_default=True,
@@ -308,9 +314,7 @@ def test_falls_back_to_gemini_when_openai_fails(monkeypatch) -> None:
         )
     ]
 
-    def fake_post_json(
-        *, url: str, headers: dict[str, str], payload: dict[str, object]
-    ):
+    def fake_post_json(*, url: str, headers: dict[str, str], payload: dict[str, object]):
         if "openai.com" in url:
             raise ValueError("OpenAI temporary outage")
 
