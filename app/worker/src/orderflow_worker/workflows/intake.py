@@ -12,7 +12,11 @@ with workflow.unsafe.imports_passed_through():
     from orderflow_worker.core.config import settings
     from orderflow_worker.activities.intake import (
         DEFAULT_ACTION_PLAN_PROMPT_VERSION,
+        DEFAULT_ACTION_PLAN_MODEL,
+        DEFAULT_ACTION_PLAN_PROVIDER,
+        DEFAULT_DOCUMENT_SUMMARY_MODEL,
         DEFAULT_DOCUMENT_SUMMARY_PROMPT_VERSION,
+        DEFAULT_DOCUMENT_SUMMARY_PROVIDER,
         DEFAULT_PAGE_EXTRACTION_MODEL,
         DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION,
         DEFAULT_PAGE_EXTRACTION_PROVIDER,
@@ -31,6 +35,8 @@ ACTIVITY_TIMEOUT = timedelta(minutes=5)
 TRANSLATION_TIMEOUT = timedelta(seconds=30)
 RATE_LIMIT_BUFFER_SECONDS = 5
 RECOVERY_SUCCESS_TARGET = 5
+PAGE_TRANSIENT_RETRY_LIMIT = 2
+PAGE_TRANSIENT_RETRY_BASE_SECONDS = 5
 
 
 @workflow.defn(name="orderflow-intake-workflow")
@@ -124,10 +130,66 @@ class IntakeWorkflow:
                 return_exceptions=True,
             )
             for page_number, page_result in zip(page_chunk, page_results):
+                transient_attempts = 0
                 while isinstance(page_result, Exception):
                     rate_limit = _rate_limit_details(page_result)
                     if rate_limit is None:
-                        raise page_result
+                        transient_error = _transient_page_error_details(page_result)
+                        if (
+                            transient_error is None
+                            or transient_attempts >= PAGE_TRANSIENT_RETRY_LIMIT
+                        ):
+                            raise page_result
+
+                        transient_attempts += 1
+                        success_streak = 0
+                        pause_seconds = _transient_page_retry_delay(transient_attempts)
+                        retry_traces.append(
+                            _workflow_trace_attributes(
+                                document_id=document_id,
+                                workflow_stage="pages_extracting",
+                                page_number=page_number,
+                                retry_state="retrying_failed_page",
+                                retry_after_seconds=pause_seconds,
+                                current_concurrency=current_concurrency,
+                            )
+                        )
+                        await workflow.execute_activity(
+                            activity_pause_intake_job,
+                            {
+                                "document_id": document_id,
+                                "retry_after_seconds": pause_seconds,
+                                "paused_until": (
+                                    workflow.now() + timedelta(seconds=pause_seconds)
+                                ).isoformat(),
+                                "error_code": transient_error.error_code,
+                                "error_message": transient_error.error_message,
+                                "current_concurrency": current_concurrency,
+                            },
+                            start_to_close_timeout=TRANSLATION_TIMEOUT,
+                        )
+                        await workflow.sleep(timedelta(seconds=pause_seconds))
+                        await workflow.execute_activity(
+                            activity_resume_intake_job,
+                            {
+                                "document_id": document_id,
+                                "current_concurrency": current_concurrency,
+                            },
+                            start_to_close_timeout=TRANSLATION_TIMEOUT,
+                        )
+                        try:
+                            page_result = await workflow.execute_activity(
+                                activity_extract_page_cached,
+                                _page_extraction_context(
+                                    translation_context,
+                                    page_number=page_number,
+                                    total_pages=max(page_numbers),
+                                ),
+                                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                            )
+                        except Exception as exc:
+                            page_result = exc
+                        continue
 
                     success_streak = 0
                     (
@@ -427,8 +489,24 @@ def _summary_context(payload: dict[str, str]) -> dict[str, str]:
             "summary_prompt_version",
             DEFAULT_DOCUMENT_SUMMARY_PROMPT_VERSION,
         ),
-        "ai_provider": _payload_text(payload, "summary_ai_provider", "openai"),
-        "ai_model": _payload_text(payload, "summary_ai_model", "gpt-4o"),
+        "ai_provider": _payload_text(
+            payload,
+            "summary_ai_provider",
+            _payload_text(
+                payload,
+                "page_ai_provider",
+                _payload_text(payload, "ai_provider", DEFAULT_DOCUMENT_SUMMARY_PROVIDER),
+            ),
+        ),
+        "ai_model": _payload_text(
+            payload,
+            "summary_ai_model",
+            _payload_text(
+                payload,
+                "page_ai_model",
+                _payload_text(payload, "ai_model", DEFAULT_DOCUMENT_SUMMARY_MODEL),
+            ),
+        ),
         "bypass_cache": _payload_text(payload, "bypass_cache", "false"),
     }
 
@@ -444,9 +522,13 @@ def _action_plan_context(payload: dict[str, str]) -> dict[str, str]:
         "ai_provider": _payload_text(
             payload,
             "action_plan_ai_provider",
-            "openai",
+            _payload_text(payload, "ai_provider", DEFAULT_ACTION_PLAN_PROVIDER),
         ),
-        "ai_model": _payload_text(payload, "action_plan_ai_model", "gpt-4o"),
+        "ai_model": _payload_text(
+            payload,
+            "action_plan_ai_model",
+            _payload_text(payload, "ai_model", DEFAULT_ACTION_PLAN_MODEL),
+        ),
     }
 
 
@@ -562,6 +644,12 @@ class RateLimitDetails:
     error_message: str
 
 
+@dataclass(frozen=True)
+class TransientPageErrorDetails:
+    error_code: str
+    error_message: str
+
+
 def _rate_limit_details(error: Exception) -> RateLimitDetails | None:
     if isinstance(error, temporal_exceptions.ActivityError):
         cause = error.cause
@@ -596,6 +684,35 @@ def _rate_limit_details(error: Exception) -> RateLimitDetails | None:
     return None
 
 
+def _transient_page_error_details(error: Exception) -> TransientPageErrorDetails | None:
+    if isinstance(error, temporal_exceptions.ActivityError):
+        cause = error.cause
+        if isinstance(cause, Exception):
+            return _transient_page_error_details(cause)
+
+    text = f"{type(error).__name__} {error}".lower()
+    if _contains_any(text, ("timeout", "timed out")):
+        return TransientPageErrorDetails(
+            error_code="ai_timeout",
+            error_message="Page extraction timed out. Retrying only this page.",
+        )
+    if _contains_any(text, ("network", "connection", "dns", "tls", "ssl", "unreachable")):
+        return TransientPageErrorDetails(
+            error_code="ai_network_error",
+            error_message="AI network error. Retrying only this page.",
+        )
+    if _contains_any(text, ("invalid_json", "invalid json", "jsondecodeerror")):
+        return TransientPageErrorDetails(
+            error_code="ai_invalid_json",
+            error_message="AI returned invalid JSON. Retrying only this page.",
+        )
+    return None
+
+
+def _contains_any(value: str, needles: tuple[str, ...]) -> bool:
+    return any(needle in value for needle in needles)
+
+
 def _halve_concurrency(current: int) -> int:
     return max(1, current // 2)
 
@@ -621,6 +738,10 @@ def _maybe_restore_concurrency(
 
     restored = min(maximum, max(1, current * 2))
     return restored, 0, restored != current
+
+
+def _transient_page_retry_delay(attempt: int) -> int:
+    return PAGE_TRANSIENT_RETRY_BASE_SECONDS * max(1, attempt)
 
 
 def _page_value(

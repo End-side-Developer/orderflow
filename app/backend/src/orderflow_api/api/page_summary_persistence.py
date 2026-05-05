@@ -33,6 +33,10 @@ PAGE_SUMMARIES_TABLE = sa.Table(
     sa.Column("summary", sa.Text(), nullable=True),
     sa.Column("key_points", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column("important_highlights", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column("entities", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column("dates", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column("directions", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column("departments", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column("context_links", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column("obligation_ids", postgresql.ARRAY(postgresql.UUID(as_uuid=True)), nullable=True),
     sa.Column("extracted_places", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
@@ -57,6 +61,10 @@ def create_page_summary(
     summary: str | None = None,
     key_points: list[str] | None = None,
     important_highlights: list[dict] | None = None,
+    entities: list[dict] | None = None,
+    dates: list[dict] | None = None,
+    directions: list[dict] | None = None,
+    departments: list[dict] | None = None,
     context_links: list[dict] | None = None,
     obligation_ids: list[UUID] | None = None,
     extracted_places: list[ExtractedPlace | dict[str, Any]] | None = None,
@@ -81,6 +89,10 @@ def create_page_summary(
         "summary": summary,
         "key_points": key_points,
         "important_highlights": important_highlights,
+        "entities": entities,
+        "dates": dates,
+        "directions": directions,
+        "departments": departments,
         "context_links": context_links,
         "obligation_ids": obligation_ids,
         "extracted_places": stored_places,
@@ -100,7 +112,16 @@ def create_page_summary(
     with get_engine().begin() as connection:
         connection.execute(sa.insert(PAGE_SUMMARIES_TABLE).values(**values))
 
-    return PageSummaryRecord(**{**values, "extracted_places": stored_places or []})
+    return PageSummaryRecord(
+        **{
+            **values,
+            "entities": entities or [],
+            "dates": dates or [],
+            "directions": directions or [],
+            "departments": departments or [],
+            "extracted_places": stored_places or [],
+        }
+    )
 
 
 def upsert_page_summary(
@@ -110,6 +131,10 @@ def upsert_page_summary(
     summary: str | None = None,
     key_points: list[str] | None = None,
     important_highlights: list[dict] | None = None,
+    entities: list[dict] | None = None,
+    dates: list[dict] | None = None,
+    directions: list[dict] | None = None,
+    departments: list[dict] | None = None,
     context_links: list[dict] | None = None,
     obligation_ids: list[UUID] | None = None,
     extracted_places: list[ExtractedPlace | dict[str, Any]] | None = None,
@@ -133,6 +158,10 @@ def upsert_page_summary(
         "summary": summary,
         "key_points": key_points,
         "important_highlights": important_highlights,
+        "entities": entities,
+        "dates": dates,
+        "directions": directions,
+        "departments": departments,
         "context_links": context_links,
         "obligation_ids": obligation_ids,
         "extracted_places": stored_places,
@@ -160,6 +189,10 @@ def upsert_page_summary(
             "summary": statement.excluded.summary,
             "key_points": statement.excluded.key_points,
             "important_highlights": statement.excluded.important_highlights,
+            "entities": statement.excluded.entities,
+            "dates": statement.excluded.dates,
+            "directions": statement.excluded.directions,
+            "departments": statement.excluded.departments,
             "context_links": statement.excluded.context_links,
             "obligation_ids": statement.excluded.obligation_ids,
             "extracted_places": statement.excluded.extracted_places,
@@ -368,6 +401,10 @@ def _to_page_summary(
         summary=row["summary"],
         key_points=row["key_points"] or [],
         important_highlights=row["important_highlights"] or [],
+        entities=row["entities"] or [],
+        dates=row["dates"] or [],
+        directions=row["directions"] or [],
+        departments=row["departments"] or [],
         context_links=row["context_links"] or [],
         obligation_ids=row["obligation_ids"] or [],
         extracted_places=places,

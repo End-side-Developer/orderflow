@@ -34,6 +34,45 @@ class ContextLink(BaseModel):
     reason: str = Field(..., description="Why this page is related")
 
 
+class PageEntity(BaseModel):
+    """A person, institution, department, court, or other entity found on a page."""
+
+    name: str
+    entity_type: str | None = None
+    role: str | None = None
+    source_location: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class PageDate(BaseModel):
+    """A date or timeline reference found on a page."""
+
+    date_text: str
+    label: str | None = None
+    source_location: str | None = None
+    is_inferred: bool = False
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class PageDirection(BaseModel):
+    """A legal or administrative direction found on a page."""
+
+    direction_text: str
+    source_location: str | None = None
+    directive_kind: Literal["mandatory", "advisory", "needs_review"] = "needs_review"
+    compliance_required: Literal["yes", "no", "needs_review"] = "needs_review"
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class PageDepartment(BaseModel):
+    """A department or authority mention found on a page."""
+
+    name: str
+    role: str | None = None
+    source_location: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 PlaceType = Literal["court", "property", "incident", "address", "jurisdiction", "other"]
 GeocodeSource = Literal["nominatim", "cache", "fallback_court_metadata", "none"]
 
@@ -79,6 +118,10 @@ class PageSummaryRecord(BaseModel):
         default_factory=list,
         description="Critical/important quotes with explanations",
     )
+    entities: list[PageEntity] = Field(default_factory=list)
+    dates: list[PageDate] = Field(default_factory=list)
+    directions: list[PageDirection] = Field(default_factory=list)
+    departments: list[PageDepartment] = Field(default_factory=list)
 
     # Connections
     context_links: list[ContextLink] = Field(

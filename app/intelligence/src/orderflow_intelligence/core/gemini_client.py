@@ -394,9 +394,9 @@ def call_gemini_json(
                 content = data["choices"][0]["message"]["content"]
                 return {"candidates": [{"content": {"parts": [{"text": content}]}}]}
         except httpx.HTTPStatusError as exc:
-            raise GeminiError(f"groq replacement failed: {exc}", "groq_failed", http_status=exc.response.status_code, retryable=False) from exc
+            raise GeminiError(f"groq replacement failed: {exc}", provider_detail="groq_failed") from exc
         except Exception as exc:
-            raise GeminiError(f"groq replacement failed: {exc}", "groq_failed", http_status=500, retryable=False) from exc
+            raise GeminiError(f"groq replacement failed: {exc}", provider_detail="groq_failed") from exc
 
     encoded_model = urllib_parse.quote(model, safe="")
     reservation = _GEMINI_QUOTA_GUARD.reserve(

@@ -140,10 +140,10 @@ async def _run_page_extraction_cached(
         context,
     )
     if not page_text.strip():
+        # Raise a specific message that _user_facing_page_error recognizes
+        # so the UI surfaces an OCR guidance message instead of a raw ValueError.
         raise ValueError(
-            "Page text is required for page-summary cache miss: "
-            f"document_id={context.document_id} "
-            f"page_number={context.page_number}"
+            "Unable to extract text from PDF: no readable text layer found"
         )
 
     effective_content_hash = context.content_hash or backend.calculate_page_content_hash(page_text)
@@ -218,6 +218,10 @@ async def _run_page_extraction_cached(
         summary=_text_or_default(extraction.get("summary"), ""),
         key_points=_string_list(extraction.get("key_points")),
         important_highlights=_dict_list(extraction.get("highlights")),
+        entities=_dict_list(extraction.get("entities")),
+        dates=_dict_list(extraction.get("dates")),
+        directions=_dict_list(extraction.get("directions")),
+        departments=_dict_list(extraction.get("departments")),
         context_links=[link for link in context_links if isinstance(link, dict)],
         obligation_ids=_page_obligation_ids(backend, context),
         extracted_places=extracted_places,
@@ -423,8 +427,9 @@ async def activity_generate_full_summary(
         obligations=obligations,
     )
 
-    # Enrich overview and key_directives with AI if available
-    api_key = _api_key_for_provider(backend.settings, context.ai_provider)
+    # Enrich overview and key_directives with AI if available.
+    backend_settings = getattr(backend, "settings", None)
+    api_key = _api_key_for_provider(backend_settings, context.ai_provider)
     if api_key and context.ai_provider in {"gemini", "groq"}:
         try:
             enriched = _ai_enrich_document_summary(
@@ -1153,6 +1158,12 @@ def _load_page_text_from_clauses(
     backend: PageExtractionBackend,
     context: PageExtractionContext,
 ) -> str:
+    # Check if any clauses exist for this document at all (any page).
+    # If not, the intake extraction step was never run; seed clauses from the PDF now.
+    all_clauses = backend.list_persisted_clauses(document_id=context.document_uuid)
+    if not all_clauses:
+        _seed_clauses_from_pdf(context.document_uuid)
+
     clauses = backend.list_persisted_clauses(
         document_id=context.document_uuid,
         page_number=context.page_number,
@@ -1162,6 +1173,55 @@ def _load_page_text_from_clauses(
         for clause in clauses
         if (isinstance(getattr(clause, "text", None), str) and clause.text.strip())
     )
+
+
+def _seed_clauses_from_pdf(document_uuid: UUID) -> None:
+    """Fetch the document PDF from object storage, extract + segment text, and persist clauses.
+
+    This runs when the page-extraction workflow fires before the frontend's
+    intake-extraction step has had a chance to populate clauses in the DB.
+    """
+    _ensure_backend_src_on_path()
+    try:
+        from orderflow_api.api.document_persistence import (  # noqa: PLC0415
+            get_persisted_document,
+        )
+        from orderflow_api.api.extraction_engine import (  # noqa: PLC0415
+            decode_document_text,
+            segment_clauses,
+        )
+        from orderflow_api.api.extraction_persistence import (  # noqa: PLC0415
+            replace_document_extraction,
+        )
+        from orderflow_api.core.storage import (  # noqa: PLC0415
+            build_object_storage_client,
+            get_object_bytes,
+        )
+
+        document = get_persisted_document(document_uuid)
+        if document is None or not document.object_key:
+            return
+
+        storage_client = build_object_storage_client()
+        payload = get_object_bytes(storage_client, document.object_key)
+        if not payload:
+            return
+
+        raw_text = decode_document_text(
+            payload,
+            document.source_file_type,
+            document.source_file_name,
+        )
+        clauses = segment_clauses(raw_text=raw_text, document_id=document_uuid)
+        if clauses:
+            replace_document_extraction(
+                document_id=document_uuid,
+                clauses=clauses,
+                obligations=[],
+            )
+    except Exception:
+        # Swallow errors — caller will raise OCR error if text is still empty.
+        pass
 
 
 def _page_obligation_ids(

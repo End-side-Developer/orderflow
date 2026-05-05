@@ -258,6 +258,8 @@ async def start_intake(
     bypass_cache: bool = False,
     pages_total: int = 0,
     current_concurrency: int = 1,
+    ai_provider: str | None = None,
+    ai_model: str | None = None,
 ) -> StartIntakeResult:
     """Create or reuse an intake job and ensure its Temporal workflow is running."""
     document = get_persisted_document(document_id)
@@ -268,11 +270,14 @@ async def start_intake(
         document_id,
         pages_total=pages_total,
         current_concurrency=current_concurrency,
+        bypass_cache=bypass_cache,
     )
     workflow_run, workflow_started = await _ensure_intake_workflow(
         document,
         bypass_cache=bypass_cache,
         current_concurrency=current_concurrency,
+        ai_provider=ai_provider,
+        ai_model=ai_model,
     )
     return StartIntakeResult(
         job=job,
@@ -533,6 +538,7 @@ def _ensure_started_job(
     *,
     pages_total: int,
     current_concurrency: int,
+    bypass_cache: bool = False,
 ) -> ExtractionJobStatusData:
     existing = get_extraction_job(document_id)
     if existing is None:
@@ -544,11 +550,11 @@ def _ensure_started_job(
             started_at=datetime.now(UTC),
         )
 
-    if existing.stage == "pending":
+    if existing.stage == "pending" or bypass_cache:
         updated = update_extraction_job_stage(
             document_id,
             "pages_extracting",
-            started_at=existing.started_at or datetime.now(UTC),
+            started_at=datetime.now(UTC),
         )
         if updated is not None:
             return updated
@@ -583,8 +589,10 @@ async def _ensure_intake_workflow(
     *,
     bypass_cache: bool,
     current_concurrency: int,
+    ai_provider: str | None = None,
+    ai_model: str | None = None,
 ) -> tuple[WorkflowRunRecord, bool]:
-    if document.workflow_run_id:
+    if document.workflow_run_id and not bypass_cache:
         existing_run = get_workflow_run_by_run_id(document.workflow_run_id)
         if existing_run is not None:
             return existing_run, False
@@ -603,6 +611,16 @@ async def _ensure_intake_workflow(
         "bypass_cache": "true" if bypass_cache else "false",
         "current_concurrency": str(max(1, current_concurrency)),
     }
+    if ai_provider:
+        workflow_input["ai_provider"] = ai_provider
+        workflow_input["page_ai_provider"] = ai_provider
+        workflow_input["summary_ai_provider"] = ai_provider
+        workflow_input["action_plan_ai_provider"] = ai_provider
+    if ai_model:
+        workflow_input["ai_model"] = ai_model
+        workflow_input["page_ai_model"] = ai_model
+        workflow_input["summary_ai_model"] = ai_model
+        workflow_input["action_plan_ai_model"] = ai_model
     # Pass pages_total from document metadata if available
     pages_total = document.metadata.get("pages_total") if document.metadata else None
     if pages_total is not None:

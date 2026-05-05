@@ -219,6 +219,19 @@ def _snippet(text: str, start: int, end: int, *, radius: int = 60) -> str:
     return re.sub(r"\s+", " ", text[left:right]).strip()
 
 
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _safe_error_text(error: Exception) -> str:
+    text = str(error)
+    text = re.sub(r"api[_-]?key=[^\s,;]+", "[redacted credential]", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:sk|AIza)[A-Za-z0-9_\-]{8,}\b", "[redacted]", text)
+    return text
+
+
 class PageSummaryExtractor:
     """
     Extract AI-powered summaries for each page of a judgment.
@@ -339,6 +352,10 @@ class PageSummaryExtractor:
                     summary=extraction.get("summary", ""),
                     key_points=extraction.get("key_points", []),
                     important_highlights=extraction.get("highlights", []),
+                    entities=_dict_list(extraction.get("entities")),
+                    dates=_dict_list(extraction.get("dates")),
+                    directions=_dict_list(extraction.get("directions")),
+                    departments=_dict_list(extraction.get("departments")),
                     context_links=[link for link in context_links],
                     obligation_ids=page_obligations,
                     extracted_places=extracted_places,
@@ -448,12 +465,12 @@ class PageSummaryExtractor:
                 self.ai_provider,
                 self.model,
                 type(exc).__name__,
-                exc,
+                _safe_error_text(exc),
             )
             # Fallback to deterministic extraction
             result = self._deterministic_extract_page(page_text)
             result["ai_fallback"] = True
-            result["ai_fallback_reason"] = f"{type(exc).__name__}: {exc}"
+            result["ai_fallback_reason"] = f"{type(exc).__name__}: {_safe_error_text(exc)}"
             return result
 
     def _build_system_prompt(self) -> str:
@@ -475,7 +492,22 @@ Your task is to analyze pages of judgment documents and extract:
    - Include significance level (critical/important/contextual)
    - Explain why it matters for decision-making
 
-4. PLACES: Identify Indian places that physically exist and could be plotted on a map
+4. ENTITIES: Extract important names and institutions on this page
+   - Include parties, departments, officers, courts, judges, institutions, and advocates when useful
+   - Explain their role if visible from the page
+
+5. DATES: Extract dates and timelines on this page
+   - Mark inferred timelines as is_inferred=true
+   - Do not invent dates that are not stated or safely inferable
+
+6. DIRECTIONS: Extract legal or administrative directions on this page
+   - Mark whether each appears mandatory, advisory, or needs_review
+   - Mark whether compliance is required: yes, no, or needs_review
+
+7. DEPARTMENTS: Extract government departments or responsible authorities
+   - Include source location and role when visible
+
+8. PLACES: Identify Indian places that physically exist and could be plotted on a map
    - Include courts, cities, districts, property addresses, incident sites, and jurisdictions
    - Skip abstract references such as "petitioner's residence" without a town or address
    - Prefer the most specific form available
@@ -490,6 +522,41 @@ Return valid JSON with this exact structure:
             "text": "exact quote or key phrase",
             "significance": "critical|important|contextual",
             "relevance": "one sentence explaining why this matters"
+        }
+    ],
+    "entities": [
+        {
+            "name": "entity name",
+            "entity_type": "petitioner|respondent|department|officer|court|judge|advocate|institution|other",
+            "role": "role on this page or null",
+            "source_location": "paragraph/line/source clue or null",
+            "confidence": 0.85
+        }
+    ],
+    "dates": [
+        {
+            "date_text": "date or timeline text",
+            "label": "order date|deadline|hearing date|limitation period|other",
+            "source_location": "paragraph/line/source clue or null",
+            "is_inferred": false,
+            "confidence": 0.85
+        }
+    ],
+    "directions": [
+        {
+            "direction_text": "direction in simple English",
+            "source_location": "paragraph/line/source clue or null",
+            "directive_kind": "mandatory|advisory|needs_review",
+            "compliance_required": "yes|no|needs_review",
+            "confidence": 0.85
+        }
+    ],
+    "departments": [
+        {
+            "name": "department or authority",
+            "role": "responsibility on this page or null",
+            "source_location": "paragraph/line/source clue or null",
+            "confidence": 0.85
         }
     ],
     "places": [
@@ -517,7 +584,7 @@ Focus on:
 
 {page_text}
 
-Extract summary, key points, and important highlights as JSON.
+Extract page summary, key points, highlights, entities, dates, directions, departments, and places as JSON.
 Remember: Legal precision is critical. Don't lose context."""
 
     async def _call_openai(self, system: str, user: str) -> dict[str, Any]:
@@ -536,7 +603,7 @@ Remember: Legal precision is critical. Don't lose context."""
                     {"role": "user", "content": user},
                 ],
                 temperature=self.temperature,
-                max_tokens=1500,
+                max_tokens=2400,
             )
 
             content = response.choices[0].message.content
@@ -558,7 +625,7 @@ Remember: Legal precision is critical. Don't lose context."""
             client = Anthropic(api_key=self.api_key)
             response = client.messages.create(
                 model=self.model,
-                max_tokens=1500,
+                max_tokens=2400,
                 system=system,
                 messages=[{"role": "user", "content": user}],
             )
@@ -688,9 +755,89 @@ Page text:
             "summary": summary if summary else "Analysis of judgment page.",
             "key_points": key_points if key_points else ["No explicit key points extracted."],
             "highlights": [],
+            "entities": self._deterministic_entities(page_text),
+            "dates": self._deterministic_dates(page_text),
+            "directions": self._deterministic_directions(page_text),
+            "departments": self._deterministic_departments(page_text),
             "places": [],
             "confidence": 0.3,  # Low confidence for fallback
         }
+
+    def _deterministic_entities(self, page_text: str) -> list[dict[str, Any]]:
+        entities: list[dict[str, Any]] = []
+        patterns = (
+            (r"\b(?:petitioner|appellant)\s+([A-Z][A-Za-z .]{2,80})", "petitioner"),
+            (r"\b(?:respondent)\s+([A-Z][A-Za-z .]{2,80})", "respondent"),
+            (r"\b(?:High Court|Supreme Court|District Court)[A-Za-z ,.'-]{0,80}", "court"),
+        )
+        for pattern, entity_type in patterns:
+            for match in re.finditer(pattern, page_text, re.IGNORECASE):
+                entities.append(
+                    {
+                        "name": match.group(0).strip(" ,.;:"),
+                        "entity_type": entity_type,
+                        "role": None,
+                        "source_location": "deterministic_text_match",
+                        "confidence": 0.35,
+                    }
+                )
+                if len(entities) >= 8:
+                    return entities
+        return entities
+
+    def _deterministic_dates(self, page_text: str) -> list[dict[str, Any]]:
+        dates: list[dict[str, Any]] = []
+        pattern = re.compile(
+            r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+"
+            r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
+            r"\s+\d{4}|\d+\s+days?)\b",
+            re.IGNORECASE,
+        )
+        for match in pattern.finditer(page_text):
+            dates.append(
+                {
+                    "date_text": match.group(0),
+                    "label": "timeline",
+                    "source_location": "deterministic_text_match",
+                    "is_inferred": False,
+                    "confidence": 0.35,
+                }
+            )
+            if len(dates) >= 8:
+                break
+        return dates
+
+    def _deterministic_directions(self, page_text: str) -> list[dict[str, Any]]:
+        directions: list[dict[str, Any]] = []
+        for sentence in re.split(r"(?<=[.!?])\s+", page_text):
+            if re.search(r"\b(direct|ordered|shall|must|comply|submit|file)\b", sentence, re.I):
+                directions.append(
+                    {
+                        "direction_text": sentence.strip()[:500],
+                        "source_location": "deterministic_sentence_match",
+                        "directive_kind": "mandatory",
+                        "compliance_required": "yes",
+                        "confidence": 0.35,
+                    }
+                )
+                if len(directions) >= 6:
+                    break
+        return directions
+
+    def _deterministic_departments(self, page_text: str) -> list[dict[str, Any]]:
+        departments: list[dict[str, Any]] = []
+        for match in re.finditer(r"\b[A-Z][A-Za-z &]{2,60}\s+Department\b", page_text):
+            departments.append(
+                {
+                    "name": match.group(0).strip(),
+                    "role": None,
+                    "source_location": "deterministic_text_match",
+                    "confidence": 0.35,
+                }
+            )
+            if len(departments) >= 6:
+                break
+        return departments
 
     def _deterministic_place_candidates(
         self,

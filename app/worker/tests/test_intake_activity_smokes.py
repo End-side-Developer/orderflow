@@ -199,6 +199,33 @@ def test_adaptive_concurrency_quota_error_halves_pauses_and_restores() -> None:
     assert (current_concurrency, success_streak, restored) == (4, 0, True)
 
 
+def test_transient_page_error_retries_only_failed_page() -> None:
+    error = temporal_exceptions.ApplicationError(
+        "Invalid JSON from provider",
+        type="invalid_ai_json",
+        non_retryable=True,
+    )
+
+    details = intake_workflow._transient_page_error_details(error)
+    delay = intake_workflow._transient_page_retry_delay(2)
+    retry_trace = intake_workflow._workflow_trace_attributes(
+        document_id=str(uuid4()),
+        workflow_stage="pages_extracting",
+        page_number=7,
+        retry_state="retrying_failed_page",
+        retry_after_seconds=delay,
+        current_concurrency=1,
+    )
+
+    assert details == intake_workflow.TransientPageErrorDetails(
+        error_code="ai_invalid_json",
+        error_message="AI returned invalid JSON. Retrying only this page.",
+    )
+    assert delay == intake_workflow.PAGE_TRANSIENT_RETRY_BASE_SECONDS * 2
+    assert retry_trace["orderflow.retry.state"] == "retrying_failed_page"
+    assert retry_trace["orderflow.page_number"] == 7
+
+
 def test_worker_trace_attributes_cover_page_cache_and_retry_state() -> None:
     document_id = str(uuid4())
     context = SimpleNamespace(

@@ -531,14 +531,10 @@ def call_groq_json(
     except httpx.HTTPStatusError as exc:
         raise GeminiError(
             f"Groq request failed: {exc}",
-            "groq_failed",
-            http_status=exc.response.status_code,
-            retryable=False,
+            provider_detail="groq_failed",
         ) from exc
     except Exception as exc:
         raise GeminiError(
             f"Groq request failed: {exc}",
-            "groq_failed",
-            http_status=500,
-            retryable=False,
+            provider_detail="groq_failed",
         ) from exc

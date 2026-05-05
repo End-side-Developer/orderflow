@@ -90,6 +90,8 @@ class CaseIntakeStartRequest(BaseModel):
     bypass_cache: bool = False
     pages_total: int = Field(default=0, ge=0)
     current_concurrency: int = Field(default=1, ge=1)
+    ai_provider: str | None = None
+    ai_model: str | None = None
 
 
 @router.post(
@@ -112,6 +114,8 @@ async def start_case_intake_route(
             bypass_cache=request_payload.bypass_cache,
             pages_total=request_payload.pages_total,
             current_concurrency=request_payload.current_concurrency,
+            ai_provider=request_payload.ai_provider,
+            ai_model=request_payload.ai_model,
         )
     except IntakeOrchestratorError as exc:
         raise to_http_exception(exc) from exc
@@ -155,7 +159,7 @@ async def stream_case_intake_events_route(
 
     async def event_stream():
         terminal_stages = {"finalized", "failed"}
-        last_stage = None
+        last_snapshot: dict[str, object] | None = None
         max_iterations = 300  # ~10 minutes at 2s intervals
         poll_interval = 2.0
 
@@ -165,17 +169,22 @@ async def stream_case_intake_events_route(
             except IntakeOrchestratorError:
                 current_job = None
 
-            if current_job is not None and current_job.stage != last_stage:
-                last_stage = current_job.stage
+            if current_job is not None:
+                snapshot = current_job.model_dump(mode="json")
+                if snapshot == last_snapshot:
+                    await asyncio.sleep(poll_interval)
+                    continue
+
+                last_snapshot = snapshot
                 payload = {
                     "ok": True,
                     "message": "case_intake_status",
-                    "data": current_job.model_dump(mode="json"),
+                    "data": snapshot,
                     "polling_fallback": f"/api/v1/cases/{document_id}/intake/status",
                 }
                 yield f"event: intake_status\ndata: {json.dumps(payload)}\n\n"
 
-                if last_stage in terminal_stages:
+                if current_job.stage in terminal_stages:
                     return
 
             await asyncio.sleep(poll_interval)

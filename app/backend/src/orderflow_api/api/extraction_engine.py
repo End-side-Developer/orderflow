@@ -413,12 +413,57 @@ def _decode_pdf_with_docling(payload: bytes, source_file_name: str | None) -> st
         if temp_file_path is not None:
             temp_file_path.unlink(missing_ok=True)
 
+    # Try page-aware export first so downstream page-number tracking is correct.
+    page_text = _coerce_docling_text_by_page(result)
+    if page_text:
+        return page_text
+
     text = _coerce_docling_text(result)
     if text is None:
         return None
 
     normalized = _normalize_document_text(text)
     return normalized or None
+
+
+def _coerce_docling_text_by_page(result: object) -> str | None:
+    """Export docling result as page-separated text using \f as page separator."""
+    document = getattr(result, "document", None)
+    if document is None:
+        return None
+
+    # Build a mapping page_no → [text fragments] using item provenance
+    iterate_items = getattr(document, "iterate_items", None)
+    if not callable(iterate_items):
+        return None
+
+    pages: dict[int, list[str]] = {}
+    try:
+        for item_tuple in iterate_items():
+            item = item_tuple[0] if isinstance(item_tuple, tuple) else item_tuple
+            text_val = getattr(item, "text", None)
+            if not isinstance(text_val, str) or not text_val.strip():
+                continue
+            prov = getattr(item, "prov", None)
+            page_no = 1
+            if prov:
+                first_prov = prov[0] if isinstance(prov, (list, tuple)) and prov else prov
+                page_no = getattr(first_prov, "page_no", 1) or 1
+            pages.setdefault(page_no, []).append(text_val.strip())
+    except Exception:
+        return None
+
+    if not pages:
+        return None
+
+    max_page = max(pages.keys())
+    page_texts = []
+    for pg in range(1, max_page + 1):
+        fragments = pages.get(pg, [])
+        page_texts.append(_normalize_document_text("\n".join(fragments)) if fragments else "")
+
+    joined = "\f".join(page_texts)
+    return joined if joined.strip() else None
 
 
 def _decode_pdf_with_pypdf(payload: bytes) -> str | None:
@@ -552,38 +597,37 @@ def _extract_binary_printable_text(payload: bytes) -> str | None:
     return None
 
 
-# Tokens that appear in PDF dictionary / object syntax. If any of these show
-# up in our "extracted text" it means we are scraping the file's structural
-# bytes rather than its content stream — never legitimate document text.
+# Tokens that unambiguously appear only in PDF dictionary / object syntax.
+# These are checked as exact substrings and should never appear in natural text.
 _PDF_STRUCTURE_MARKERS: tuple[str, ...] = (
     "%PDF-",
-    " obj",
     "endobj",
-    "stream",
     "endstream",
-    "xref",
-    "/Filter",
-    "/Length",
     "/FlateDecode",
-    "/Type",
     "/Catalog",
-    "/Pages",
-    "/Page",
     "/MediaBox",
-    "/Font",
-    "/Encoding",
-    "/Resources",
     "<<",
-    ">>",
-    "trailer",
     "startxref",
+)
+
+# Regex patterns for PDF tokens that could appear as substrings of real words
+# (e.g. " obj" inside "objections", "stream" inside "mainstream").
+# Require word-boundary or whitespace context so they only match structural syntax.
+_PDF_STRUCTURE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b\d+\s+\d+\s+obj\b"),   # e.g. "12 0 obj"
+    re.compile(r"\bxref\b"),
+    re.compile(r"\btrailer\b\s*<<"),
+    re.compile(r"^stream\s*$", re.MULTILINE),
+    re.compile(r"^endstream\s*$", re.MULTILINE),
 )
 
 
 def _contains_pdf_structure_tokens(text: str) -> bool:
     if not text:
         return False
-    return any(marker in text for marker in _PDF_STRUCTURE_MARKERS)
+    if any(marker in text for marker in _PDF_STRUCTURE_MARKERS):
+        return True
+    return any(pat.search(text) is not None for pat in _PDF_STRUCTURE_PATTERNS)
 
 
 def _is_mostly_printable(text: str, threshold: float = 0.8) -> bool:

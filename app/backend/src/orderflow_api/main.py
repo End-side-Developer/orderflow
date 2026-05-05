@@ -120,6 +120,7 @@ def create_app() -> FastAPI:
         retry_after = details.get("retry_after_seconds")
         if isinstance(retry_after, int) and retry_after > 0:
             response.headers["retry-after"] = str(retry_after)
+        _attach_cors_headers(request, response)
         return response
 
     @app.exception_handler(Exception)
@@ -131,7 +132,9 @@ def create_app() -> FastAPI:
             message="Unexpected server error",
             request_id=request_id,
         )
-        return JSONResponse(status_code=500, content=payload)
+        response = JSONResponse(status_code=500, content=payload)
+        _attach_cors_headers(request, response)
+        return response
 
     @app.get("/health", tags=["health"])
     async def root_health(request: Request) -> dict[str, object]:
@@ -158,6 +161,24 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def _attach_cors_headers(request: Request, response: JSONResponse) -> None:
+    origin = request.headers.get("origin")
+    if not origin:
+        return
+
+    allowed_origins = settings.cors_origins
+    if origin not in allowed_origins:
+        return
+
+    response.headers.setdefault("access-control-allow-origin", origin)
+    response.headers.setdefault("access-control-allow-credentials", "true")
+    vary = response.headers.get("vary")
+    if not vary:
+        response.headers["vary"] = "Origin"
+    elif "origin" not in vary.lower():
+        response.headers["vary"] = f"{vary}, Origin"
 
 
 def run() -> None:
