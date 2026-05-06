@@ -314,7 +314,7 @@ export function ReviewPanel({
   if (isLoading) {
     return (
       <div className="flex min-h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="flex items-center gap-2 text-sm text-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading review queue
         </div>
@@ -346,8 +346,8 @@ export function ReviewPanel({
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Human review</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="text-lg font-semibold text-foreground">Human review</h2>
+          <p className="mt-1 text-sm text-foreground">
             Check each AI-generated item against its cited page before approval.
           </p>
         </div>
@@ -386,8 +386,8 @@ export function ReviewPanel({
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <UserRound className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Reviewer</h3>
+          <UserRound className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">Reviewer</h3>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Input
@@ -543,7 +543,7 @@ function ReviewItemCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
           {item.description || "No description captured."}
         </p>
 
@@ -562,7 +562,7 @@ function ReviewItemCard({
 
         {confidencePercent != null ? (
           <div className="rounded-md bg-slate-50 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-slate-600">
+            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-foreground">
               <span>Extraction confidence</span>
               <span className="flex flex-wrap items-center justify-end gap-2">
                 {needsHumanReview ? (
@@ -578,8 +578,8 @@ function ReviewItemCard({
         <div className="rounded-md border border-slate-200 p-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-slate-500" />
-              <p className="text-xs font-semibold uppercase text-slate-500">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
                 Cited source
               </p>
             </div>
@@ -594,11 +594,11 @@ function ReviewItemCard({
             </Button>
           </div>
           {item.citation?.clause_span ? (
-            <p className="line-clamp-4 break-words text-xs leading-5 text-slate-600">
+            <p className="line-clamp-4 break-words text-xs leading-5 text-foreground">
               {item.citation.clause_span}
             </p>
           ) : (
-            <p className="text-xs text-slate-500">Citation text was not captured.</p>
+            <p className="text-xs text-muted-foreground">Citation text was not captured.</p>
           )}
         </div>
 
@@ -737,11 +737,11 @@ function RegenerationFeedbackDialog({
                 Regenerated {item.regen_count} time{item.regen_count === 1 ? "" : "s"}
               </Badge>
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950">
+            <p className="break-words text-sm font-semibold text-foreground">
               {item.title}
             </p>
             {item.description ? (
-              <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-slate-600">
+              <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-foreground">
                 {item.description}
               </p>
             ) : null}
@@ -749,10 +749,10 @@ function RegenerationFeedbackDialog({
 
           {item.citation?.clause_span ? (
             <div className="rounded-md bg-slate-50 p-3">
-              <p className="mb-1 text-xs font-semibold uppercase text-slate-500">
+              <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
                 Current cited source
               </p>
-              <p className="line-clamp-4 break-words text-xs leading-5 text-slate-600">
+              <p className="line-clamp-4 break-words text-xs leading-5 text-foreground">
                 {item.citation.clause_span}
               </p>
             </div>
@@ -804,7 +804,7 @@ function InlineForm({
 }) {
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-      <p className="mb-3 text-sm font-semibold text-slate-950">{title}</p>
+      <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
       <div className="flex flex-col gap-3">{children}</div>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
@@ -876,3 +876,5 @@ function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
+
+

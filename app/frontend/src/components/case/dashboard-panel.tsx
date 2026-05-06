@@ -101,7 +101,7 @@ export function DashboardPanel({ documentId }: DashboardPanelProps) {
   if (isLoading) {
     return (
       <div className="flex min-h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="flex items-center gap-2 text-sm text-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading trusted dashboard
         </div>
@@ -133,10 +133,10 @@ export function DashboardPanel({ documentId }: DashboardPanelProps) {
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">
+          <h2 className="text-lg font-semibold text-foreground">
             Trusted dashboard
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-foreground">
             Only verified records are shown in the dashboard.
           </p>
         </div>
@@ -162,18 +162,18 @@ export function DashboardPanel({ documentId }: DashboardPanelProps) {
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">
             Department groups
           </h3>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {stats.departmentTotals.map((group) => (
             <div key={group.name} className="rounded-md bg-slate-50 px-3 py-2">
-              <div className="break-words text-sm font-semibold text-slate-950">
+              <div className="break-words text-sm font-semibold text-foreground">
                 {group.name}
               </div>
-              <div className="mt-1 text-xs text-slate-500">
+              <div className="mt-1 text-xs text-muted-foreground">
                 {group.total} verified action{group.total === 1 ? "" : "s"}
               </div>
             </div>
@@ -237,11 +237,11 @@ function VerifiedActionCard({ item }: { item: ObligationRecord }) {
     <div className="rounded-md border border-slate-200 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="break-words text-sm font-semibold text-slate-950">
+          <p className="break-words text-sm font-semibold text-foreground">
             {item.title}
           </p>
           {item.description ? (
-            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
               {item.description}
             </p>
           ) : null}
@@ -290,17 +290,17 @@ function SourceEvidence({ item }: { item: ObligationRecord }) {
   return (
     <div className="mt-3 rounded-md bg-slate-50 p-3">
       <div className="mb-1 flex items-center gap-2">
-        <FileText className="h-4 w-4 text-slate-500" />
-        <p className="text-xs font-semibold uppercase text-slate-500">
+        <FileText className="h-4 w-4 text-muted-foreground" />
+        <p className="text-xs font-semibold uppercase text-muted-foreground">
           Verified source
         </p>
       </div>
       {item.citation.clause_span ? (
-        <p className="line-clamp-3 break-words text-xs leading-5 text-slate-600">
+        <p className="line-clamp-3 break-words text-xs leading-5 text-foreground">
           {item.citation.clause_span}
         </p>
       ) : (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground">
           Source page captured without excerpt text.
         </p>
       )}
@@ -311,8 +311,8 @@ function SourceEvidence({ item }: { item: ObligationRecord }) {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-slate-200 p-4">
-      <div className="text-2xl font-semibold text-slate-950">{value}</div>
-      <div className="mt-1 text-sm text-slate-600">{label}</div>
+      <div className="text-2xl font-semibold text-foreground">{value}</div>
+      <div className="mt-1 text-sm text-foreground">{label}</div>
     </div>
   );
 }
@@ -328,11 +328,11 @@ function SmallFact({
 }) {
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-500">
+      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon === "date" ? <CalendarDays className="h-4 w-4" /> : null}
         {label}
       </div>
-      <div className="break-words text-sm font-semibold text-slate-950">
+      <div className="break-words text-sm font-semibold text-foreground">
         {value}
       </div>
     </div>
@@ -366,3 +366,5 @@ function riskVariant(riskBand: ObligationRecord["risk_band"]) {
 function formatMachineLabel(value: string) {
   return value.replaceAll("_", " ");
 }
+
+

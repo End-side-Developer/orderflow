@@ -50,8 +50,8 @@ export function StageStepper({
                 isActive
                   ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
                   : isLocked
-                  ? "text-slate-400 cursor-not-allowed"
-                  : "text-slate-700 hover:bg-slate-50"
+                  ? "text-muted-foreground cursor-not-allowed"
+                  : "text-foreground hover:bg-slate-50"
               }`}
             >
               {isCompleted ? (
@@ -74,3 +74,5 @@ export function StageStepper({
     </div>
   );
 }
+
+

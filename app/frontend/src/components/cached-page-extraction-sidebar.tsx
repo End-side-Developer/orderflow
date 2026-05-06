@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -37,6 +37,13 @@ export function CachedPageExtractionSidebar({
   onRetry,
   onJumpToPage,
 }: CachedPageExtractionSidebarProps) {
+  const [activeTab, setActiveTab] = useState("overview");
+
+  // Reset tab to overview when the page changes
+  useEffect(() => {
+    setActiveTab("overview");
+  }, [currentPage]);
+
   if (loading) {
     return (
       <aside className="flex min-h-0 flex-col gap-3 border-l border-border bg-card p-4">
@@ -111,7 +118,7 @@ export function CachedPageExtractionSidebar({
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-border px-4 pt-3">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Summary</TabsTrigger>
@@ -122,9 +129,9 @@ export function CachedPageExtractionSidebar({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <TabsContent value="overview" className="m-0 flex flex-col gap-4">
+          <TabsContent value="overview" className="m-0 flex flex-col gap-6">
             <Section title="Page Summary">
-              <p className="whitespace-pre-wrap break-words text-sm leading-6 text-card-foreground/90">
+              <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground">
                 {pageSummary.summary || "No summary captured for this page."}
               </p>
             </Section>
@@ -135,11 +142,11 @@ export function CachedPageExtractionSidebar({
 
             <Section title="Key Points">
               {pageSummary.key_points.length > 0 ? (
-                <ul className="flex flex-col gap-2">
+                <ul className="flex flex-col gap-3">
                   {pageSummary.key_points.map((point, index) => (
-                    <li key={`${point}-${index}`} className="flex gap-2 text-sm leading-6">
-                      <CheckCircle2 className="mt-1 shrink-0 text-good" />
-                      <span className="break-words text-card-foreground/90">{point}</span>
+                    <li key={`${point}-${index}`} className="flex gap-2 text-[15px] leading-relaxed">
+                      <CheckCircle2 className="mt-[2px] h-5 w-5 shrink-0 text-emerald-600" />
+                      <span className="break-words text-foreground">{point}</span>
                     </li>
                   ))}
                 </ul>
@@ -268,20 +275,20 @@ function Highlights({ pageSummary }: { pageSummary: PageSummaryRecord }) {
     return <EmptyText text="No important paragraphs cached for this page." />;
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {pageSummary.important_highlights.map((highlight, index) => (
-        <div key={`${highlight.text}-${index}`} className="rounded-md border border-border p-3">
+        <div key={`${highlight.text}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 shadow-sm">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge variant={highlight.significance === "critical" ? "warn" : "muted"}>
+            <Badge variant={highlight.significance === "critical" ? "destructive" : "secondary"} className="text-[10px] font-semibold uppercase tracking-wider">
               {highlight.significance}
             </Badge>
           </div>
-          <p className="line-clamp-4 break-words text-xs leading-5 text-muted-foreground">
-            {highlight.text}
+          <p className="line-clamp-4 break-words text-[14px] leading-relaxed text-foreground italic border-l-2 border-slate-300 pl-3">
+            "{highlight.text}"
           </p>
           {highlight.relevance ? (
-            <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
-              {highlight.relevance}
+            <p className="mt-3 break-words text-[13px] font-medium leading-relaxed text-foreground">
+              <span className="font-semibold text-foreground">Relevance:</span> {highlight.relevance}
             </p>
           ) : null}
         </div>
@@ -373,3 +380,5 @@ function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
+
+

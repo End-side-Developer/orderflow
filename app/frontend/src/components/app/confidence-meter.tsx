@@ -53,3 +53,5 @@ export function ConfidenceMeter({ value, label, compact = false, className }: Co
     </div>
   );
 }
+
+

@@ -93,3 +93,5 @@ export function RiskScoreGauge({ score, band, factors, compact = false }: RiskSc
     </div>
   );
 }
+
+

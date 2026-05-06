@@ -28,3 +28,5 @@ export function QuickActionCard({ icon, title, description, onClick }: QuickActi
     </Card>
   );
 }
+
+

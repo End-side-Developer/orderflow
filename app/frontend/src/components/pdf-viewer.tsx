@@ -233,7 +233,7 @@ export function PdfViewer({
   // Handle zoom
   function handleZoom(direction: "in" | "out") {
     const newScale = direction === "in" ? scale + 0.25 : scale - 0.25;
-    if (newScale >= 0.5 && newScale <= 3.0) {
+    if (newScale >= 0.5 && newScale <= 5.0) {
       setScale(newScale);
     }
   }
@@ -314,7 +314,7 @@ export function PdfViewer({
             size="sm"
             variant="outline"
             onClick={() => handleZoom("in")}
-            disabled={scale >= 3.0}
+            disabled={scale >= 5.0}
           >
             <Plus data-icon="inline-start" />
             Zoom
@@ -322,11 +322,11 @@ export function PdfViewer({
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(280px,34%)]">
-        <div className="min-w-0 overflow-auto bg-background p-4">
-          <div className="relative mx-auto inline-block rounded-md bg-white shadow-2xl">
-            <canvas ref={canvasRef} className="rounded-md bg-white" />
-          <PdfOverlayLayer
+      <div className="grid min-h-0 flex-1 grid-cols-[8fr_10fr]">
+        <div className="min-w-0 overflow-auto bg-background p-4 relative">
+          <div className="relative mx-auto rounded-md shadow-2xl flex justify-center w-fit">
+            <canvas ref={canvasRef} className="rounded-md bg-white" style={{ maxWidth: 'none' }} />
+            <PdfOverlayLayer
             annotations={annotations}
             currentPage={currentPage}
             scale={scale}
@@ -334,7 +334,7 @@ export function PdfViewer({
           </div>
         </div>
 
-        <div className="min-h-0 min-w-0">
+        <div className="flex h-full min-w-0 flex-col overflow-y-auto border-l border-border bg-card">
           <CachedPageExtractionSidebar
             currentPage={currentPage}
             pageSummary={currentPageSummary}
@@ -365,3 +365,5 @@ export function PdfViewer({
     </div>
   );
 }
+
+

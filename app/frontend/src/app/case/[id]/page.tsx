@@ -98,7 +98,7 @@ export default function CaseWizardPage({
     return (
       <div className="flex flex-col h-full bg-slate-50">
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-slate-500 animate-pulse">Loading case data...</div>
+          <div className="text-muted-foreground animate-pulse">Loading case data...</div>
         </div>
       </div>
     );
@@ -112,8 +112,8 @@ export default function CaseWizardPage({
         onStageClick={handleStageClick}
       />
 
-      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[minmax(420px,0.92fr)_minmax(560px,1.08fr)]">
-        <div className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-border bg-card shadow-sm">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className="flex shrink-0 flex-col rounded-lg border border-border bg-card shadow-sm">
           {activeStage === "extraction" && (
             <PageExtractionPanel
               documentId={documentId}
@@ -142,7 +142,7 @@ export default function CaseWizardPage({
           )}
         </div>
 
-        <div className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm xl:min-h-0">
+        <div className="flex min-h-[500px] flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
           {document ? (
             <PdfViewer
               documentId={documentId}
@@ -150,7 +150,7 @@ export default function CaseWizardPage({
               onPageChange={setPdfPage}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center text-slate-400">
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
               PDF not available
             </div>
           )}
@@ -159,3 +159,4 @@ export default function CaseWizardPage({
     </div>
   );
 }
+

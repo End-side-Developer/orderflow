@@ -101,7 +101,7 @@ export function PdfOverlayLayer({
             <div className="text-gray-300">{hoveredAnnotation.tooltip_text}</div>
           )}
           {hoveredAnnotation.text_content && (
-            <div className="text-gray-400 text-xs mt-1 italic">
+            <div className="text-muted-foreground text-xs mt-1 italic">
               &ldquo;{hoveredAnnotation.text_content.substring(0, 100)}…&rdquo;
             </div>
           )}
@@ -110,3 +110,5 @@ export function PdfOverlayLayer({
     </div>
   );
 }
+
+

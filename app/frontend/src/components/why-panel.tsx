@@ -185,3 +185,5 @@ export function WhyPanel({ obligation, documentId, defaultOpen = false }: WhyPan
     </Collapsible>
   );
 }
+
+

@@ -469,10 +469,10 @@ export default function UploadPage() {
   const submitting = stage === "uploading" || stage === "workflow";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8 pb-8">
       <PageHeader
         eyebrow={
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 text-muted-foreground/80">
             Add new case <InfoHint glossaryKey="intake" />
           </span>
         }
@@ -480,98 +480,106 @@ export default function UploadPage() {
         subtitle="Pick a file or fetch from Indian eCourts. Page extraction starts automatically in the case workflow."
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Globe className="h-4 w-4" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-medium text-foreground/90">
+              <Globe className="h-4 w-4 text-muted-foreground/70" />
               Indian eCourts fetch
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-sm leading-relaxed text-muted-foreground/80">
               One Delhi High Court identifier — auto-fetch the PDF and prefill CCMS/CIS.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Label htmlFor="online_lookup_id">Case id or judgment token/URL</Label>
-            <Input
-              id="online_lookup_id"
-              placeholder="W.P.(C) 8524/2025 or token / URL"
-              value={onlineLookupId}
-              onChange={(e) => setOnlineLookupId(e.target.value)}
-            />
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="online_lookup_id" className="text-sm font-medium text-foreground/80">Case id or judgment token/URL</Label>
+              <Input
+                id="online_lookup_id"
+                placeholder="W.P.(C) 8524/2025 or token / URL"
+                value={onlineLookupId}
+                onChange={(e) => setOnlineLookupId(e.target.value)}
+                className="h-10 transition-colors"
+              />
+            </div>
             <Button
               type="button"
+              variant="default"
+              className="gap-2 font-medium cursor-pointer shadow-md transition-all hover:shadow-lg"
               onClick={() => void handleOnlineIndianECourtsLookup()}
               disabled={!onlineLookupId.trim()}
             >
-              <Search />
+              <Search className="h-4 w-4" />
               Fetch and prefill form
             </Button>
             {onlineLookupStatus ? (
-              <Alert>
-                <AlertDescription>{onlineLookupStatus}</AlertDescription>
+              <Alert className="mt-1 bg-muted/40">
+                <AlertDescription className="text-sm text-foreground/80">{onlineLookupStatus}</AlertDescription>
               </Alert>
             ) : null}
             {onlineLookupError ? (
-              <Alert variant="destructive">
-                <AlertDescription>{onlineLookupError}</AlertDescription>
+              <Alert variant="destructive" className="mt-1 border-destructive/50">
+                <AlertDescription className="text-sm font-medium">{onlineLookupError}</AlertDescription>
               </Alert>
             ) : null}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileSearch className="h-4 w-4" />
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-medium text-foreground/90">
+              <FileSearch className="h-4 w-4 text-muted-foreground/70" />
               Reload saved document
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-sm leading-relaxed text-muted-foreground/80">
               Restore a previously uploaded PDF and its CCMS/CIS metadata.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Label htmlFor="document_lookup_id">Document id</Label>
-            <Input
-              id="document_lookup_id"
-              placeholder="UUID of a saved document"
-              value={documentLookupId}
-              onChange={(e) => setDocumentLookupId(e.target.value)}
-            />
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="document_lookup_id" className="text-sm font-medium text-foreground/80">Document id</Label>
+              <Input
+                id="document_lookup_id"
+                placeholder="UUID of a saved document"
+                value={documentLookupId}
+                onChange={(e) => setDocumentLookupId(e.target.value)}
+                className="h-10 transition-colors"
+              />
+            </div>
             <Button
               type="button"
               variant="outline"
+              className="gap-2 font-medium cursor-pointer transition-colors"
               onClick={() => void handleLoadDocumentById()}
               disabled={!documentLookupId.trim()}
             >
-              <FileSearch />
+              <FileSearch className="h-4 w-4" />
               Load and prefill form
             </Button>
             {documentLookupStatus ? (
-              <Alert>
-                <AlertDescription>{documentLookupStatus}</AlertDescription>
+              <Alert className="mt-1 bg-muted/40">
+                <AlertDescription className="text-sm text-foreground/80">{documentLookupStatus}</AlertDescription>
               </Alert>
             ) : null}
             {documentLookupError ? (
-              <Alert variant="destructive">
-                <AlertDescription>{documentLookupError}</AlertDescription>
+              <Alert variant="destructive" className="mt-1 border-destructive/50">
+                <AlertDescription className="text-sm font-medium">{documentLookupError}</AlertDescription>
               </Alert>
             ) : null}
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Intake form</CardTitle>
-          <CardDescription>
-            All fields except the file are optional. Switch to Indian eCourts to enable CCMS/CIS
-            metadata.
+      <Card className="shadow-md">
+        <CardHeader className="border-b bg-muted/10 pb-6">
+          <CardTitle className="text-lg font-semibold text-foreground/90">Intake configuration</CardTitle>
+          <CardDescription className="text-sm leading-relaxed text-muted-foreground/80">
+            All fields except the file are optional. Switch to Indian eCourts to enable CCMS/CIS metadata parsing.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-5">
-            <div className="grid gap-3 md:grid-cols-2">
+        <CardContent className="pt-6">
+          <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-8">
+            <div className="grid gap-5 md:grid-cols-2">
               <Field id="intake_source" label="Intake source">
                 <Select
                   value={intakeSource}
@@ -579,7 +587,7 @@ export default function UploadPage() {
                     if (v === "upload" || v === "indian_ecourts") setIntakeSource(v);
                   }}
                 >
-                  <SelectTrigger id="intake_source">
+                  <SelectTrigger id="intake_source" className="h-10 cursor-pointer">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -590,17 +598,17 @@ export default function UploadPage() {
                 <input type="hidden" name="intake_source" value={intakeSource} />
               </Field>
               <Field id="judgment" label="Judgment file">
-                <Input id="judgment" name="judgment" type="file" required accept="application/pdf" />
+                <Input id="judgment" name="judgment" type="file" required accept="application/pdf" className="h-10 text-muted-foreground/90 file:font-medium" />
               </Field>
               <Field id="case_id" label="Case id (optional)">
-                <Input id="case_id" name="case_id" placeholder="CASE-2026-001" />
+                <Input id="case_id" name="case_id" placeholder="CASE-2026-001" className="h-10 text-foreground/90" />
               </Field>
               <Field id="department" label="Department (optional)">
-                <Input id="department" name="department" placeholder="District Administration" />
+                <Input id="department" name="department" placeholder="District Administration" className="h-10 text-foreground/90" />
               </Field>
               <Field id="source_language" label="Source language">
                 <Select value={sourceLanguage} onValueChange={setSourceLanguage}>
-                  <SelectTrigger id="source_language">
+                  <SelectTrigger id="source_language" className="h-10 cursor-pointer">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -616,102 +624,46 @@ export default function UploadPage() {
             </div>
 
             {intakeSource === "indian_ecourts" ? (
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">CCMS / CIS metadata</CardTitle>
-                  <CardDescription>
+              <Card className="border-dashed bg-muted/20 shadow-none">
+                <CardHeader className="pb-4 pt-5">
+                  <CardTitle className="text-base font-medium text-foreground/90">CCMS / CIS metadata</CardTitle>
+                  <CardDescription className="text-sm text-muted-foreground/80">
                     Either CCMS reference id or CIS case id is required for Indian eCourts intake.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-3 md:grid-cols-2">
-                  <Field id="ccms_reference_id" label="CCMS reference id">
-                    <Input id="ccms_reference_id" name="ccms_reference_id" placeholder="CCMS-REF-2026-001" />
-                  </Field>
-                  <Field id="ccms_delivery_timestamp" label="CCMS delivery timestamp (ISO)">
-                    <Input
-                      id="ccms_delivery_timestamp"
-                      name="ccms_delivery_timestamp"
-                      placeholder="2026-04-24T10:15:00Z"
-                    />
-                  </Field>
-                  <Field id="ccms_document_type" label="CCMS document type">
-                    <Input id="ccms_document_type" name="ccms_document_type" placeholder="final_order" />
-                  </Field>
-                  <Field id="ccms_source_url" label="CCMS source URL">
-                    <Input id="ccms_source_url" name="ccms_source_url" placeholder="https://...pdf" />
-                  </Field>
-                  <Field id="ccms_source_gateway" label="CCMS source gateway">
-                    <Input
-                      id="ccms_source_gateway"
-                      name="ccms_source_gateway"
-                      placeholder="indian-ecourts-service"
-                    />
-                  </Field>
-                  <Field id="ccms_receipt_id" label="CCMS receipt id">
-                    <Input id="ccms_receipt_id" name="ccms_receipt_id" placeholder="CCMS-RECEIPT-001" />
-                  </Field>
-                  <Field id="cis_case_id" label="CIS case id">
-                    <Input id="cis_case_id" name="cis_case_id" placeholder="CIS-CASE-2026-981" />
-                  </Field>
-                  <Field id="cis_court_name" label="CIS court name">
-                    <Input id="cis_court_name" name="cis_court_name" placeholder="High Court of Karnataka" />
-                  </Field>
-                  <Field id="cis_court_code" label="CIS court code">
-                    <Input id="cis_court_code" name="cis_court_code" placeholder="KAHC01" />
-                  </Field>
-                  <Field id="cis_order_date" label="CIS order date">
-                    <Input id="cis_order_date" name="cis_order_date" type="date" />
-                  </Field>
-                  <Field id="cis_bench" label="CIS bench">
-                    <Input id="cis_bench" name="cis_bench" placeholder="Division Bench" />
-                  </Field>
-                  <Field id="cis_parties" label="CIS parties (comma separated)">
-                    <Input id="cis_parties" name="cis_parties" placeholder="State, Petitioner" />
-                  </Field>
-                  <Field id="cis_petitioners" label="CIS petitioners">
-                    <Input id="cis_petitioners" name="cis_petitioners" placeholder="Petitioner 1, Petitioner 2" />
-                  </Field>
-                  <Field id="cis_respondents" label="CIS respondents">
-                    <Input id="cis_respondents" name="cis_respondents" placeholder="Union of India, State" />
-                  </Field>
-                  <Field id="cis_case_type" label="CIS case type">
-                    <Input id="cis_case_type" name="cis_case_type" placeholder="Writ Petition" />
-                  </Field>
-                  <Field id="cis_filing_number" label="CIS filing number">
-                    <Input id="cis_filing_number" name="cis_filing_number" placeholder="Filing No. 1234/2025" />
-                  </Field>
-                  <Field id="cis_diary_number" label="CIS diary number">
-                    <Input id="cis_diary_number" name="cis_diary_number" placeholder="Diary No. 9876/2025" />
-                  </Field>
-                  <Field id="cis_judge_names" label="CIS judge names">
-                    <Input id="cis_judge_names" name="cis_judge_names" placeholder="Justice A, Justice B" />
-                  </Field>
-                  <Field id="cis_hearing_stage" label="CIS hearing stage">
-                    <Input id="cis_hearing_stage" name="cis_hearing_stage" placeholder="Judgment pronounced" />
-                  </Field>
-                  <Field id="cis_state" label="CIS state">
-                    <Input id="cis_state" name="cis_state" placeholder="Karnataka" />
-                  </Field>
-                  <Field id="cis_district" label="CIS district">
-                    <Input id="cis_district" name="cis_district" placeholder="Bengaluru" />
-                  </Field>
-                  <Field id="cis_department_tags" label="CIS department tags">
-                    <Input
-                      id="cis_department_tags"
-                      name="cis_department_tags"
-                      placeholder="Revenue, Urban Development"
-                    />
-                  </Field>
+                <CardContent className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field id="ccms_reference_id" label="CCMS reference id"><Input id="ccms_reference_id" name="ccms_reference_id" placeholder="CCMS-REF-2026-001" className="h-9" /></Field>
+                  <Field id="ccms_delivery_timestamp" label="CCMS delivery timestamp (ISO)"><Input id="ccms_delivery_timestamp" name="ccms_delivery_timestamp" placeholder="2026-04-24T10:15:00Z" className="h-9" /></Field>
+                  <Field id="ccms_document_type" label="CCMS document type"><Input id="ccms_document_type" name="ccms_document_type" placeholder="final_order" className="h-9" /></Field>
+                  <Field id="ccms_source_url" label="CCMS source URL"><Input id="ccms_source_url" name="ccms_source_url" placeholder="https://...pdf" className="h-9" /></Field>
+                  <Field id="ccms_source_gateway" label="CCMS source gateway"><Input id="ccms_source_gateway" name="ccms_source_gateway" placeholder="indian-ecourts-service" className="h-9" /></Field>
+                  <Field id="ccms_receipt_id" label="CCMS receipt id"><Input id="ccms_receipt_id" name="ccms_receipt_id" placeholder="CCMS-RECEIPT-001" className="h-9" /></Field>
+                  <Field id="cis_case_id" label="CIS case id"><Input id="cis_case_id" name="cis_case_id" placeholder="CIS-CASE-2026-981" className="h-9" /></Field>
+                  <Field id="cis_court_name" label="CIS court name"><Input id="cis_court_name" name="cis_court_name" placeholder="High Court of Karnataka" className="h-9" /></Field>
+                  <Field id="cis_court_code" label="CIS court code"><Input id="cis_court_code" name="cis_court_code" placeholder="KAHC01" className="h-9" /></Field>
+                  <Field id="cis_order_date" label="CIS order date"><Input id="cis_order_date" name="cis_order_date" type="date" className="h-9" /></Field>
+                  <Field id="cis_bench" label="CIS bench"><Input id="cis_bench" name="cis_bench" placeholder="Division Bench" className="h-9" /></Field>
+                  <Field id="cis_parties" label="CIS parties (comma separated)"><Input id="cis_parties" name="cis_parties" placeholder="State, Petitioner" className="h-9" /></Field>
+                  <Field id="cis_petitioners" label="CIS petitioners"><Input id="cis_petitioners" name="cis_petitioners" placeholder="Petitioner 1, Petitioner 2" className="h-9" /></Field>
+                  <Field id="cis_respondents" label="CIS respondents"><Input id="cis_respondents" name="cis_respondents" placeholder="Union of India, State" className="h-9" /></Field>
+                  <Field id="cis_case_type" label="CIS case type"><Input id="cis_case_type" name="cis_case_type" placeholder="Writ Petition" className="h-9" /></Field>
+                  <Field id="cis_filing_number" label="CIS filing number"><Input id="cis_filing_number" name="cis_filing_number" placeholder="Filing No. 1234/2025" className="h-9" /></Field>
+                  <Field id="cis_diary_number" label="CIS diary number"><Input id="cis_diary_number" name="cis_diary_number" placeholder="Diary No. 9876/2025" className="h-9" /></Field>
+                  <Field id="cis_judge_names" label="CIS judge names"><Input id="cis_judge_names" name="cis_judge_names" placeholder="Justice A, Justice B" className="h-9" /></Field>
+                  <Field id="cis_hearing_stage" label="CIS hearing stage"><Input id="cis_hearing_stage" name="cis_hearing_stage" placeholder="Judgment pronounced" className="h-9" /></Field>
+                  <Field id="cis_state" label="CIS state"><Input id="cis_state" name="cis_state" placeholder="Karnataka" className="h-9" /></Field>
+                  <Field id="cis_district" label="CIS district"><Input id="cis_district" name="cis_district" placeholder="Bengaluru" className="h-9" /></Field>
+                  <Field id="cis_department_tags" label="CIS department tags"><Input id="cis_department_tags" name="cis_department_tags" placeholder="Revenue, Urban Development" className="h-9" /></Field>
                 </CardContent>
               </Card>
             ) : null}
 
-            <div className="flex flex-col gap-2">
-              <Label className="flex items-center gap-2">
-                <Cpu className="h-3.5 w-3.5" /> AI extraction mode
+            <div className="flex flex-col gap-3">
+              <Label className="flex items-center gap-2 text-sm font-medium text-foreground/90">
+                <Cpu className="h-4 w-4 text-muted-foreground/70" /> AI extraction provider
               </Label>
               <input type="hidden" name="ai_mode" value={selectedAiMode} />
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 {AI_MODES.map((mode) => {
                   const active = selectedAiMode === mode.id;
                   return (
@@ -720,32 +672,33 @@ export default function UploadPage() {
                       type="button"
                       onClick={() => setSelectedAiMode(mode.id)}
                       className={cn(
-                        "flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors",
+                        "flex flex-col items-start gap-1 justify-center rounded-lg border p-3.5 text-left transition-all outline-none cursor-pointer",
                         active
-                          ? "border-primary/60 bg-primary/10 text-foreground"
-                          : "border-border bg-card hover:border-border hover:bg-secondary/40",
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-border bg-card hover:border-primary/50 hover:bg-muted/40",
                       )}
                       aria-pressed={active}
                     >
-                      <span className={cn("text-sm font-semibold", active ? "text-primary" : "text-foreground")}>
+                      <span className={cn("flex w-full items-center justify-between text-sm font-medium", active ? "text-primary" : "text-foreground/80")}>
                         {mode.label}
+                        {active && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary/80"></span>}
                       </span>
-                      <span className="text-xs text-muted-foreground">{mode.desc}</span>
+                      <span className="text-xs text-muted-foreground/70">{mode.desc}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2">
               <Field id="ai_model" label="AI model override (optional)">
-                <Input id="ai_model" name="ai_model" placeholder="gemini-2.0-flash" />
+                <Input id="ai_model" name="ai_model" placeholder="gemini-2.0-flash" className="h-10" />
               </Field>
             </div>
 
-            <div className="flex justify-end">
-              <Button type="submit" disabled={submitting}>
-                <UploadCloud />
+            <div className="flex justify-end pt-2">
+              <Button type="submit" disabled={submitting} className="h-11 gap-2 px-6 font-medium shadow-sm transition-all hover:opacity-90 active:scale-[0.98] cursor-pointer">
+                <UploadCloud className="h-5 w-5" />
                 {submitting ? "Working..." : "Ingest and start page extraction"}
               </Button>
             </div>
@@ -753,19 +706,19 @@ export default function UploadPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base">Pipeline status</CardTitle>
-            <CardDescription>{statusText}</CardDescription>
+      <Card className={cn("shadow-sm transition-colors", stage === "error" ? "border-destructive/60 bg-destructive/5" : "")}>
+        <CardHeader className="flex-row items-center justify-between pb-4">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base font-medium text-foreground/90">Pipeline state</CardTitle>
+            <CardDescription className="text-sm text-muted-foreground/80">{statusText}</CardDescription>
           </div>
-          <Badge variant={STAGE_VARIANT[stage]}>{stageLabel}</Badge>
+          <Badge variant={STAGE_VARIANT[stage]} className="px-2.5 py-1 text-xs font-medium shadow-none">{stageLabel}</Badge>
         </CardHeader>
         {errorText ? (
           <CardContent className="pt-0">
-            <Alert variant="destructive">
-              <AlertTitle>Pipeline error</AlertTitle>
-              <AlertDescription>{errorText}</AlertDescription>
+            <Alert variant="destructive" className="border-destructive/20 bg-destructive/10 text-destructive">
+              <AlertTitle className="font-semibold">Pipeline error</AlertTitle>
+              <AlertDescription className="text-sm opacity-90">{errorText}</AlertDescription>
             </Alert>
           </CardContent>
         ) : null}
@@ -774,6 +727,7 @@ export default function UploadPage() {
             <Button
               type="button"
               variant="outline"
+              className="mt-2 gap-2 font-medium cursor-pointer transition-colors"
               onClick={() => {
                 if (typeof window !== "undefined") {
                   window.localStorage.setItem(
@@ -785,7 +739,7 @@ export default function UploadPage() {
               }}
             >
               Open existing document
-              <ArrowRight />
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>
         ) : null}
@@ -804,9 +758,11 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id} className="text-sm font-medium text-foreground/80">{label}</Label>
       {children}
     </div>
   );
 }
+
+

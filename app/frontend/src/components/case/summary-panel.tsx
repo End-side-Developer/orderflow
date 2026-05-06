@@ -44,7 +44,7 @@ const CaseIncidenceMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="p-4 text-sm text-slate-500">Loading case map...</div>
+      <div className="p-4 text-sm text-muted-foreground">Loading case map...</div>
     ),
   },
 );
@@ -124,7 +124,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
   if (isLoading) {
     return (
       <div className="flex min-h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="flex items-center gap-2 text-sm text-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading full summary
         </div>
@@ -150,10 +150,10 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">
+          <h2 className="text-lg font-semibold text-foreground">
             Full judgment summary
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-foreground">
             {summary.case_basics.case_number ?? summary.case_basics.case_type ?? "Case summary"}
           </p>
         </div>
@@ -188,8 +188,8 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">
             Page-wise summary
           </h3>
         </div>
@@ -198,8 +198,8 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <Scale className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
+          <Scale className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">
             Case basics
           </h3>
         </div>
@@ -220,10 +220,10 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Overview</h3>
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">Overview</h3>
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
           {summary.overview}
         </p>
         <div className="mt-4">
@@ -274,7 +274,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       </Tabs>
 
       {!mapAvailable && summary.map_data?.reason ? (
-        <p className="text-xs text-slate-500">{summary.map_data.reason}</p>
+        <p className="text-xs text-muted-foreground">{summary.map_data.reason}</p>
       ) : null}
 
       <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
@@ -306,8 +306,8 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 function Fact({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 break-words text-sm font-semibold text-slate-950">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 break-words text-sm font-semibold text-foreground">
         {value || "-"}
       </div>
     </div>
@@ -338,13 +338,13 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
                 </Badge>
               ) : null}
             </div>
-            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
               {page.summary}
             </p>
             {page.key_points.length > 0 ? (
               <ul className="mt-3 flex flex-col gap-2">
                 {page.key_points.slice(0, 4).map((point, index) => (
-                  <li key={`${point}-${index}`} className="text-sm leading-6 text-slate-700">
+                  <li key={`${point}-${index}`} className="text-sm leading-6 text-foreground">
                     {point}
                   </li>
                 ))}
@@ -359,7 +359,7 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
                         {highlight.significance}
                       </Badge>
                     </div>
-                    <p className="line-clamp-3 break-words text-xs leading-5 text-slate-600">
+                    <p className="line-clamp-3 break-words text-xs leading-5 text-foreground">
                       {highlight.text}
                     </p>
                   </div>
@@ -409,17 +409,17 @@ function MiniList({
   const visibleItems = items.filter(Boolean).slice(0, 3);
   return (
     <div className="rounded-md bg-slate-50 p-3">
-      <p className="mb-2 text-xs font-semibold uppercase text-slate-500">{title}</p>
+      <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{title}</p>
       {visibleItems.length > 0 ? (
         <ul className="flex flex-col gap-1">
           {visibleItems.map((item, index) => (
-            <li key={`${item}-${index}`} className="line-clamp-2 text-xs leading-5 text-slate-600">
+            <li key={`${item}-${index}`} className="line-clamp-2 text-xs leading-5 text-foreground">
               {item}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-slate-500">{empty}</p>
+        <p className="text-xs text-muted-foreground">{empty}</p>
       )}
     </div>
   );
@@ -446,7 +446,7 @@ function DirectiveList({
               <Badge variant="outline">Page {directive.source_page_number}</Badge>
             ) : null}
           </div>
-          <p className="break-words text-sm leading-6 text-slate-800">
+          <p className="break-words text-sm leading-6 text-foreground">
             {directive.direction_text}
           </p>
           <EvidenceList evidence={directive.source_evidence} />
@@ -463,15 +463,15 @@ function DateList({ dates }: { dates: DocumentSummaryImportantDate[] }) {
       {dates.map((date, index) => (
         <div key={`${date.label}-${index}`} className="rounded-md border border-slate-200 p-4">
           <div className="flex items-start gap-3">
-            <CalendarDays className="mt-0.5 h-4 w-4 text-slate-500" />
+            <CalendarDays className="mt-0.5 h-4 w-4 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="break-words text-sm font-semibold text-slate-950">
+                <p className="break-words text-sm font-semibold text-foreground">
                   {date.label}
                 </p>
                 {date.is_inferred ? <Badge variant="warn">inferred</Badge> : null}
               </div>
-              <p className="mt-1 text-sm text-slate-700">
+              <p className="mt-1 text-sm text-foreground">
                 {date.date_text ?? date.source ?? "-"}
               </p>
               <EvidenceList evidence={date.source_evidence} />
@@ -490,8 +490,8 @@ function EntityList({ entities }: { entities: DocumentSummaryEntity[] }) {
       {entities.map((entity, index) => (
         <div key={`${entity.name}-${index}`} className="rounded-md border border-slate-200 p-4">
           <div className="mb-2 flex items-center gap-2">
-            <Users className="h-4 w-4 text-slate-500" />
-            <p className="break-words text-sm font-semibold text-slate-950">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <p className="break-words text-sm font-semibold text-foreground">
               {entity.name}
             </p>
           </div>
@@ -524,13 +524,13 @@ function DepartmentList({
           className="rounded-md border border-slate-200 p-4"
         >
           <div className="mb-2 flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-slate-500" />
-            <p className="break-words text-sm font-semibold text-slate-950">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <p className="break-words text-sm font-semibold text-foreground">
               {department.primary_department ?? "Unassigned"}
             </p>
           </div>
           {department.reason ? (
-            <p className="mb-3 break-words text-sm leading-6 text-slate-700">
+            <p className="mb-3 break-words text-sm leading-6 text-foreground">
               {department.reason}
             </p>
           ) : null}
@@ -563,7 +563,7 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
               {index + 1}
             </div>
-            <p className="break-words text-sm leading-6 text-slate-700">{step}</p>
+            <p className="break-words text-sm leading-6 text-foreground">{step}</p>
           </div>
         ))}
       </div>
@@ -571,15 +571,15 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
         {graph.nodes.map((node) => (
           <div key={node.id} className="rounded-md border border-slate-200 p-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <GitBranch className="h-4 w-4 text-slate-500" />
+              <GitBranch className="h-4 w-4 text-muted-foreground" />
               <Badge variant="secondary">{node.node_type}</Badge>
               {node.page_ref ? <Badge variant="outline">Page {node.page_ref}</Badge> : null}
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950">
+            <p className="break-words text-sm font-semibold text-foreground">
               {node.label}
             </p>
             {node.detail ? (
-              <p className="mt-2 break-words text-sm leading-6 text-slate-700">
+              <p className="mt-2 break-words text-sm leading-6 text-foreground">
                 {node.detail}
               </p>
             ) : null}
@@ -588,7 +588,7 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
       </div>
       {graph.edges.length > 0 ? (
         <div className="rounded-md border border-slate-200 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase text-slate-500">
+          <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             Flow links
           </p>
           <div className="flex flex-wrap gap-2">
@@ -626,7 +626,7 @@ function EvidenceList({
             ) : null}
           </div>
           {item.source_excerpt ? (
-            <p className="line-clamp-3 break-words text-xs leading-5 text-slate-600">
+            <p className="line-clamp-3 break-words text-xs leading-5 text-foreground">
               {item.source_excerpt}
             </p>
           ) : null}
@@ -638,7 +638,7 @@ function EvidenceList({
 
 function EmptyPanel({ label }: { label: string }) {
   return (
-    <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+    <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-muted-foreground">
       {label}
     </div>
   );
@@ -648,3 +648,5 @@ function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
+
+

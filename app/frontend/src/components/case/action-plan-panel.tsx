@@ -111,7 +111,7 @@ export function ActionPlanPanel({
   if (isLoading) {
     return (
       <div className="flex min-h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="flex items-center gap-2 text-sm text-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading generated action plan
         </div>
@@ -143,10 +143,10 @@ export function ActionPlanPanel({
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">
+          <h2 className="text-lg font-semibold text-foreground">
             Generated action plan
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-foreground">
             {actionPlan.total} item{actionPlan.total === 1 ? "" : "s"} extracted for review
           </p>
         </div>
@@ -168,8 +168,8 @@ export function ActionPlanPanel({
 
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <ClipboardList className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
+          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">
             Plan readiness
           </h3>
         </div>
@@ -253,21 +253,21 @@ function ActionPlanItemCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {item.description ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
             {item.description}
           </p>
         ) : (
-          <p className="text-sm text-slate-500">No description captured.</p>
+          <p className="text-sm text-muted-foreground">No description captured.</p>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Detail icon={<UserRound className="h-4 w-4 text-slate-500" />} label="Owner">
+          <Detail icon={<UserRound className="h-4 w-4 text-muted-foreground" />} label="Owner">
             {item.owner_hint || "Unassigned"}
           </Detail>
-          <Detail icon={<CalendarDays className="h-4 w-4 text-slate-500" />} label="Due date">
+          <Detail icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />} label="Due date">
             {formatDateText(item.due_date)}
           </Detail>
-          <Detail icon={<ShieldAlert className="h-4 w-4 text-slate-500" />} label="Risk">
+          <Detail icon={<ShieldAlert className="h-4 w-4 text-muted-foreground" />} label="Risk">
             <span className="flex flex-wrap gap-2">
               <Badge variant={riskVariant(item.risk_band)}>
                 {formatMachineLabel(item.risk_band ?? "not_scored")}
@@ -277,14 +277,14 @@ function ActionPlanItemCard({
               ) : null}
             </span>
           </Detail>
-          <Detail icon={<ClipboardList className="h-4 w-4 text-slate-500" />} label="Status">
+          <Detail icon={<ClipboardList className="h-4 w-4 text-muted-foreground" />} label="Status">
             {formatMachineLabel(item.status)}
           </Detail>
         </div>
 
         {confidencePercent != null ? (
           <div className="rounded-md bg-slate-50 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-slate-600">
+            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-foreground">
               <span>Extraction confidence</span>
               <span className="flex flex-wrap items-center justify-end gap-2">
                 {needsHumanReview ? (
@@ -310,7 +310,7 @@ function SourceEvidence({
 }) {
   if (!citation) {
     return (
-      <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+      <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-muted-foreground">
         No source evidence attached.
       </div>
     );
@@ -319,8 +319,8 @@ function SourceEvidence({
   return (
     <div className="rounded-md border border-slate-200 p-3">
       <div className="mb-2 flex items-center gap-2">
-        <FileText className="h-4 w-4 text-slate-500" />
-        <p className="text-xs font-semibold uppercase text-slate-500">
+        <FileText className="h-4 w-4 text-muted-foreground" />
+        <p className="text-xs font-semibold uppercase text-muted-foreground">
           Source evidence
         </p>
       </div>
@@ -338,11 +338,11 @@ function SourceEvidence({
         ) : null}
       </div>
       {citation.clause_span ? (
-        <p className="line-clamp-4 break-words text-xs leading-5 text-slate-600">
+        <p className="line-clamp-4 break-words text-xs leading-5 text-foreground">
           {citation.clause_span}
         </p>
       ) : (
-        <p className="text-xs text-slate-500">Citation text was not captured.</p>
+        <p className="text-xs text-muted-foreground">Citation text was not captured.</p>
       )}
     </div>
   );
@@ -359,11 +359,11 @@ function Detail({
 }) {
   return (
     <div className="rounded-md bg-slate-50 p-3">
-      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-500">
+      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
         {label}
       </div>
-      <div className="break-words text-sm font-semibold text-slate-950">
+      <div className="break-words text-sm font-semibold text-foreground">
         {children}
       </div>
     </div>
@@ -373,8 +373,8 @@ function Detail({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-slate-950">{value}</div>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-foreground">{value}</div>
     </div>
   );
 }
@@ -432,3 +432,5 @@ function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
+
+

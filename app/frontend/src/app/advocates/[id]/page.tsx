@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -64,7 +64,7 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
         </div>
         {p.ratings_count > 0 && (
           <Badge variant="secondary" className="text-sm">
-            â˜… {p.ratings_avg?.toFixed(1)} ({p.ratings_count})
+            ★ {p.ratings_avg?.toFixed(1)} ({p.ratings_count})
           </Badge>
         )}
       </div>
@@ -144,10 +144,10 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
                 <span className="text-muted-foreground">Consultation fee</span>
                 <span>
                   {p.consultation_fee_min_inr !== null
-                    ? `â‚¹${p.consultation_fee_min_inr.toLocaleString()}`
-                    : "â€”"}
+                    ? `₹${p.consultation_fee_min_inr.toLocaleString()}`
+                    : "—"}
                   {p.consultation_fee_max_inr !== null
-                    ? ` â€“ â‚¹${p.consultation_fee_max_inr.toLocaleString()}`
+                    ? ` – ₹${p.consultation_fee_max_inr.toLocaleString()}`
                     : ""}
                 </span>
               </div>
@@ -189,7 +189,7 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {item.court_name ?? "Court unknown"}
-                  {item.order_date ? ` · ${item.order_date}` : ""}
+                  {item.order_date ? ` � ${item.order_date}` : ""}
                 </div>
               </Link>
             ))
@@ -203,4 +203,5 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
     </div>
   );
 }
+
 

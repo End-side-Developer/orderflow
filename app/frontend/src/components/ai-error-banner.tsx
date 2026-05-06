@@ -205,3 +205,5 @@ export function AiErrorBanner({ error, onRetry, compact = false, className }: Ai
     </Alert>
   );
 }
+
+

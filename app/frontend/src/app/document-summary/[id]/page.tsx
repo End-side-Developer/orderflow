@@ -8,3 +8,4 @@ export default async function LegacyDocumentSummaryPage({
   const { id } = await params;
   redirect(`/case/${encodeURIComponent(id)}`);
 }
+
