@@ -186,7 +186,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
         </Alert>
       ) : null}
 
-      <section className="rounded-md border border-slate-200 p-4">
+      <section className="rounded-md border border-border p-4">
         <div className="mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">
@@ -196,7 +196,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
         <PageWiseSummaryList pages={pageSummaries} />
       </section>
 
-      <section className="rounded-md border border-slate-200 p-4">
+      <section className="rounded-md border border-border p-4">
         <div className="mb-3 flex items-center gap-2">
           <Scale className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">
@@ -218,7 +218,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
         </div>
       </section>
 
-      <section className="rounded-md border border-slate-200 p-4">
+      <section className="rounded-md border border-border p-4">
         <div className="mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Overview</h3>
@@ -263,7 +263,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
         {mapAvailable ? (
           <TabsContent value="map">
-            <div className="overflow-hidden rounded-md border border-slate-200">
+            <div className="overflow-hidden rounded-md border border-border">
               <CaseIncidenceMap
                 places={summary.map_data?.places ?? []}
                 mode="flow"
@@ -277,7 +277,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
         <p className="text-xs text-muted-foreground">{summary.map_data.reason}</p>
       ) : null}
 
-      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+      <div className="mt-auto flex flex-wrap gap-3 border-t border-border pt-5">
         <Button
           type="button"
           variant="outline"
@@ -324,7 +324,7 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
       {[...pages]
         .sort((a, b) => a.page_number - b.page_number)
         .map((page) => (
-          <div key={page.id} className="rounded-md border border-slate-200 p-4">
+          <div key={page.id} className="rounded-md border border-border p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">Page {page.page_number}</Badge>
@@ -434,7 +434,7 @@ function DirectiveList({
   return (
     <div className="space-y-3">
       {directives.map((directive, index) => (
-        <div key={`${directive.direction_text}-${index}`} className="rounded-md border border-slate-200 p-4">
+        <div key={`${directive.direction_text}-${index}`} className="rounded-md border border-border p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant={directive.directive_kind === "mandatory" ? "warn" : "secondary"}>
               {directive.directive_kind}
@@ -461,7 +461,7 @@ function DateList({ dates }: { dates: DocumentSummaryImportantDate[] }) {
   return (
     <div className="space-y-3">
       {dates.map((date, index) => (
-        <div key={`${date.label}-${index}`} className="rounded-md border border-slate-200 p-4">
+        <div key={`${date.label}-${index}`} className="rounded-md border border-border p-4">
           <div className="flex items-start gap-3">
             <CalendarDays className="mt-0.5 h-4 w-4 text-muted-foreground" />
             <div className="min-w-0 flex-1">
@@ -488,7 +488,7 @@ function EntityList({ entities }: { entities: DocumentSummaryEntity[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {entities.map((entity, index) => (
-        <div key={`${entity.name}-${index}`} className="rounded-md border border-slate-200 p-4">
+        <div key={`${entity.name}-${index}`} className="rounded-md border border-border p-4">
           <div className="mb-2 flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
             <p className="break-words text-sm font-semibold text-foreground">
@@ -521,7 +521,7 @@ function DepartmentList({
       {departments.map((department, index) => (
         <div
           key={`${department.primary_department ?? "department"}-${index}`}
-          className="rounded-md border border-slate-200 p-4"
+          className="rounded-md border border-border p-4"
         >
           <div className="mb-2 flex items-center gap-2">
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -559,7 +559,7 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         {graph.narrative_steps.map((step, index) => (
-          <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-slate-800 p-3">
+          <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-muted p-3">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
               {index + 1}
             </div>
@@ -569,7 +569,7 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {graph.nodes.map((node) => (
-          <div key={node.id} className="rounded-md border border-slate-200 p-4">
+          <div key={node.id} className="rounded-md border border-border p-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <GitBranch className="h-4 w-4 text-muted-foreground" />
               <Badge variant="secondary">{node.node_type}</Badge>
@@ -587,7 +587,7 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
         ))}
       </div>
       {graph.edges.length > 0 ? (
-        <div className="rounded-md border border-slate-200 p-4">
+        <div className="rounded-md border border-border p-4">
           <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             Flow links
           </p>
@@ -638,7 +638,7 @@ function EvidenceList({
 
 function EmptyPanel({ label }: { label: string }) {
   return (
-    <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-muted-foreground">
+    <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
       {label}
     </div>
   );

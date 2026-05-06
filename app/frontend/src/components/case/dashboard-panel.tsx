@@ -160,7 +160,7 @@ export function DashboardPanel({ documentId }: DashboardPanelProps) {
         <Metric label="Human edited" value={String(dashboard.edited_total)} />
       </section>
 
-      <section className="rounded-md border border-slate-200 p-4">
+      <section className="rounded-md border border-border p-4">
         <div className="mb-3 flex items-center gap-2">
           <Building2 className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">
@@ -197,7 +197,7 @@ export function DashboardPanel({ documentId }: DashboardPanelProps) {
         </div>
       )}
 
-      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+      <div className="mt-auto flex flex-wrap gap-3 border-t border-border pt-5">
         <Button type="button" variant="outline" onClick={() => void loadDashboard()}>
           <RefreshCw data-icon="inline-start" />
           Refresh dashboard
@@ -234,7 +234,7 @@ function DashboardGroupCard({ group }: { group: CaseDashboardGroup }) {
 
 function VerifiedActionCard({ item }: { item: ObligationRecord }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="rounded-md border border-border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm font-semibold text-foreground">
@@ -288,7 +288,7 @@ function SourceEvidence({ item }: { item: ObligationRecord }) {
   }
 
   return (
-    <div className="mt-3 rounded-md bg-slate-800 p-3">
+    <div className="mt-3 rounded-md bg-muted p-3">
       <div className="mb-1 flex items-center gap-2">
         <FileText className="h-4 w-4 text-muted-foreground" />
         <p className="text-xs font-semibold uppercase text-muted-foreground">
@@ -310,7 +310,7 @@ function SourceEvidence({ item }: { item: ObligationRecord }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="rounded-md border border-border p-4">
       <div className="text-2xl font-semibold text-foreground">{value}</div>
       <div className="mt-1 text-sm text-foreground">{label}</div>
     </div>

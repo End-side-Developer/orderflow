@@ -384,7 +384,7 @@ export function ReviewPanel({
         </Alert>
       ) : null}
 
-      <section className="rounded-md border border-slate-200 p-4">
+      <section className="rounded-md border border-border p-4">
         <div className="mb-3 flex items-center gap-2">
           <UserRound className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Reviewer</h3>
@@ -453,7 +453,7 @@ export function ReviewPanel({
         }}
       />
 
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
         <Button type="button" variant="outline" onClick={() => void loadActionPlan()}>
           <RefreshCw data-icon="inline-start" />
           Refresh review queue
@@ -575,7 +575,7 @@ function ReviewItemCard({
           </div>
         ) : null}
 
-        <div className="rounded-md border border-slate-200 p-3">
+        <div className="rounded-md border border-border p-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-muted-foreground" />
@@ -727,7 +727,7 @@ function RegenerationFeedbackDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <div className="rounded-md border border-slate-200 p-3">
+          <div className="rounded-md border border-border p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Badge variant="secondary">
                 {item.obligation_code ?? item.id}
@@ -803,7 +803,7 @@ function InlineForm({
   onSubmit: () => void;
 }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-800 p-3">
+    <div className="rounded-md border border-border bg-muted p-3">
       <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
       <div className="flex flex-col gap-3">{children}</div>
       <div className="mt-3 flex flex-wrap gap-2">

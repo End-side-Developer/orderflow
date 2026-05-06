@@ -127,7 +127,7 @@ export function PageExtractionPanel({
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Left Column: Progress & Alerts */}
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 rounded-md border border-border p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-foreground">
                 Pages completed
@@ -176,7 +176,7 @@ export function PageExtractionPanel({
         </div>
 
         {/* Center/Right Columns: Excerpt */}
-        <div className="flex min-h-[200px] flex-col rounded-md border border-slate-200 p-4 shadow-sm lg:col-span-2">
+        <div className="flex min-h-[200px] flex-col rounded-md border border-border p-4 shadow-sm lg:col-span-2">
           <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-muted-foreground" />

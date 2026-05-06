@@ -51,7 +51,7 @@ export function StageStepper({
                   ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
                   : isLocked
                   ? "text-muted-foreground cursor-not-allowed"
-                  : "text-foreground hover:bg-slate-800"
+                  : "text-foreground hover:bg-muted"
               }`}
             >
               {isCompleted ? (

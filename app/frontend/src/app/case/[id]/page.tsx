@@ -77,7 +77,7 @@ export default function CaseWizardPage({
 
   if (docError || progressError) {
     return (
-      <div className="flex flex-col h-full bg-slate-800">
+      <div className="flex flex-col h-full bg-muted">
         <div className="flex-1 flex items-center justify-center">
           <div className="bg-red-50 text-red-600 p-6 rounded-lg max-w-md">
             <h2 className="text-lg font-bold mb-2">Error Loading Case</h2>
@@ -96,7 +96,7 @@ export default function CaseWizardPage({
 
   if (docLoading || progressLoading) {
     return (
-      <div className="flex flex-col h-full bg-slate-800">
+      <div className="flex flex-col h-full bg-muted">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-muted-foreground animate-pulse">Loading case data...</div>
         </div>

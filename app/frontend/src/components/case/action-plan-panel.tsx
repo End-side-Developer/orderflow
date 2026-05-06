@@ -166,7 +166,7 @@ export function ActionPlanPanel({
         </Alert>
       ) : null}
 
-      <section className="rounded-md border border-slate-200 p-4">
+      <section className="rounded-md border border-border p-4">
         <div className="mb-3 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">
@@ -196,7 +196,7 @@ export function ActionPlanPanel({
         </div>
       )}
 
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
         <Button type="button" variant="outline" onClick={() => void loadActionPlan()}>
           <RefreshCw data-icon="inline-start" />
           Refresh action plan
@@ -310,14 +310,14 @@ function SourceEvidence({
 }) {
   if (!citation) {
     return (
-      <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-muted-foreground">
+      <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
         No source evidence attached.
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-slate-200 p-3">
+    <div className="rounded-md border border-border p-3">
       <div className="mb-2 flex items-center gap-2">
         <FileText className="h-4 w-4 text-muted-foreground" />
         <p className="text-xs font-semibold uppercase text-muted-foreground">
