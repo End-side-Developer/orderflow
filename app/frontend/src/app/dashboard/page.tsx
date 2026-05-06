@@ -164,7 +164,6 @@ export default function DashboardPage() {
               {[
                 { label: "Total documents", value: overview.summary.total_documents },
                 { label: "Pending review", value: overview.summary.pending_review },
-                { label: "Open escalations", value: overview.summary.open_escalations },
                 { label: "Critical", value: overview.summary.critical_escalations },
               ].map((kpi) => (
                 <Card key={kpi.label}>

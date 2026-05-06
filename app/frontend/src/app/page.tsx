@@ -93,9 +93,6 @@ export default function OverviewPage() {
         subtitle="OrderFlow turns court judgments into a verifiable execution queue. Intake, analyze, verify, escalate."
         actions={
           <>
-            <Button asChild variant="outline">
-              <Link href="/obligations">Open Verify queue</Link>
-            </Button>
             <Button asChild>
               <Link href="/upload">
                 <Plus />
@@ -167,12 +164,6 @@ export default function OverviewPage() {
               value={overview.summary.pending_review}
               hint="Reviewer gate across all live cases"
               tone="warn"
-            />
-            <KpiTile
-              label="Open escalations"
-              value={overview.summary.open_escalations}
-              hint={`Critical: ${overview.summary.critical_escalations}`}
-              tone={overview.summary.open_escalations > 0 ? "destructive" : "default"}
             />
             <KpiTile
               label="Workflow in flight"
@@ -290,7 +281,6 @@ function DocumentRow({ document }: { document: WorkbenchDocumentCard }) {
       </div>
       <div className="grid grid-cols-3 gap-3 text-sm">
         <Metric label="Pending review" value={document.metrics.pending_review} />
-        <Metric label="Open escalations" value={document.metrics.open_escalations} />
         <Metric label="Completed" value={document.metrics.completed} />
       </div>
       <div className="flex flex-col gap-2 lg:flex-row">
