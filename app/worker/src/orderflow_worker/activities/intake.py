@@ -12,6 +12,7 @@ from uuid import UUID
 from temporalio import activity
 from temporalio import exceptions as temporal_exceptions
 
+from orderflow_worker.core.config import settings
 from orderflow_worker.core.ai_versions import (
     PAGE_EXTRACTION_PROMPT_VERSION,
     PAGE_EXTRACTION_MODEL,
@@ -27,14 +28,14 @@ from orderflow_worker.core.ai_versions import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION = PAGE_EXTRACTION_PROMPT_VERSION
-DEFAULT_PAGE_EXTRACTION_MODEL = PAGE_EXTRACTION_MODEL
-DEFAULT_PAGE_EXTRACTION_PROVIDER = PAGE_EXTRACTION_PROVIDER
+DEFAULT_PAGE_EXTRACTION_MODEL = settings.orderflow_ai_default_model or PAGE_EXTRACTION_MODEL
+DEFAULT_PAGE_EXTRACTION_PROVIDER = settings.orderflow_ai_default_provider or PAGE_EXTRACTION_PROVIDER
 DEFAULT_DOCUMENT_SUMMARY_PROMPT_VERSION = DOCUMENT_SUMMARY_PROMPT_VERSION
-DEFAULT_DOCUMENT_SUMMARY_MODEL = DOCUMENT_SUMMARY_MODEL
-DEFAULT_DOCUMENT_SUMMARY_PROVIDER = DOCUMENT_SUMMARY_PROVIDER
+DEFAULT_DOCUMENT_SUMMARY_MODEL = settings.orderflow_ai_default_model or DOCUMENT_SUMMARY_MODEL
+DEFAULT_DOCUMENT_SUMMARY_PROVIDER = settings.orderflow_ai_default_provider or DOCUMENT_SUMMARY_PROVIDER
 DEFAULT_ACTION_PLAN_PROMPT_VERSION = ACTION_PLAN_PROMPT_VERSION
-DEFAULT_ACTION_PLAN_MODEL = ACTION_PLAN_MODEL
-DEFAULT_ACTION_PLAN_PROVIDER = ACTION_PLAN_PROVIDER
+DEFAULT_ACTION_PLAN_MODEL = settings.orderflow_ai_default_model or ACTION_PLAN_MODEL
+DEFAULT_ACTION_PLAN_PROVIDER = settings.orderflow_ai_default_provider or ACTION_PLAN_PROVIDER
 SUMMARY_DONE_STAGES = {
     "summary_done",
     "action_plan_pending",
@@ -66,6 +67,7 @@ INTAKE_STAGE_VALUES = {
     "finalized",
 }
 MAX_SOURCE_EXCERPT_CHARS = 800
+LOW_TEXT_PAGE_MIN_CHARS = 120
 
 
 @activity.defn
@@ -94,6 +96,9 @@ async def activity_extract_page_cached(
         rate_limit_error = _rate_limit_application_error(exc)
         if rate_limit_error is not None:
             raise rate_limit_error from exc
+        non_retryable_error = _non_retryable_page_application_error(exc)
+        if non_retryable_error is not None:
+            raise non_retryable_error from exc
         raise
 
 
@@ -139,14 +144,10 @@ async def _run_page_extraction_cached(
         backend,
         context,
     )
-    if not page_text.strip():
-        # Raise a specific message that _user_facing_page_error recognizes
-        # so the UI surfaces an OCR guidance message instead of a raw ValueError.
-        raise ValueError(
-            "Unable to extract text from PDF: no readable text layer found"
-        )
+    page_text = page_text.strip()
 
-    effective_content_hash = context.content_hash or backend.calculate_page_content_hash(page_text)
+    hash_source = page_text or f"page-{context.page_number}:no-readable-text"
+    effective_content_hash = context.content_hash or backend.calculate_page_content_hash(hash_source)
     if not context.bypass_cache and not context.content_hash:
         cached = backend.get_cached_page_summary(
             document_id=context.document_uuid,
@@ -188,16 +189,56 @@ async def _run_page_extraction_cached(
         api_key=_api_key_for_provider(backend.settings, context.ai_provider),
         temperature=context.temperature,
     )
-    extraction = await extractor._ai_extract_page(
-        page_num=context.page_number,
-        page_text=page_text,
-        total_pages=context.total_pages,
+    extraction_mode = "ai"
+    cache_status = "miss_generated"
+    source_excerpt = _truncate_text(page_text, MAX_SOURCE_EXCERPT_CHARS)
+
+    low_text_fallback = (not page_text) or (
+        context.page_number == 1 and len(page_text) < LOW_TEXT_PAGE_MIN_CHARS
     )
-    context_links = extractor._find_context_links(
-        page_num=context.page_number,
-        page_text=page_text,
-        all_pages={context.page_number: page_text},
-    )
+
+    if low_text_fallback:
+        extraction = _low_text_page_extraction(
+            page_number=context.page_number,
+            page_text=page_text,
+        )
+        context_links = []
+        extraction_mode = "deterministic"
+        cache_status = "miss_low_text_fallback"
+        source_excerpt = _low_text_source_excerpt(context.page_number, page_text)
+    else:
+        try:
+            extraction = await extractor._ai_extract_page(
+                page_num=context.page_number,
+                page_text=page_text,
+                total_pages=context.total_pages,
+            )
+            context_links = extractor._find_context_links(
+                page_num=context.page_number,
+                page_text=page_text,
+                all_pages={context.page_number: page_text},
+            )
+        except Exception as exc:
+            if context.page_number != 1:
+                raise
+            logger.warning(
+                "Page AI extraction failed; continuing with deterministic fallback.",
+                extra={
+                    "document_id": context.document_id,
+                    "page_number": context.page_number,
+                    "ai_provider": context.ai_provider,
+                    "ai_model": context.ai_model,
+                    "error_type": exc.__class__.__name__,
+                },
+            )
+            extraction = extractor._deterministic_extract_page(page_text)
+            context_links = extractor._find_context_links(
+                page_num=context.page_number,
+                page_text=page_text,
+                all_pages={context.page_number: page_text},
+            )
+            extraction_mode = "deterministic"
+            cache_status = "miss_ai_fallback"
     raw_places = extraction.get("places", [])
     place_candidates = (
         [item for item in raw_places if isinstance(item, dict)]
@@ -226,12 +267,12 @@ async def _run_page_extraction_cached(
         obligation_ids=_page_obligation_ids(backend, context),
         extracted_places=extracted_places,
         confidence=_confidence_or_default(extraction.get("confidence")),
-        extraction_mode="ai",
+        extraction_mode=extraction_mode,
         ai_model=context.ai_model,
         ai_provider=context.ai_provider,
         content_hash=effective_content_hash,
         prompt_version=context.prompt_version,
-        source_excerpt=_truncate_text(page_text, MAX_SOURCE_EXCERPT_CHARS),
+        source_excerpt=source_excerpt,
         ai_token_usage=_dict_or_none(extraction.get("ai_token_usage")),
     )
     completed_context = context.with_content_hash(effective_content_hash)
@@ -239,14 +280,59 @@ async def _run_page_extraction_cached(
         backend=backend,
         context=completed_context,
         summary_record=summary_record,
-        cache_status="miss_generated",
+        cache_status=cache_status,
     )
     return _page_extraction_result(
         context=completed_context,
-        cache_status="miss_generated",
+        cache_status=cache_status,
         summary_record=summary_record,
         job_progress=job_progress,
     )
+
+
+def _low_text_page_extraction(page_number: int, page_text: str) -> dict[str, Any]:
+    readable = page_text.strip()
+    if page_number == 1:
+        summary = (
+            "First page has limited readable text and was captured as a case "
+            "cover/intake page. Extraction continued to later pages."
+        )
+        key_points = [
+            "Page 1 appears to contain cover-page or scanned content with limited readable text.",
+            "Verify case metadata manually if the PDF image quality is poor.",
+            "Later pages were not blocked by this low-text page.",
+        ]
+    else:
+        summary = (
+            f"Page {page_number} has limited readable text. Extraction continued "
+            "with a low-confidence fallback record."
+        )
+        key_points = [
+            "Limited readable text was available on this page.",
+            "Review the original PDF page if this page contains scanned or image-only content.",
+        ]
+
+    if readable:
+        key_points.insert(0, f"Readable excerpt: {_truncate_text(readable, 180)}")
+
+    return {
+        "summary": summary,
+        "key_points": key_points,
+        "highlights": [],
+        "entities": [],
+        "dates": [],
+        "directions": [],
+        "departments": [],
+        "places": [],
+        "confidence": 0.2 if not readable else 0.35,
+    }
+
+
+def _low_text_source_excerpt(page_number: int, page_text: str) -> str:
+    readable = page_text.strip()
+    if readable:
+        return _truncate_text(readable, MAX_SOURCE_EXCERPT_CHARS)
+    return f"Page {page_number}: no readable text layer was available for this page."
 
 
 @activity.defn
@@ -1220,7 +1306,8 @@ def _seed_clauses_from_pdf(document_uuid: UUID) -> None:
                 obligations=[],
             )
     except Exception:
-        # Swallow errors — caller will raise OCR error if text is still empty.
+        # Swallow extraction errors; the page activity will persist a low-confidence
+        # fallback if readable text is still unavailable.
         pass
 
 
@@ -1285,7 +1372,7 @@ def _ai_enrich_document_summary(
             )
             text = extract_gemini_text(response)
         elif context.ai_provider == "groq":
-            from orderflow_api.core.gemini_client import call_groq_json, extract_gemini_text
+            from orderflow_api.core.groq_client import call_groq_json, extract_groq_text
 
             response = call_groq_json(
                 api_key=api_key,
@@ -1294,7 +1381,7 @@ def _ai_enrich_document_summary(
                 temperature=0.2,
                 request_label="document_summary_enrichment",
             )
-            text = extract_gemini_text(response)
+            text = extract_groq_text(response)
         else:
             return None
 
@@ -2217,6 +2304,12 @@ def _record_page_extraction_failure(
         "error_message": user_error.message,
         "partial_failure": user_error.partial_failure,
         "technical_error_type": type(error).__name__,
+        "technical_error_code": _string_value(getattr(error, "code", None)),
+        "technical_provider_detail": _string_value(
+            getattr(error, "provider_detail", None)
+        ),
+        "ai_provider": context.ai_provider,
+        "ai_model": context.ai_model,
         "content_hash": context.content_hash or None,
         "source_excerpt": _truncate_text(context.page_text, 360) or None,
         "trace": _trace_attributes(
@@ -2390,6 +2483,25 @@ def _rate_limit_application_error(
             "error_message": user_error.message,
         },
         type="rate_limit",
+        non_retryable=True,
+    )
+
+
+def _non_retryable_page_application_error(
+    error: Exception,
+) -> temporal_exceptions.ApplicationError | None:
+    user_error = _user_facing_page_error(error, page_number=None)
+    if user_error.code not in {"ocr_required"}:
+        return None
+
+    return temporal_exceptions.ApplicationError(
+        user_error.message,
+        {
+            "error_code": user_error.code,
+            "error_category": user_error.category,
+            "error_message": user_error.message,
+        },
+        type="page_extraction_non_retryable",
         non_retryable=True,
     )
 
@@ -2896,6 +3008,7 @@ def _page_extraction_result(
         "summary_id": summary_payload.get("id"),
         "summary": summary_payload.get("summary"),
         "confidence": summary_payload.get("confidence"),
+        "extraction_mode": summary_payload.get("extraction_mode"),
         "ai_model": summary_payload.get("ai_model"),
         "ai_provider": summary_payload.get("ai_provider"),
         "summary_record": summary_payload,

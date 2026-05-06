@@ -15,6 +15,11 @@ from orderflow_intelligence.core.gemini_client import (
     call_gemini_json,
     extract_gemini_text,
 )
+from orderflow_intelligence.core.groq_client import (
+    GroqError,
+    call_groq_json,
+    extract_groq_text,
+)
 from orderflow_intelligence.graph.state import (
     ConfidenceComponent,
     ExtractionGraphState,
@@ -117,7 +122,7 @@ def _find_source_highlight(parsed_text: str, source_text: str) -> list[SourceHig
     return highlights
 
 
-def _gemini_retry_delay_seconds(error: GeminiError | None, attempt: int) -> float:
+def _ai_retry_delay_seconds(error: GeminiError | GroqError | None, attempt: int) -> float:
     retry_after = getattr(error, "retry_after_seconds", None)
     if isinstance(retry_after, (int, float)) and retry_after > 0:
         return min(float(retry_after), 2.0)
@@ -127,15 +132,16 @@ def _gemini_retry_delay_seconds(error: GeminiError | None, attempt: int) -> floa
 _AiExtractionResult = tuple[list[ObligationStub], str | None, str | None]
 
 
-def _extract_with_gemini(parsed_text: str, page_number: int) -> _AiExtractionResult:
+def _extract_with_ai(parsed_text: str, page_number: int) -> _AiExtractionResult:
     """Returns (obligations, failure_code, failure_message).
 
     On success: ([..], None, None) or ([], None, None) if AI returned nothing.
     On failure: ([], "<code>", "<message>") so the caller can surface the
     reason instead of silently dropping back to the deterministic extractor.
     """
+    provider = settings.orderflow_ai_default_llm_provider.strip().lower()
     gemini_key = getattr(settings, "orderflow_ai_gemini_api_key", None)
-    if not gemini_key:
+    if provider != "groq" and not gemini_key:
         return (
             [],
             "gemini_missing_key",
@@ -146,6 +152,15 @@ def _extract_with_gemini(parsed_text: str, page_number: int) -> _AiExtractionRes
     model = (
         configured_model if configured_model.lower().startswith("gemini") else "gemini-2.0-flash"
     )
+    groq_key = getattr(settings, "orderflow_ai_groq_api_key", None)
+    if provider == "groq":
+        if not groq_key:
+            return (
+                [],
+                "groq_missing_key",
+                "Groq API key not configured; fell back to deterministic extractor.",
+            )
+        model = configured_model or "llama-3.3-70b-versatile"
 
     prompt = _OBLIGATION_EXTRACTION_PROMPT.format(
         page_number=page_number,
@@ -156,15 +171,25 @@ def _extract_with_gemini(parsed_text: str, page_number: int) -> _AiExtractionRes
     last_failure: tuple[str, str] | None = None
     for attempt in range(1, _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS + 1):
         try:
-            response = call_gemini_json(
-                api_key=gemini_key,
-                model=model,
-                prompt=prompt,
-                temperature=0.1,
-                max_output_tokens=min(settings.orderflow_ai_gemini_max_output_tokens, 1200),
-                request_label="page obligation extraction",
-            )
-            text_response = extract_gemini_text(response)
+            if provider == "groq":
+                response = call_groq_json(
+                    api_key=groq_key,
+                    model=model,
+                    prompt=prompt,
+                    temperature=0.1,
+                    request_label="page obligation extraction",
+                )
+                text_response = extract_groq_text(response)
+            else:
+                response = call_gemini_json(
+                    api_key=gemini_key,
+                    model=model,
+                    prompt=prompt,
+                    temperature=0.1,
+                    max_output_tokens=min(settings.orderflow_ai_gemini_max_output_tokens, 1200),
+                    request_label="page obligation extraction",
+                )
+                text_response = extract_gemini_text(response)
             result = json.loads(text_response)
             break
         except GeminiError as exc:
@@ -178,32 +203,49 @@ def _extract_with_gemini(parsed_text: str, page_number: int) -> _AiExtractionRes
             last_failure = (exc.code, str(exc))
             if not exc.retryable or attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
                 return ([], exc.code, str(exc))
-            time.sleep(_gemini_retry_delay_seconds(exc, attempt))
+            time.sleep(_ai_retry_delay_seconds(exc, attempt))
+        except GroqError as exc:
+            logger.warning(
+                "Groq extraction failure: %s (%s), attempt=%s/%s",
+                exc.code,
+                exc,
+                attempt,
+                _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS,
+            )
+            last_failure = (exc.code, str(exc))
+            if not exc.retryable or attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
+                return ([], exc.code, str(exc))
+            time.sleep(_ai_retry_delay_seconds(exc, attempt))
         except (json.JSONDecodeError, KeyError, IndexError) as exc:
             logger.warning(
-                "Failed to parse Gemini extraction response, attempt=%s/%s: %s",
+                "Failed to parse %s extraction response, attempt=%s/%s: %s",
+                provider,
                 attempt,
                 _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS,
                 exc,
             )
-            last_failure = ("gemini_invalid_json", "Gemini returned non-JSON text.")
+            last_failure = (f"{provider}_invalid_json", f"{provider} returned non-JSON text.")
             if attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
                 return ([], last_failure[0], last_failure[1])
-            time.sleep(_gemini_retry_delay_seconds(None, attempt))
+            time.sleep(_ai_retry_delay_seconds(None, attempt))
         except Exception as exc:
             logger.warning(
-                "Unexpected Gemini call failure, attempt=%s/%s: %s",
+                "Unexpected %s call failure, attempt=%s/%s: %s",
+                provider,
                 attempt,
                 _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS,
                 exc,
             )
-            last_failure = ("gemini_unexpected_error", str(exc))
+            last_failure = (f"{provider}_unexpected_error", str(exc))
             if attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
                 return ([], last_failure[0], last_failure[1])
-            time.sleep(_gemini_retry_delay_seconds(None, attempt))
+            time.sleep(_ai_retry_delay_seconds(None, attempt))
 
     if result is None:
-        code, message = last_failure or ("gemini_unexpected_error", "Gemini extraction failed.")
+        code, message = last_failure or (
+            f"{provider}_unexpected_error",
+            f"{provider} extraction failed.",
+        )
         return ([], code, message)
 
     obligations: list[ObligationStub] = []
@@ -327,21 +369,20 @@ def extract_obligations(state: ExtractionGraphState) -> dict[str, Any]:
     parsed_text = state["parsed_text"]
     page_number = state["page_number"]
 
-    llm_obligations, ai_failure_code, ai_failure_message = _extract_with_gemini(
+    llm_obligations, ai_failure_code, ai_failure_message = _extract_with_ai(
         parsed_text, page_number
     )
-
-    if ai_failure_code and ai_failure_code != "gemini_missing_key":
-        raise RuntimeError(
-            f"Gemini obligation extraction failed after retry attempts: {ai_failure_message}"
-        )
 
     if llm_obligations or ai_failure_code is None:
         obligations = llm_obligations
         extraction_mode = "ai"
-        ai_provider = "gemini"
+        ai_provider = settings.orderflow_ai_default_llm_provider.strip().lower()
         ai_model = settings.orderflow_ai_default_model
     else:
+        logger.warning(
+            "AI obligation extraction unavailable; using deterministic fallback. code=%s",
+            ai_failure_code,
+        )
         obligations = _extract_deterministic(parsed_text, page_number)
         extraction_mode = "deterministic"
         ai_provider = None

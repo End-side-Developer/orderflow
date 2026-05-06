@@ -59,6 +59,8 @@ export function PageExtractionPanel({
     progress?.current_page_excerpt,
     "technical_error_type",
   );
+  const aiProvider = recordStringValue(progress?.current_page_excerpt, "ai_provider");
+  const aiModel = recordStringValue(progress?.current_page_excerpt, "ai_model");
   const canStart = !progress || stage === "pending";
   const canContinue = stage === "pages_done";
 
@@ -195,6 +197,12 @@ export function PageExtractionPanel({
               <div className="mt-2 text-rose-700">
                 {failureCode ? <div>Code: {failureCode}</div> : null}
                 {technicalError ? <div>Type: {technicalError}</div> : null}
+                {aiProvider ? (
+                  <div>
+                    Provider: {aiProvider}
+                    {aiModel ? ` / ${aiModel}` : ""}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
