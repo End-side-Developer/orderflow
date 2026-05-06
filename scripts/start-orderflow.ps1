@@ -1,8 +1,7 @@
 # Run with bypass: powershell -ExecutionPolicy Bypass -File .\scripts\start-orderflow.ps1
 
 param(
-    [switch]$DryRun,
-    [switch]$Force
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
@@ -15,6 +14,9 @@ $InfraDir = Join-Path $RepoRoot 'app\infra'
 $BackendDir = Join-Path $RepoRoot 'app\backend'
 $WorkerDir = Join-Path $RepoRoot 'app\worker'
 $FrontendDir = Join-Path $RepoRoot 'app\frontend'
+$IntelligenceDir = Join-Path $RepoRoot 'app\intelligence'
+$DataPipelinesDir = Join-Path $RepoRoot 'app\data-pipelines'
+$VenvDir = Join-Path $RepoRoot '.venv'
 $LogRoot = Join-Path $RepoRoot 'tmp\startup-logs'
 
 if (-not (Test-Path $LogRoot)) {
@@ -194,7 +196,7 @@ function Start-LoggedProcess {
 
 function Get-PythonExe {
     $candidates = @()
-    $venvPython = Join-Path $WorkspaceRoot '.venv\Scripts\python.exe'
+    $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
 
     if (Test-Path $venvPython) {
         $candidates += $venvPython
@@ -215,7 +217,7 @@ function Get-PythonExe {
         }
     }
 
-    throw 'Python was not found. Install Python or create the workspace .venv first.'
+    throw 'Python was not found. Install Python or initialize the OrderFlow root .venv first.'
 }
 
 function Get-NpmExe {
@@ -253,6 +255,311 @@ function Invoke-BackendMigrations {
     } finally {
         Pop-Location
     }
+}
+
+function Invoke-CheckedCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(Mandatory = $true)]
+        [string[]]$ArgumentList,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkingDirectory
+    )
+
+    Write-Step $Name
+    Write-Host "Working dir: $WorkingDirectory"
+    Write-Host "Command: $FilePath $($ArgumentList -join ' ')"
+
+    if ($DryRun) {
+        Write-Host "Would run command." -ForegroundColor Yellow
+        return
+    }
+
+    Push-Location $WorkingDirectory
+    try {
+        & $FilePath @ArgumentList
+        if ($LASTEXITCODE -ne 0) {
+            throw "$Name failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Initialize-RootVenv {
+    $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
+    if (Test-Path $venvPython) {
+        Write-Step "Using existing root virtual environment"
+        Write-Host $VenvDir
+        return
+    }
+
+    $pythonCommand = Get-Command py -ErrorAction SilentlyContinue
+    if ($pythonCommand) {
+        Invoke-CheckedCommand -Name 'Creating root .venv with Python 3.12' -FilePath $pythonCommand.Source -ArgumentList @('-3.12', '-m', 'venv', $VenvDir) -WorkingDirectory $RepoRoot
+        return
+    }
+
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pythonCommand) {
+        throw 'Python was not found on PATH. Install Python 3.12 first.'
+    }
+
+    Invoke-CheckedCommand -Name 'Creating root .venv' -FilePath $pythonCommand.Source -ArgumentList @('-m', 'venv', $VenvDir) -WorkingDirectory $RepoRoot
+}
+
+function Install-PythonDependencies {
+    Initialize-RootVenv
+    $pythonExe = Get-PythonExe
+
+    Invoke-CheckedCommand -Name 'Upgrading pip tooling' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel') -WorkingDirectory $RepoRoot
+    Invoke-CheckedCommand -Name 'Installing backend Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev,pdf]') -WorkingDirectory $BackendDir
+    Invoke-CheckedCommand -Name 'Installing worker Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev]') -WorkingDirectory $WorkerDir
+    Invoke-CheckedCommand -Name 'Installing intelligence Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev]') -WorkingDirectory $IntelligenceDir
+    Invoke-CheckedCommand -Name 'Installing orchestration helper dependencies' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', 'httpx') -WorkingDirectory $RepoRoot
+}
+
+function Install-NodeDependencies {
+    $npmExe = Get-NpmExe
+    Invoke-CheckedCommand -Name 'Installing frontend npm dependencies' -FilePath $npmExe -ArgumentList @('install') -WorkingDirectory $FrontendDir
+}
+
+function Ensure-EnvFiles {
+    $envExampleFiles = @(
+        (Join-Path $BackendDir '.env.example'),
+        (Join-Path $WorkerDir '.env.example'),
+        (Join-Path $IntelligenceDir '.env.example'),
+        (Join-Path $FrontendDir '.env.example'),
+        (Join-Path $InfraDir '.env.example'),
+        (Join-Path $DataPipelinesDir '.env.example')
+    )
+
+    foreach ($examplePath in $envExampleFiles) {
+        $envPath = Join-Path (Split-Path -Parent $examplePath) '.env'
+        if ((Test-Path $examplePath) -and -not (Test-Path $envPath)) {
+            Write-Step "Creating $envPath"
+            if ($DryRun) {
+                Write-Host "Would copy $examplePath to $envPath" -ForegroundColor Yellow
+            } else {
+                Copy-Item -LiteralPath $examplePath -Destination $envPath
+            }
+        }
+    }
+}
+
+function Set-EnvFileValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Key,
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    if ($DryRun) {
+        Write-Host "Would set $Key in $Path" -ForegroundColor Yellow
+        return
+    }
+
+    if (-not (Test-Path $Path)) {
+        New-Item -ItemType File -Path $Path -Force | Out-Null
+    }
+
+    $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)
+    $escapedKey = [regex]::Escape($Key)
+    $matched = $false
+    $updated = foreach ($line in $lines) {
+        if ($line -match "^\s*$escapedKey\s*=") {
+            $matched = $true
+            "$Key=$Value"
+        } else {
+            $line
+        }
+    }
+
+    if (-not $matched) {
+        $updated += "$Key=$Value"
+    }
+
+    Set-Content -LiteralPath $Path -Value $updated -Encoding UTF8
+}
+
+function Get-ServiceEnvTargets {
+    return @(
+        @{ Name = 'backend'; Path = Join-Path $BackendDir '.env' },
+        @{ Name = 'worker'; Path = Join-Path $WorkerDir '.env' },
+        @{ Name = 'intelligence'; Path = Join-Path $IntelligenceDir '.env' },
+        @{ Name = 'frontend'; Path = Join-Path $FrontendDir '.env' },
+        @{ Name = 'infra'; Path = Join-Path $InfraDir '.env' },
+        @{ Name = 'data-pipelines'; Path = Join-Path $DataPipelinesDir '.env' }
+    )
+}
+
+function Get-DefaultModelForProvider {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Provider
+    )
+
+    switch ($Provider.ToLowerInvariant()) {
+        'groq' { return 'llama-3.3-70b-versatile' }
+        'gemini' { return 'gemini-2.0-flash' }
+        'openai' { return 'gpt-4.1-mini' }
+        'anthropic' { return 'claude-3-5-sonnet-latest' }
+        default { return 'gemini-2.0-flash' }
+    }
+}
+
+function Read-ModelSelection {
+    param(
+        [string]$Provider = 'gemini'
+    )
+
+    $normalizedProvider = $Provider.ToLowerInvariant()
+    $presets = switch ($normalizedProvider) {
+        'groq' { @('llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it', 'mixtral-8x7b-32768') }
+        'gemini' { @('gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro') }
+        'openai' { @('gpt-4.1-mini', 'gpt-4o-mini', 'gpt-4o') }
+        'anthropic' { @('claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest') }
+        default { @(Get-DefaultModelForProvider -Provider $normalizedProvider) }
+    }
+
+    Write-Host ''
+    Write-Host "Model presets for ${normalizedProvider}:"
+    for ($i = 0; $i -lt $presets.Count; $i++) {
+        Write-Host "  $($i + 1). $($presets[$i])"
+    }
+    Write-Host "  $($presets.Count + 1). Custom model name"
+
+    $choice = Read-Host "Choose model [1]"
+    if ([string]::IsNullOrWhiteSpace($choice)) {
+        return $presets[0]
+    }
+
+    $choiceNumber = 0
+    if ([int]::TryParse($choice, [ref]$choiceNumber)) {
+        if ($choiceNumber -ge 1 -and $choiceNumber -le $presets.Count) {
+            return $presets[$choiceNumber - 1]
+        }
+        if ($choiceNumber -eq ($presets.Count + 1)) {
+            $customModel = Read-Host 'Enter custom model name'
+            if (-not [string]::IsNullOrWhiteSpace($customModel)) {
+                return $customModel.Trim()
+            }
+        }
+    }
+
+    return $choice.Trim()
+}
+
+function Configure-AIAndApiKeys {
+    Ensure-EnvFiles
+    Write-Step 'Configure AI, model, and API keys'
+    Write-Host 'Secrets are written only to local .env files. They are not printed after entry.'
+    Write-Host ''
+    Write-Host 'Targets:'
+    Write-Host '  1. all folders'
+    Write-Host '  2. all AI services (backend, worker, intelligence)'
+    Write-Host '  3. backend'
+    Write-Host '  4. worker'
+    Write-Host '  5. intelligence'
+    Write-Host '  6. frontend'
+    Write-Host '  7. infra'
+    Write-Host '  8. data-pipelines'
+
+    $targetChoice = Read-Host 'Choose target'
+    $targets = switch ($targetChoice) {
+        '1' { Get-ServiceEnvTargets }
+        '2' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -in @('backend', 'worker', 'intelligence') } }
+        '3' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -eq 'backend' } }
+        '4' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -eq 'worker' } }
+        '5' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -eq 'intelligence' } }
+        '6' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -eq 'frontend' } }
+        '7' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -eq 'infra' } }
+        '8' { (Get-ServiceEnvTargets) | Where-Object { $_.Name -eq 'data-pipelines' } }
+        default { throw 'Invalid target choice.' }
+    }
+
+    Write-Host ''
+    Write-Host 'Settings:'
+    Write-Host '  1. default provider and model'
+    Write-Host '  2. default model only'
+    Write-Host '  3. default provider only'
+    Write-Host '  4. ORDERFLOW_AI_GEMINI_API_KEY'
+    Write-Host '  5. ORDERFLOW_AI_GROQ_API_KEY'
+    Write-Host '  6. ORDERFLOW_AI_OPENAI_API_KEY'
+    Write-Host '  7. ORDERFLOW_AI_ANTHROPIC_API_KEY'
+    Write-Host '  8. NEXT_PUBLIC_ORDERFLOW_API_BASE_URL'
+    Write-Host '  9. Custom key'
+    $keyChoice = Read-Host 'Choose setting'
+    $provider = ''
+
+    if ($keyChoice -eq '1' -or $keyChoice -eq '3') {
+        $provider = Read-Host 'Default provider [gemini|groq|openai|anthropic]'
+        if ([string]::IsNullOrWhiteSpace($provider)) {
+            $provider = 'gemini'
+        }
+        $provider = $provider.Trim().ToLowerInvariant()
+
+        foreach ($target in $targets) {
+            Set-EnvFileValue -Path $target.Path -Key 'ORDERFLOW_AI_DEFAULT_PROVIDER' -Value $provider
+            if ($target.Name -eq 'intelligence') {
+                Set-EnvFileValue -Path $target.Path -Key 'ORDERFLOW_AI_DEFAULT_LLM_PROVIDER' -Value $provider
+            }
+            Write-Host "Updated provider in $($target.Name): $($target.Path)" -ForegroundColor Green
+        }
+    }
+
+    if ($keyChoice -eq '1' -or $keyChoice -eq '2') {
+        if ([string]::IsNullOrWhiteSpace($provider)) {
+            $provider = Read-Host 'Provider for model presets [gemini|groq|openai|anthropic]'
+            if ([string]::IsNullOrWhiteSpace($provider)) {
+                $provider = 'gemini'
+            }
+            $provider = $provider.Trim().ToLowerInvariant()
+        }
+        $model = Read-ModelSelection -Provider $provider
+
+        foreach ($target in $targets) {
+            Set-EnvFileValue -Path $target.Path -Key 'ORDERFLOW_AI_DEFAULT_MODEL' -Value $model
+            Write-Host "Updated model in $($target.Name): $($target.Path)" -ForegroundColor Green
+        }
+    }
+
+    if ($keyChoice -in @('1', '2', '3')) {
+        Write-Host 'Restart affected services so their config loaders pick up the new values.' -ForegroundColor Yellow
+        return
+    }
+
+    $key = switch ($keyChoice) {
+        '4' { 'ORDERFLOW_AI_GEMINI_API_KEY' }
+        '5' { 'ORDERFLOW_AI_GROQ_API_KEY' }
+        '6' { 'ORDERFLOW_AI_OPENAI_API_KEY' }
+        '7' { 'ORDERFLOW_AI_ANTHROPIC_API_KEY' }
+        '8' { 'NEXT_PUBLIC_ORDERFLOW_API_BASE_URL' }
+        '9' { Read-Host 'Enter env/config key name' }
+        default { throw 'Invalid key choice.' }
+    }
+
+    if ($key -like '*KEY*' -or $key -like '*TOKEN*' -or $key -like '*SECRET*') {
+        $secureValue = Read-Host "Enter value for $key" -AsSecureString
+        $value = [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
+            [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureValue)
+        )
+    } else {
+        $value = Read-Host "Enter value for $key"
+    }
+
+    foreach ($target in $targets) {
+        Set-EnvFileValue -Path $target.Path -Key $key -Value $value
+        Write-Host "Updated $($target.Name): $($target.Path)" -ForegroundColor Green
+    }
+
+    Write-Host 'Restart affected services so their config loaders pick up the new values.' -ForegroundColor Yellow
 }
 
 function Ensure-Temporal {
@@ -470,6 +777,13 @@ function Ensure-DemoSeedLoginReady {
 }
 
 function Ensure-Worker {
+    if ($DryRun) {
+        $pythonExe = Get-PythonExe
+        Write-Step 'Starting worker'
+        Write-Host "Would start worker: $pythonExe -m orderflow_worker.main" -ForegroundColor Yellow
+        return
+    }
+
     if (Test-CommandLineLike -Pattern 'orderflow_worker.main') {
         Write-Step 'Worker already started; skipping'
         return
@@ -495,60 +809,198 @@ function Ensure-Frontend {
     Wait-ForPort -Port $frontendPort -ServiceName 'Frontend'
 }
 
-Write-Step 'OrderFlow startup launcher'
-Write-Host "Repo root: $RepoRoot"
-Write-Host "Dry run: $DryRun"
-Write-Host "Force restart: $Force"
+function Stop-OrderFlowStack {
+    param(
+        [switch]$ForceStart
+    )
 
-if ($Force -and -not $DryRun) {
-    Write-Step "Force stopping existing services and containers"
-    $processes = Get-CimInstance Win32_Process | Where-Object {
-        ($_.CommandLine -like '*uvicorn*orderflow_api.main:app*') -or
-        ($_.CommandLine -like '*orderflow_worker.main*') -or
-        ($_.CommandLine -like '*next-router-worker*') -or
-        ($_.CommandLine -like '*next-server*') -or
-        ($_.CommandLine -match 'node.*\\npm-cli\.js.*run.*dev') -or
-        ($_.CommandLine -like '*temporal*server*start-dev*')
-    }
-    if ($processes) {
-        $processes | Invoke-CimMethod -MethodName Terminate | Out-Null
+    if ($ForceStart -and $DryRun) {
+        Write-Step "Force stopping existing services and containers"
+        Write-Host 'Would stop OrderFlow processes, remove orderflow-temporal, and run docker compose down.' -ForegroundColor Yellow
+        return
     }
 
-    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
-    if ($dockerCommand) {
-        try { & docker rm -f orderflow-temporal 2>&1 | Out-Null } catch {}
-        Push-Location $InfraDir
-        try {
-            & docker compose down 2>&1 | Out-Null
-        } catch {
-            Write-Host "Warning: docker compose down failed" -ForegroundColor Yellow
-        } finally {
-            Pop-Location
+    if ($ForceStart -and -not $DryRun) {
+        Write-Step "Force stopping existing services and containers"
+        $processes = Get-CimInstance Win32_Process | Where-Object {
+            ($_.CommandLine -like '*uvicorn*orderflow_api.main:app*') -or
+            ($_.CommandLine -like '*orderflow_worker.main*') -or
+            ($_.CommandLine -like '*next-router-worker*') -or
+            ($_.CommandLine -like '*next-server*') -or
+            ($_.CommandLine -match 'node.*\\npm-cli\.js.*run.*dev') -or
+            ($_.CommandLine -like '*temporal*server*start-dev*')
+        }
+        if ($processes) {
+            $processes | Invoke-CimMethod -MethodName Terminate | Out-Null
+        }
+
+        $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+        if ($dockerCommand) {
+            try { & docker rm -f orderflow-temporal 2>&1 | Out-Null } catch {}
+            Push-Location $InfraDir
+            try {
+                & docker compose down 2>&1 | Out-Null
+            } catch {
+                Write-Host "Warning: docker compose down failed" -ForegroundColor Yellow
+            } finally {
+                Pop-Location
+            }
         }
     }
 }
 
-Ensure-Infra
-Ensure-Temporal
-Ensure-Backend
-Ensure-DemoAdvocateSeed
-Ensure-DemoSeedLoginReady
-Ensure-Worker
-Ensure-Frontend
+function Start-OrderFlowStack {
+    param(
+        [switch]$ForceStart
+    )
 
+    Ensure-EnvFiles
+    Stop-OrderFlowStack -ForceStart:$ForceStart
+    Ensure-Infra
+    Ensure-Temporal
+    Ensure-Backend
+    Ensure-DemoAdvocateSeed
+    Ensure-DemoSeedLoginReady
+    Ensure-Worker
+    Ensure-Frontend
 
-Write-Host ''
-Write-Host 'OrderFlow stack is ready.' -ForegroundColor Green
-Write-Host 'Frontend:    http://localhost:3000'
-Write-Host 'Backend:     http://localhost:8000/health'
-Write-Host 'Temporal:    localhost:7233'
-Write-Host "Logs:        $LogRoot"
-Write-Host 'Intel layer: CLI-only; run it manually from app/intelligence when needed.'
-Write-Host ''
-Write-Host 'Demo seed profiles (email / password):' -ForegroundColor Yellow
-Write-Host '  Government reviewer (can approve advocates):'
-Write-Host '    gov.reviewer@orderflow.example / Orderflow@123'
-Write-Host '  Advocate (government approved):'
-Write-Host '    adv.approved@orderflow.example / Orderflow@123'
-Write-Host '  Advocate (not approved yet / pending):'
-Write-Host '    adv.pending@orderflow.example / Orderflow@123'
+    Write-Host ''
+    Write-Host 'OrderFlow stack is ready.' -ForegroundColor Green
+    Write-Host 'Frontend:    http://localhost:3000'
+    Write-Host 'Backend:     http://localhost:8000/health'
+    Write-Host 'Temporal:    localhost:7233'
+    Write-Host "Logs:        $LogRoot"
+    Write-Host 'Intel layer: CLI-only; use menu option 3 when needed.'
+    Write-Host ''
+    Write-Host 'Demo seed profiles (email / password):' -ForegroundColor Yellow
+    Write-Host '  Government reviewer (can approve advocates):'
+    Write-Host '    gov.reviewer@orderflow.example / Orderflow@123'
+    Write-Host '  Advocate (government approved):'
+    Write-Host '    adv.approved@orderflow.example / Orderflow@123'
+    Write-Host '  Advocate (not approved yet / pending):'
+    Write-Host '    adv.pending@orderflow.example / Orderflow@123'
+}
+
+function Initialize-AndStartOrderFlow {
+    param(
+        [switch]$ForceStart
+    )
+
+    Ensure-EnvFiles
+    Install-PythonDependencies
+    Install-NodeDependencies
+    Start-OrderFlowStack -ForceStart:$ForceStart
+}
+
+function Invoke-OrchestrationCli {
+    $pythonExe = Get-PythonExe
+    $defaultPdf = Join-Path $RepoRoot 'docs\samples\court-cases\delhi-hc-wpc-8524-2025-judgment-05-02-2026.pdf'
+    $defaultOutput = Join-Path $RepoRoot 'run_orchestration_output.json'
+
+    $pdfPath = Read-Host "PDF path [$defaultPdf]"
+    if ([string]::IsNullOrWhiteSpace($pdfPath)) {
+        $pdfPath = $defaultPdf
+    }
+
+    $outputPath = Read-Host "Output JSON path [$defaultOutput]"
+    if ([string]::IsNullOrWhiteSpace($outputPath)) {
+        $outputPath = $defaultOutput
+    }
+
+    Invoke-CheckedCommand -Name 'Running CLI orchestration' -FilePath $pythonExe -ArgumentList @('run_orchestration.py', '--pdf', $pdfPath, '--output', $outputPath) -WorkingDirectory $RepoRoot
+
+    if ((-not $DryRun) -and (Test-Path $outputPath)) {
+        $result = Get-Content -Raw -LiteralPath $outputPath | ConvertFrom-Json
+        Write-Host ''
+        Write-Host 'Orchestration result' -ForegroundColor Green
+        Write-Host "  Output:       $outputPath"
+        Write-Host "  Document ID:  $($result.document_id)"
+        Write-Host "  Pages:        $($result.total_pages)"
+        Write-Host "  Obligations:  $($result.total_obligations_extracted)"
+
+        if ($result.judgment_intelligence) {
+            $judgment = $result.judgment_intelligence
+            Write-Host "  Provider:     $($judgment._provider) / $($judgment._model)"
+            Write-Host "  Recommend:    $($judgment.compliance_decision.recommendation)"
+            Write-Host "  Appeal:       $($judgment.appeal_analysis.should_appeal)"
+            Write-Host "  Action items: $($judgment.action_plan.items.Count)"
+        }
+
+        if ($result.judgment_intelligence_error) {
+            Write-Host "  AI error:     $($result.judgment_intelligence_error)" -ForegroundColor Yellow
+        }
+    }
+}
+
+function Invoke-OrderFlowTests {
+    $pythonExe = Get-PythonExe
+    $npmExe = Get-NpmExe
+
+    Write-Host ''
+    Write-Host 'Test suites:'
+    Write-Host '  1. full quality check'
+    Write-Host '  2. backend tests only'
+    Write-Host '  3. worker tests only'
+    Write-Host '  4. intelligence tests only'
+    Write-Host '  5. frontend lint/typecheck/test'
+    $choice = Read-Host 'Choose test suite'
+
+    switch ($choice) {
+        '1' {
+            Invoke-CheckedCommand -Name 'Running full quality check' -FilePath $pythonExe -ArgumentList @('scripts\quality_check.py') -WorkingDirectory $RepoRoot
+        }
+        '2' {
+            Invoke-CheckedCommand -Name 'Running backend tests' -FilePath $pythonExe -ArgumentList @('-m', 'pytest', '-q') -WorkingDirectory $BackendDir
+        }
+        '3' {
+            Invoke-CheckedCommand -Name 'Running worker tests' -FilePath $pythonExe -ArgumentList @('-m', 'pytest', '-q', 'tests') -WorkingDirectory $WorkerDir
+        }
+        '4' {
+            Invoke-CheckedCommand -Name 'Running intelligence tests' -FilePath $pythonExe -ArgumentList @('-m', 'pytest', '-q', 'tests') -WorkingDirectory $IntelligenceDir
+        }
+        '5' {
+            Invoke-CheckedCommand -Name 'Frontend lint' -FilePath $npmExe -ArgumentList @('run', 'lint') -WorkingDirectory $FrontendDir
+            Invoke-CheckedCommand -Name 'Frontend typecheck' -FilePath $npmExe -ArgumentList @('run', 'typecheck') -WorkingDirectory $FrontendDir
+            Invoke-CheckedCommand -Name 'Frontend tests' -FilePath $npmExe -ArgumentList @('run', 'test') -WorkingDirectory $FrontendDir
+        }
+        default {
+            throw 'Invalid test suite choice.'
+        }
+    }
+}
+
+function Show-OrderFlowMenu {
+    Write-Step 'OrderFlow launcher'
+    Write-Host "Repo root: $RepoRoot"
+    Write-Host "Root venv: $VenvDir"
+    Write-Host "Dry run: $DryRun"
+    Write-Host ''
+    Write-Host '1. Start app or initialize all installs'
+    Write-Host '2. Configure AI, model, and API keys (.env for all folders)'
+    Write-Host '3. Run CLI orchestration'
+    Write-Host '4. Run tests'
+    Write-Host ''
+    $choice = Read-Host 'Choose option'
+
+    switch ($choice) {
+        '1' {
+            Write-Host ''
+            Write-Host '1. Initialize installs, then start app'
+            Write-Host '2. Start app only'
+            Write-Host '3. Force start app'
+            $startChoice = Read-Host 'Choose start mode'
+            switch ($startChoice) {
+                '1' { Initialize-AndStartOrderFlow }
+                '2' { Start-OrderFlowStack }
+                '3' { Start-OrderFlowStack -ForceStart }
+                default { throw 'Invalid start mode.' }
+            }
+        }
+        '2' { Configure-AIAndApiKeys }
+        '3' { Invoke-OrchestrationCli }
+        '4' { Invoke-OrderFlowTests }
+        default { throw 'Invalid menu option.' }
+    }
+}
+
+Show-OrderFlowMenu
