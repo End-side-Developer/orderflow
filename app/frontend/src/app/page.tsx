@@ -34,6 +34,18 @@ function formatStage(stage: WorkbenchDocumentCard["stage"]): string {
   return stage.replaceAll("_", " ");
 }
 
+function formatDocumentStatus(document: WorkbenchDocumentCard): string {
+  if (document.workflow_status === "completed" && document.stage === "intake_running") {
+    return "ready for extraction";
+  }
+
+  if (document.workflow_status === "failed" && document.stage === "intake_running") {
+    return "intake failed";
+  }
+
+  return formatStage(document.stage);
+}
+
 function formatAction(action: string): string {
   return action.replaceAll(".", " ");
 }
@@ -255,7 +267,19 @@ function DocumentRow({ document }: { document: WorkbenchDocumentCard }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold text-foreground">{document.source_file_name}</span>
           <StatusPill kind="pressure" value={document.pressure_level} />
-          <Badge variant="muted">{formatStage(document.stage)}</Badge>
+          <Badge
+            variant={
+              document.workflow_status === "completed"
+                ? "good"
+                : document.workflow_status === "failed"
+                  ? "destructive"
+                  : document.workflow_status === "started"
+                    ? "warn"
+                    : "muted"
+            }
+          >
+            {formatDocumentStatus(document)}
+          </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
           {document.court_name ?? "Court metadata pending"} ·{" "}
@@ -271,13 +295,8 @@ function DocumentRow({ document }: { document: WorkbenchDocumentCard }) {
       </div>
       <div className="flex flex-col gap-2 lg:flex-row">
         <Button asChild variant="outline" size="sm">
-          <Link href={`/document-summary?document_id=${encodeURIComponent(document.document_id)}`}>
-            Analyze
-          </Link>
-        </Button>
-        <Button asChild size="sm">
-          <Link href={`/obligations?document_id=${encodeURIComponent(document.document_id)}`}>
-            Verify
+          <Link href={`/case/${encodeURIComponent(document.document_id)}`}>
+            View the case
             <ArrowRight />
           </Link>
         </Button>
