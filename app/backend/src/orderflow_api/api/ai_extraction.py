@@ -5,6 +5,7 @@ from datetime import date
 import json
 import logging
 import re
+import time
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -25,6 +26,8 @@ _SUPPORTED_PROVIDERS = {"openai", "anthropic", "gemini", "groq"}
 # _REMOTE_FALLBACK_ORDER = ("groq", "gemini", "openai", "anthropic")
 _REMOTE_FALLBACK_ORDER = ()
 _SOURCE_EXCERPT_CHARS = 240
+_AI_EXTRACTION_MAX_ATTEMPTS = 3
+_AI_EXTRACTION_RETRY_BASE_SECONDS = 0.25
 
 
 @dataclass(frozen=True)
@@ -67,7 +70,7 @@ def maybe_extract_obligations_with_ai(
             reason=selection.reason,
         )
 
-    primary_attempt = _attempt_remote_provider(
+    primary_attempt = _attempt_remote_provider_with_retries(
         clauses=clauses,
         document_id=document_id,
         selection=selection,
@@ -86,7 +89,7 @@ def maybe_extract_obligations_with_ai(
                 fallback_reasons.append(fallback_selection.reason)
             continue
 
-        fallback_attempt = _attempt_remote_provider(
+        fallback_attempt = _attempt_remote_provider_with_retries(
             clauses=clauses,
             document_id=document_id,
             selection=fallback_selection,
@@ -305,6 +308,67 @@ def _attempt_remote_provider(
         model=selection.model,
         reason=None,
     )
+
+
+def _attempt_remote_provider_with_retries(
+    *,
+    clauses: list[ParsedClause],
+    document_id: UUID,
+    selection: _AiSelection,
+) -> AiExtractionAttempt:
+    attempts: list[AiExtractionAttempt] = []
+    for attempt in range(1, _AI_EXTRACTION_MAX_ATTEMPTS + 1):
+        result = _attempt_remote_provider(
+            clauses=clauses,
+            document_id=document_id,
+            selection=selection,
+        )
+        if result.used_ai:
+            if attempt == 1:
+                return result
+            return AiExtractionAttempt(
+                obligations=result.obligations,
+                attempted=True,
+                used_ai=True,
+                provider=result.provider,
+                model=result.model,
+                reason=f"AI extraction succeeded on retry attempt {attempt}.",
+            )
+
+        attempts.append(result)
+        if not _should_retry_ai_attempt(result):
+            return result
+        if attempt < _AI_EXTRACTION_MAX_ATTEMPTS:
+            time.sleep(_ai_retry_delay_seconds(result.reason, attempt))
+
+    reason = "; ".join(item.reason or "AI extraction failed." for item in attempts)
+    return AiExtractionAttempt(
+        obligations=[],
+        attempted=True,
+        used_ai=False,
+        provider=selection.provider,
+        model=selection.model,
+        reason=(
+            f"AI extraction failed after {_AI_EXTRACTION_MAX_ATTEMPTS} attempts. {reason}"
+        ),
+    )
+
+
+def _should_retry_ai_attempt(result: AiExtractionAttempt) -> bool:
+    reason = (result.reason or "").lower()
+    if "returned no actionable obligations" in reason:
+        return False
+    if any(marker in reason for marker in ("auth", "api key", "unsupported", "bad request")):
+        return False
+    return result.attempted and not result.used_ai
+
+
+def _ai_retry_delay_seconds(reason: str | None, attempt: int) -> float:
+    reason_text = reason or ""
+    match = re.search(r"retry(?:_after_seconds)?[=: ]+(\d+)", reason_text, re.IGNORECASE)
+    if match:
+        return min(float(match.group(1)), 2.0)
+    return _AI_EXTRACTION_RETRY_BASE_SECONDS * (2 ** max(attempt - 1, 0))
 
 
 def _extract_candidates_with_remote_provider(

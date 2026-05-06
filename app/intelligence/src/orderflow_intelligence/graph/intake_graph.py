@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -27,6 +28,8 @@ from orderflow_intelligence.graph.state import (
 logger = logging.getLogger(__name__)
 
 _LOW_CONFIDENCE_INTERRUPT_REASON = "LOW_CONFIDENCE_REQUIRES_HUMAN_REVIEW"
+_AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS = 3
+_AI_OBLIGATION_EXTRACTION_RETRY_BASE_SECONDS = 0.25
 
 
 # ──── Node 1: Parse Input ────
@@ -114,6 +117,13 @@ def _find_source_highlight(parsed_text: str, source_text: str) -> list[SourceHig
     return highlights
 
 
+def _gemini_retry_delay_seconds(error: GeminiError | None, attempt: int) -> float:
+    retry_after = getattr(error, "retry_after_seconds", None)
+    if isinstance(retry_after, (int, float)) and retry_after > 0:
+        return min(float(retry_after), 2.0)
+    return _AI_OBLIGATION_EXTRACTION_RETRY_BASE_SECONDS * (2 ** max(attempt - 1, 0))
+
+
 _AiExtractionResult = tuple[list[ObligationStub], str | None, str | None]
 
 
@@ -142,31 +152,59 @@ def _extract_with_gemini(parsed_text: str, page_number: int) -> _AiExtractionRes
         text=parsed_text[: settings.orderflow_ai_gemini_page_extraction_prompt_chars],
     )
 
-    try:
-        response = call_gemini_json(
-            api_key=gemini_key,
-            model=model,
-            prompt=prompt,
-            temperature=0.1,
-            max_output_tokens=min(settings.orderflow_ai_gemini_max_output_tokens, 1200),
-            request_label="page obligation extraction",
-        )
-    except GeminiError as exc:
-        logger.warning("Gemini extraction failure: %s (%s)", exc.code, exc)
-        return ([], exc.code, str(exc))
-    except Exception as exc:
-        logger.warning("Unexpected Gemini call failure: %s", exc)
-        return ([], "gemini_unexpected_error", str(exc))
+    result: dict[str, Any] | None = None
+    last_failure: tuple[str, str] | None = None
+    for attempt in range(1, _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS + 1):
+        try:
+            response = call_gemini_json(
+                api_key=gemini_key,
+                model=model,
+                prompt=prompt,
+                temperature=0.1,
+                max_output_tokens=min(settings.orderflow_ai_gemini_max_output_tokens, 1200),
+                request_label="page obligation extraction",
+            )
+            text_response = extract_gemini_text(response)
+            result = json.loads(text_response)
+            break
+        except GeminiError as exc:
+            logger.warning(
+                "Gemini extraction failure: %s (%s), attempt=%s/%s",
+                exc.code,
+                exc,
+                attempt,
+                _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS,
+            )
+            last_failure = (exc.code, str(exc))
+            if not exc.retryable or attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
+                return ([], exc.code, str(exc))
+            time.sleep(_gemini_retry_delay_seconds(exc, attempt))
+        except (json.JSONDecodeError, KeyError, IndexError) as exc:
+            logger.warning(
+                "Failed to parse Gemini extraction response, attempt=%s/%s: %s",
+                attempt,
+                _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS,
+                exc,
+            )
+            last_failure = ("gemini_invalid_json", "Gemini returned non-JSON text.")
+            if attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
+                return ([], last_failure[0], last_failure[1])
+            time.sleep(_gemini_retry_delay_seconds(None, attempt))
+        except Exception as exc:
+            logger.warning(
+                "Unexpected Gemini call failure, attempt=%s/%s: %s",
+                attempt,
+                _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS,
+                exc,
+            )
+            last_failure = ("gemini_unexpected_error", str(exc))
+            if attempt >= _AI_OBLIGATION_EXTRACTION_MAX_ATTEMPTS:
+                return ([], last_failure[0], last_failure[1])
+            time.sleep(_gemini_retry_delay_seconds(None, attempt))
 
-    try:
-        text_response = extract_gemini_text(response)
-        result = json.loads(text_response)
-    except GeminiError as exc:
-        logger.warning("Gemini text extraction failure: %s (%s)", exc.code, exc)
-        return ([], exc.code, str(exc))
-    except (json.JSONDecodeError, KeyError, IndexError) as exc:
-        logger.warning("Failed to parse Gemini extraction response: %s", exc)
-        return ([], "gemini_invalid_json", "Gemini returned non-JSON text.")
+    if result is None:
+        code, message = last_failure or ("gemini_unexpected_error", "Gemini extraction failed.")
+        return ([], code, message)
 
     obligations: list[ObligationStub] = []
     for i, item in enumerate(result.get("obligations", [])):
@@ -293,20 +331,19 @@ def extract_obligations(state: ExtractionGraphState) -> dict[str, Any]:
         parsed_text, page_number
     )
 
-    if llm_obligations:
+    if ai_failure_code and ai_failure_code != "gemini_missing_key":
+        raise RuntimeError(
+            f"Gemini obligation extraction failed after retry attempts: {ai_failure_message}"
+        )
+
+    if llm_obligations or ai_failure_code is None:
         obligations = llm_obligations
         extraction_mode = "ai"
         ai_provider = "gemini"
         ai_model = settings.orderflow_ai_default_model
     else:
         obligations = _extract_deterministic(parsed_text, page_number)
-        # If AI failed and we fell back, mark mode as "ai_fallback" so the UI
-        # can warn the reviewer. If the AI was simply not configured, mode is
-        # plain "deterministic".
-        if ai_failure_code and ai_failure_code != "gemini_missing_key":
-            extraction_mode = "ai_fallback"
-        else:
-            extraction_mode = "deterministic"
+        extraction_mode = "deterministic"
         ai_provider = None
         ai_model = None
 

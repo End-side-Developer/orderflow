@@ -7,6 +7,7 @@ legal context and identifying critical decision points.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -20,7 +21,11 @@ from orderflow_api.api.page_summary_persistence import (
     get_cached_page_summary,
 )
 from orderflow_api.core.config import settings
-from orderflow_api.core.gemini_client import call_gemini_json, extract_gemini_text
+from orderflow_api.core.gemini_client import (
+    call_gemini_json,
+    call_groq_json,
+    extract_gemini_text,
+)
 from orderflow_api.core.hash_utils import calculate_page_content_hash
 from orderflow_api.core.ai_versions import PAGE_EXTRACTION_PROMPT_VERSION
 from orderflow_api.schemas.page_summaries import (
@@ -29,6 +34,9 @@ from orderflow_api.schemas.page_summaries import (
 )
 
 logger = logging.getLogger(__name__)
+
+_AI_PAGE_EXTRACTION_MAX_ATTEMPTS = 3
+_AI_PAGE_EXTRACTION_RETRY_BASE_SECONDS = 0.25
 
 _SPECIALIZATION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "criminal": (
@@ -223,6 +231,58 @@ def _dict_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _is_retryable_ai_error(error: Exception) -> bool:
+    retryable = getattr(error, "retryable", None)
+    if isinstance(retryable, bool):
+        return retryable
+    return not isinstance(error, (ValueError, TypeError))
+
+
+def _ai_retry_delay_seconds(error: Exception, attempt: int) -> float:
+    retry_after = getattr(error, "retry_after_seconds", None)
+    if isinstance(retry_after, (int, float)) and retry_after > 0:
+        return min(float(retry_after), 2.0)
+    return _AI_PAGE_EXTRACTION_RETRY_BASE_SECONDS * (2 ** max(attempt - 1, 0))
+
+
+def _looks_like_first_page_cover(page_text: str) -> bool:
+    upper = page_text.upper()
+    signals = (
+        "IN THE HIGH COURT",
+        "SUPREME COURT",
+        "COURT OF",
+        "PETITIONER",
+        "RESPONDENT",
+        "APPELLANT",
+        "VERSUS",
+        "CORAM",
+        "JUDGMENT",
+        "ORDER",
+    )
+    return sum(1 for signal in signals if signal in upper) >= 2
+
+
+def _first_match(page_text: str, patterns: tuple[str, ...]) -> str | None:
+    for pattern in patterns:
+        match = re.search(pattern, page_text, re.IGNORECASE)
+        if match:
+            return re.sub(r"\s+", " ", match.group(0)).strip(" ,.;:")
+    return None
+
+
+def _extract_party_lines(page_text: str) -> list[str]:
+    parties: list[str] = []
+    for raw_line in page_text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip(" .")
+        if not line:
+            continue
+        if re.search(r"\b(petitioner|respondent|appellant|versus|v\.?|vs\.?)\b", line, re.IGNORECASE):
+            parties.append(line)
+        if len(parties) >= 6:
+            break
+    return parties
 
 
 def _safe_error_text(error: Exception) -> str:
@@ -448,30 +508,44 @@ class PageSummaryExtractor:
         """
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(page_num, page_text, total_pages)
+        if page_num == 1:
+            user_prompt = self._build_first_page_user_prompt(page_text, total_pages)
 
-        try:
-            if self.ai_provider == "openai":
-                return await self._call_openai(system_prompt, user_prompt)
-            elif self.ai_provider == "anthropic":
-                return await self._call_anthropic(system_prompt, user_prompt)
-            elif self.ai_provider == "gemini":
-                return await self._call_gemini(system_prompt, user_prompt)
-            else:
-                raise ValueError(f"Unsupported AI provider: {self.ai_provider}")
-        except Exception as exc:
-            logger.error(
-                "AI extraction failed for page %s (provider=%s, model=%s): %s: %s",
-                page_num,
-                self.ai_provider,
-                self.model,
-                type(exc).__name__,
-                _safe_error_text(exc),
-            )
-            # Fallback to deterministic extraction
-            result = self._deterministic_extract_page(page_text)
-            result["ai_fallback"] = True
-            result["ai_fallback_reason"] = f"{type(exc).__name__}: {_safe_error_text(exc)}"
-            return result
+        last_error: Exception | None = None
+        for attempt in range(1, _AI_PAGE_EXTRACTION_MAX_ATTEMPTS + 1):
+            try:
+                if self.ai_provider == "openai":
+                    return await self._call_openai(system_prompt, user_prompt)
+                elif self.ai_provider == "anthropic":
+                    return await self._call_anthropic(system_prompt, user_prompt)
+                elif self.ai_provider == "gemini":
+                    return await self._call_gemini(system_prompt, user_prompt)
+                elif self.ai_provider == "groq":
+                    return await self._call_groq(system_prompt, user_prompt)
+                else:
+                    raise ValueError(f"Unsupported AI provider: {self.ai_provider}")
+            except Exception as exc:
+                last_error = exc
+                remaining_attempts = _AI_PAGE_EXTRACTION_MAX_ATTEMPTS - attempt
+                log_level = logging.WARNING if remaining_attempts else logging.ERROR
+                logger.log(
+                    log_level,
+                    "AI extraction failed for page %s (provider=%s, model=%s, attempt=%s/%s): %s: %s",
+                    page_num,
+                    self.ai_provider,
+                    self.model,
+                    attempt,
+                    _AI_PAGE_EXTRACTION_MAX_ATTEMPTS,
+                    type(exc).__name__,
+                    _safe_error_text(exc),
+                )
+                if not remaining_attempts or not _is_retryable_ai_error(exc):
+                    raise
+                await asyncio.sleep(_ai_retry_delay_seconds(exc, attempt))
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("AI extraction failed without an error")
 
     def _build_system_prompt(self) -> str:
         """System prompt for AI page analysis."""
@@ -587,6 +661,21 @@ Focus on:
 Extract page summary, key points, highlights, entities, dates, directions, departments, and places as JSON.
 Remember: Legal precision is critical. Don't lose context."""
 
+    def _build_first_page_user_prompt(self, page_text: str, total_pages: int) -> str:
+        """Prompt page-one extraction as case-intake metadata, not just obligations."""
+        return f"""Analyze the first page (1/{total_pages}) of a court judgment or case filing.
+
+First pages are often cover/title pages. Treat case number, court name, party names,
+advocate names, coram/judge, dates, and filing metadata as useful intake information
+even if there are no directions or obligations yet.
+
+Page text:
+{page_text}
+
+Return JSON with a concise case-intake summary, 3-5 key metadata points, important
+highlights, entities, dates, directions if any, departments if any, and places.
+Do not say the page is useless only because it is mostly a case title page."""
+
     async def _call_openai(self, system: str, user: str) -> dict[str, Any]:
         """Call OpenAI API for page analysis."""
         try:
@@ -657,6 +746,26 @@ Remember: Legal precision is critical. Don't lose context."""
             return json.loads(content)
         except json.JSONDecodeError as exc:
             logger.error("Gemini returned invalid page summary JSON: %s", type(exc).__name__)
+            raise ValueError("AI response was not valid JSON") from exc
+
+    async def _call_groq(self, system: str, user: str) -> dict[str, Any]:
+        """Call Groq's OpenAI-compatible endpoint for page analysis."""
+        api_key = self.api_key or settings.orderflow_ai_groq_api_key
+        if not api_key:
+            raise ValueError("Missing Groq API key for page summary extraction")
+
+        response = call_groq_json(
+            api_key=api_key,
+            model=self.model or "llama-3.3-70b-versatile",
+            prompt=f"{system}\n\n{user}",
+            temperature=self.temperature,
+            request_label="page summary extraction",
+        )
+        content = extract_gemini_text(response)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            logger.error("Groq returned invalid page summary JSON: %s", type(exc).__name__)
             raise ValueError("AI response was not valid JSON") from exc
 
     async def _ai_extract_places_only(
@@ -732,6 +841,9 @@ Page text:
         Fallback deterministic extraction without AI.
         Useful for testing and when AI fails.
         """
+        if _looks_like_first_page_cover(page_text):
+            return self._deterministic_extract_first_page(page_text)
+
         # Split into sentences
         sentences = re.split(r"[.!?]+", page_text)[:3]
         summary = ".".join(sentences).strip()
@@ -761,6 +873,62 @@ Page text:
             "departments": self._deterministic_departments(page_text),
             "places": [],
             "confidence": 0.3,  # Low confidence for fallback
+        }
+
+    def _deterministic_extract_first_page(self, page_text: str) -> dict[str, Any]:
+        court = _first_match(
+            page_text,
+            (
+                r"\b(?:IN THE\s+)?(?:HIGH COURT|SUPREME COURT|DISTRICT COURT|COURT OF)[^\n]{0,100}",
+                r"\b[A-Z][A-Z\s]+COURT[^\n]{0,100}",
+            ),
+        )
+        case_number = _first_match(
+            page_text,
+            (
+                r"\b(?:W\.?P\.?\(C\)|CRL\.?A\.?|CIVIL APPEAL|SLP|FAO|CS|OA|MA)[^\n]{0,80}",
+                r"\b(?:Case|Petition|Appeal|Application)\s+No\.?\s*[^\n]{1,80}",
+            ),
+        )
+        parties = _extract_party_lines(page_text)
+        dates = self._deterministic_dates(page_text)
+        summary_parts = ["First page captured for case intake."]
+        if court:
+            summary_parts.append(f"Court: {court}.")
+        if case_number:
+            summary_parts.append(f"Case reference: {case_number}.")
+        if parties:
+            summary_parts.append(f"Parties identified: {'; '.join(parties[:2])}.")
+        if dates:
+            summary_parts.append(f"Date reference: {dates[0]['date_text']}.")
+
+        key_points = [
+            point
+            for point in [
+                f"Court: {court}" if court else None,
+                f"Case reference: {case_number}" if case_number else None,
+                *(f"Party line: {party}" for party in parties[:3]),
+            ]
+            if point
+        ]
+        return {
+            "summary": " ".join(summary_parts),
+            "key_points": key_points or ["First page contains case-intake metadata."],
+            "highlights": [
+                {
+                    "text": item,
+                    "significance": "important",
+                    "relevance": "Case-identification metadata from first page",
+                }
+                for item in [court, case_number, *parties[:2]]
+                if item
+            ],
+            "entities": self._deterministic_entities(page_text),
+            "dates": dates,
+            "directions": self._deterministic_directions(page_text),
+            "departments": self._deterministic_departments(page_text),
+            "places": [],
+            "confidence": 0.45,
         }
 
     def _deterministic_entities(self, page_text: str) -> list[dict[str, Any]]:

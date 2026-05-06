@@ -80,12 +80,15 @@ async def run_intake_extraction_route(
         ai_reason = f"{ai_reason}; {translation_note}" if ai_reason else translation_note
     obligations = ai_attempt.obligations
 
+    if not obligations and ai_attempt.attempted:
+        raise HTTPException(
+            status_code=502,
+            detail=ai_reason or "AI extraction failed after retry attempts.",
+        )
+
     if not obligations:
         obligations = extract_obligations(clauses=clauses, document_id=payload.document_id)
-        if ai_attempt.attempted:
-            extraction_mode = "ai_fallback"
-        else:
-            extraction_mode = "deterministic"
+        extraction_mode = "deterministic"
     else:
         extraction_mode = "ai"
 

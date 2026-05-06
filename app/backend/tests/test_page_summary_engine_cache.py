@@ -5,34 +5,138 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
+
 from orderflow_api.api import page_summary_engine
 from orderflow_api.api.page_summary_engine import PageSummaryExtractor
 from orderflow_api.core.ai_versions import PAGE_EXTRACTION_PROMPT_VERSION
 from orderflow_api.schemas.page_summaries import PageSummaryRecord
 
 
-def test_ai_extraction_logs_provider_error_without_secret(monkeypatch, caplog) -> None:
+def test_ai_extraction_retries_provider_error_without_secret(monkeypatch, caplog) -> None:
     secret = "sk-live-secret-from-env"
+    attempts = 0
 
     async def fake_call_gemini(*args, **kwargs):  # noqa: ANN002, ANN003
+        nonlocal attempts
+        attempts += 1
         raise RuntimeError(f"provider rejected api_key={secret}")
 
     extractor = PageSummaryExtractor(ai_provider="gemini", model="gemini", api_key=secret)
     monkeypatch.setattr(extractor, "_call_gemini", fake_call_gemini)
+    monkeypatch.setattr(page_summary_engine.asyncio, "sleep", _noop_sleep)
 
     with caplog.at_level(logging.ERROR, logger=page_summary_engine.__name__):
-        result = asyncio.run(
-            extractor._ai_extract_page(
-                page_num=1,
-                page_text="The court directed the department to file a status report.",
-                total_pages=1,
+        with pytest.raises(RuntimeError, match="provider rejected"):
+            asyncio.run(
+                extractor._ai_extract_page(
+                    page_num=1,
+                    page_text="The court directed the department to file a status report.",
+                    total_pages=1,
+                )
             )
-        )
 
-    assert result["summary"]
+    assert attempts == 3
     assert "RuntimeError" in caplog.text
     assert secret not in caplog.text
     assert "api_key" not in caplog.text
+
+
+def test_ai_extraction_returns_ai_result_after_retry(monkeypatch) -> None:
+    attempts = 0
+
+    async def fake_call_gemini(*args, **kwargs):  # noqa: ANN002, ANN003
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("temporary provider timeout")
+        return {
+            "summary": "AI summary after retry",
+            "key_points": ["point"],
+            "highlights": [],
+            "confidence": 0.86,
+        }
+
+    extractor = PageSummaryExtractor(ai_provider="gemini", model="gemini", api_key="key")
+    monkeypatch.setattr(extractor, "_call_gemini", fake_call_gemini)
+    monkeypatch.setattr(page_summary_engine.asyncio, "sleep", _noop_sleep)
+
+    result = asyncio.run(
+        extractor._ai_extract_page(
+            page_num=1,
+            page_text="The court directed the department to file a status report.",
+            total_pages=1,
+        )
+    )
+
+    assert attempts == 2
+    assert result["summary"] == "AI summary after retry"
+    assert "ai_fallback" not in result
+
+
+def test_groq_page_summary_provider_is_supported(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_call_groq_json(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    '{"summary":"Groq page summary","key_points":["case metadata"],'
+                                    '"highlights":[],"entities":[],"dates":[],"directions":[],'
+                                    '"departments":[],"places":[],"confidence":0.82}'
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr(page_summary_engine, "call_groq_json", fake_call_groq_json)
+
+    extractor = PageSummaryExtractor(
+        ai_provider="groq",
+        model="llama-3.3-70b-versatile",
+        api_key="gsk-test",
+    )
+    result = asyncio.run(
+        extractor._ai_extract_page(
+            page_num=1,
+            page_text="IN THE HIGH COURT OF DELHI\nW.P.(C) 8524/2025\nA Versus B",
+            total_pages=14,
+        )
+    )
+
+    assert result["summary"] == "Groq page summary"
+    assert captured["model"] == "llama-3.3-70b-versatile"
+    assert "first page" in str(captured["prompt"]).lower()
+
+
+def test_deterministic_first_page_extracts_case_metadata() -> None:
+    extractor = PageSummaryExtractor(ai_provider="gemini", model="gemini", api_key="key")
+
+    result = extractor._deterministic_extract_page(
+        "IN THE HIGH COURT OF DELHI AT NEW DELHI\n"
+        "W.P.(C) 8524/2025\n"
+        "Rahul Kumar ..... Petitioner\n"
+        "versus\n"
+        "Staff Selection Commission ..... Respondent\n"
+        "CORAM: HON'BLE MR. JUSTICE EXAMPLE\n"
+        "Date: 05 February 2026"
+    )
+
+    assert "Court:" in result["summary"]
+    assert any("Case reference" in point for point in result["key_points"])
+    assert result["confidence"] > 0.3
+
+
+async def _noop_sleep(delay: float) -> None:
+    return None
 
 
 def test_cache_hit_zero_ai_calls(monkeypatch) -> None:  # noqa: ANN001
