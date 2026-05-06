@@ -535,7 +535,6 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
         api_key=selection.api_key,
         timeout=settings.orderflow_ai_timeout_seconds,
         http_client=httpx.Client(
-            http2=True,
             headers={"User-Agent": user_agent},
         ),
     )

@@ -23,9 +23,9 @@ from orderflow_api.api.page_summary_persistence import (
 from orderflow_api.core.config import settings
 from orderflow_api.core.gemini_client import (
     call_gemini_json,
-    call_groq_json,
     extract_gemini_text,
 )
+from orderflow_api.core.groq_client import call_groq_json, extract_groq_text
 from orderflow_api.core.hash_utils import calculate_page_content_hash
 from orderflow_api.core.ai_versions import PAGE_EXTRACTION_PROMPT_VERSION
 from orderflow_api.schemas.page_summaries import (
@@ -761,7 +761,7 @@ Do not say the page is useless only because it is mostly a case title page."""
             temperature=self.temperature,
             request_label="page summary extraction",
         )
-        content = extract_gemini_text(response)
+        content = extract_groq_text(response)
         try:
             return json.loads(content)
         except json.JSONDecodeError as exc:

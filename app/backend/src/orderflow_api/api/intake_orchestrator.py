@@ -611,16 +611,18 @@ async def _ensure_intake_workflow(
         "bypass_cache": "true" if bypass_cache else "false",
         "current_concurrency": str(max(1, current_concurrency)),
     }
-    if ai_provider:
-        workflow_input["ai_provider"] = ai_provider
-        workflow_input["page_ai_provider"] = ai_provider
-        workflow_input["summary_ai_provider"] = ai_provider
-        workflow_input["action_plan_ai_provider"] = ai_provider
-    if ai_model:
-        workflow_input["ai_model"] = ai_model
-        workflow_input["page_ai_model"] = ai_model
-        workflow_input["summary_ai_model"] = ai_model
-        workflow_input["action_plan_ai_model"] = ai_model
+    resolved_ai_provider = ai_provider or settings.orderflow_ai_default_provider
+    resolved_ai_model = ai_model or settings.orderflow_ai_default_model
+    if resolved_ai_provider:
+        workflow_input["ai_provider"] = resolved_ai_provider
+        workflow_input["page_ai_provider"] = resolved_ai_provider
+        workflow_input["summary_ai_provider"] = resolved_ai_provider
+        workflow_input["action_plan_ai_provider"] = resolved_ai_provider
+    if resolved_ai_model:
+        workflow_input["ai_model"] = resolved_ai_model
+        workflow_input["page_ai_model"] = resolved_ai_model
+        workflow_input["summary_ai_model"] = resolved_ai_model
+        workflow_input["action_plan_ai_model"] = resolved_ai_model
     # Pass pages_total from document metadata if available
     pages_total = document.metadata.get("pages_total") if document.metadata else None
     if pages_total is not None:

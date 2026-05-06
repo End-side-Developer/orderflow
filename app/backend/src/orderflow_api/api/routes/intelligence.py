@@ -1820,6 +1820,41 @@ Text to analyze:
 {text}"""
 
 
+def _page_insight_response_from_payload(
+    parsed: dict[str, Any],
+    *,
+    fallback_text: str,
+    page_number: int,
+) -> PageInsightResponse:
+    return PageInsightResponse(
+        brief=parsed.get("brief", "AI provided an incomplete summary."),
+        risks=parsed.get("risks", []),
+        suggested_action=parsed.get("suggested_action"),
+        key_entities=[
+            KeyEntity(**entity)
+            for entity in parsed.get("key_entities", [])
+            if isinstance(entity, dict) and "name" in entity and "role" in entity
+        ],
+        important_dates=[
+            ImportantDate(**date)
+            for date in parsed.get("important_dates", [])
+            if isinstance(date, dict) and "date" in date and "description" in date
+        ],
+        statistics=[
+            StatItem(**stat)
+            for stat in parsed.get("statistics", [])
+            if isinstance(stat, dict) and "label" in stat and "value" in stat
+        ],
+        procedural_flow=[
+            FlowStep(**flow)
+            for flow in parsed.get("procedural_flow", [])
+            if isinstance(flow, dict) and "step" in flow and "title" in flow
+        ],
+        page_category=parsed.get("page_category"),
+        complexity_score=parsed.get("complexity_score"),
+    )
+
+
 @router.post("/page-insight", response_model=PageInsightResponse)
 async def get_page_insight(
     request: PageInsightRequest,
@@ -1836,20 +1871,52 @@ async def get_page_insight(
             suggested_action="Ensure the document is properly scanned/OCR'd."
         )
 
-    gemini_key = settings.orderflow_ai_gemini_api_key
-
-    if not gemini_key:
-        logger.warning("No Gemini API key found, returning mock insight.")
-        return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
-
-    model = "gemini-2.5-flash"
-    encoded_model = urllib_parse.quote(model, safe="")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{encoded_model}:generateContent?key={gemini_key}"
-
     prompt = _GEMINI_PROMPT_TEMPLATE.format(
         page_number=request.page_number,
         text=request.text[:4000],
     )
+
+    provider = settings.orderflow_ai_default_provider.strip().lower()
+    model = settings.orderflow_ai_default_model
+
+    if provider == "groq":
+        groq_key = settings.orderflow_ai_groq_api_key
+        if not groq_key:
+            logger.warning("Groq is configured for page insight, but no Groq API key was found.")
+            return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
+
+        try:
+            from orderflow_api.core.groq_client import call_groq_json, extract_groq_text
+
+            response = call_groq_json(
+                api_key=groq_key,
+                model=model or "llama-3.3-70b-versatile",
+                prompt=prompt,
+                temperature=0.15,
+                request_label="page insight",
+            )
+            parsed = json.loads(extract_groq_text(response))
+            return _page_insight_response_from_payload(
+                parsed,
+                fallback_text=request.text,
+                page_number=request.page_number,
+            )
+        except Exception as exc:
+            logger.error("Error calling Groq API for page insight: %s", exc)
+            return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
+
+    if provider != "gemini":
+        logger.warning("Provider %s is not supported for page insight; returning mock insight.", provider)
+        return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
+
+    gemini_key = settings.orderflow_ai_gemini_api_key
+    if not gemini_key:
+        logger.warning("No Gemini API key found, returning mock insight.")
+        return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
+
+    model = model or "gemini-2.5-flash"
+    encoded_model = urllib_parse.quote(model, safe="")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{encoded_model}:generateContent?key={gemini_key}"
 
     try:
         response = _post_json_insight(
@@ -1877,28 +1944,10 @@ async def get_page_insight(
 
         try:
             parsed = json.loads(text_response)
-            return PageInsightResponse(
-                brief=parsed.get("brief", "AI provided an incomplete summary."),
-                risks=parsed.get("risks", []),
-                suggested_action=parsed.get("suggested_action"),
-                key_entities=[
-                    KeyEntity(**e) for e in parsed.get("key_entities", [])
-                    if isinstance(e, dict) and "name" in e and "role" in e
-                ],
-                important_dates=[
-                    ImportantDate(**d) for d in parsed.get("important_dates", [])
-                    if isinstance(d, dict) and "date" in d and "description" in d
-                ],
-                statistics=[
-                    StatItem(**s) for s in parsed.get("statistics", [])
-                    if isinstance(s, dict) and "label" in s and "value" in s
-                ],
-                procedural_flow=[
-                    FlowStep(**f) for f in parsed.get("procedural_flow", [])
-                    if isinstance(f, dict) and "step" in f and "title" in f
-                ],
-                page_category=parsed.get("page_category"),
-                complexity_score=parsed.get("complexity_score"),
+            return _page_insight_response_from_payload(
+                parsed,
+                fallback_text=request.text,
+                page_number=request.page_number,
             )
         except json.JSONDecodeError:
             logger.error(f"Failed to parse Gemini JSON: {text_response}")

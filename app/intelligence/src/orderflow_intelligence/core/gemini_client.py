@@ -369,35 +369,6 @@ def call_gemini_json(
     max_output_tokens: int,
     request_label: str,
 ) -> dict[str, object]:
-    from .config import settings
-    if settings.orderflow_ai_default_llm_provider == "groq" and settings.orderflow_ai_groq_api_key:
-        import httpx
-        try:
-            with httpx.Client(http2=True, headers={
-                "Authorization": f"Bearer {settings.orderflow_ai_groq_api_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
-            }) as client:
-                res = client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    json={
-                        "model": settings.orderflow_ai_default_model or "llama-3.3-70b-versatile",
-                        "response_format": {"type": "json_object"},
-                        "messages": [
-                            {"role": "user", "content": prompt}
-                        ]
-                    },
-                    timeout=settings.orderflow_ai_timeout_seconds
-                )
-                res.raise_for_status()
-                data = res.json()
-                content = data["choices"][0]["message"]["content"]
-                return {"candidates": [{"content": {"parts": [{"text": content}]}}]}
-        except httpx.HTTPStatusError as exc:
-            raise GeminiError(f"groq replacement failed: {exc}", provider_detail="groq_failed") from exc
-        except Exception as exc:
-            raise GeminiError(f"groq replacement failed: {exc}", provider_detail="groq_failed") from exc
-
     encoded_model = urllib_parse.quote(model, safe="")
     reservation = _GEMINI_QUOTA_GUARD.reserve(
         tokens=estimate_text_tokens(prompt) + max(max_output_tokens, 1)

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,8 +17,11 @@ class Settings(BaseSettings):
         default="info", validation_alias="ORDERFLOW_LOG_LEVEL"
     )
     orderflow_ai_default_llm_provider: str = Field(
-        default="openai",
-        validation_alias="ORDERFLOW_AI_DEFAULT_LLM_PROVIDER",
+        default="gemini",
+        validation_alias=AliasChoices(
+            "ORDERFLOW_AI_DEFAULT_LLM_PROVIDER",
+            "ORDERFLOW_AI_DEFAULT_PROVIDER",
+        ),
     )
     orderflow_ai_default_model: str = Field(
         default="gemini-2.0-flash",
