@@ -1235,6 +1235,172 @@ def test_page_activity_changed_prompt_version_calls_provider_again(
     }
 
 
+def test_page_activity_low_text_page_continues_without_ai(monkeypatch) -> None:
+    document_id = uuid4()
+    provider_calls: list[dict[str, object]] = []
+
+    class CountingExtractor:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def _ai_extract_page(self, **kwargs):
+            provider_calls.append(kwargs)
+            raise AssertionError("low-text fallback should not call AI")
+
+    class Backend:
+        PageSummaryExtractor = CountingExtractor
+
+        def __init__(self) -> None:
+            self.settings = SimpleNamespace(orderflow_ai_groq_api_key="configured")
+            self.summaries: list[Record] = []
+
+        def get_cached_page_summary(self, **kwargs):
+            return None
+
+        def calculate_page_content_hash(self, page_text):
+            return f"hash:{page_text}"
+
+        def list_page_summaries(self, document_id):
+            return list(self.summaries)
+
+        def list_persisted_clauses(self, **kwargs):
+            return []
+
+        def list_persisted_obligations(self, document_id):
+            return []
+
+        def build_extracted_places(self, places, *, page_number):
+            return []
+
+        def geocode_places(self, places):
+            return []
+
+        def upsert_page_summary(self, **kwargs):
+            summary = Record(id=uuid4(), **kwargs)
+            self.summaries.append(summary)
+            return summary
+
+        def update_extraction_job_progress(self, document_id, **values):
+            return Record(stage="pages_extracting", **values)
+
+        def fail_extraction_job(self, document_id, **values):
+            return Record(stage="pages_extracting", error=values)
+
+    backend = Backend()
+    monkeypatch.setattr(intake, "_load_page_extraction_backend", lambda: backend)
+
+    result = asyncio.run(
+        intake.activity_extract_page_cached(
+            {
+                "document_id": str(document_id),
+                "page_number": 1,
+                "page_text": "",
+                "total_pages": 14,
+                "ai_provider": "groq",
+                "ai_model": "llama-3.3-70b-versatile",
+            }
+        )
+    )
+
+    assert provider_calls == []
+    assert result["cache_status"] == "miss_low_text_fallback"
+    assert result["extraction_mode"] == "deterministic"
+    assert result["summary"].startswith("First page has limited readable text")
+    assert backend.summaries[0].confidence == 0.2
+
+
+def test_page_activity_ai_failure_falls_back_to_deterministic(monkeypatch) -> None:
+    document_id = uuid4()
+
+    class FailingExtractor:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def _ai_extract_page(self, **kwargs):
+            raise RuntimeError("provider timeout")
+
+        def _find_context_links(self, **kwargs):
+            return []
+
+        def _deterministic_extract_page(self, page_text):
+            return {
+                "summary": "Fallback summary",
+                "key_points": ["Fallback key point"],
+                "highlights": [],
+                "entities": [],
+                "dates": [],
+                "directions": [],
+                "departments": [],
+                "places": [],
+                "confidence": 0.3,
+            }
+
+    class Backend:
+        PageSummaryExtractor = FailingExtractor
+
+        def __init__(self) -> None:
+            self.settings = SimpleNamespace(orderflow_ai_groq_api_key="configured")
+            self.summaries: list[Record] = []
+
+        def get_cached_page_summary(self, **kwargs):
+            return None
+
+        def calculate_page_content_hash(self, page_text):
+            return f"hash:{page_text}"
+
+        def list_page_summaries(self, document_id):
+            return list(self.summaries)
+
+        def list_persisted_clauses(self, **kwargs):
+            return []
+
+        def list_persisted_obligations(self, document_id):
+            return []
+
+        def build_extracted_places(self, places, *, page_number):
+            return []
+
+        def geocode_places(self, places):
+            return []
+
+        def upsert_page_summary(self, **kwargs):
+            summary = Record(id=uuid4(), **kwargs)
+            self.summaries.append(summary)
+            return summary
+
+        def update_extraction_job_progress(self, document_id, **values):
+            return Record(stage="pages_extracting", **values)
+
+        def fail_extraction_job(self, document_id, **values):
+            return Record(stage="pages_extracting", error=values)
+
+    backend = Backend()
+    monkeypatch.setattr(intake, "_load_page_extraction_backend", lambda: backend)
+    readable_text = (
+        "The court records that the petition concerns compliance directions "
+        "issued to the respondent department. The order requires continued "
+        "monitoring, filing of a status report, and review on the next date."
+    )
+
+    result = asyncio.run(
+        intake.activity_extract_page_cached(
+            {
+                "document_id": str(document_id),
+                "page_number": 1,
+                "page_text": readable_text,
+                "total_pages": 14,
+                "ai_provider": "groq",
+                "ai_model": "llama-3.3-70b-versatile",
+            }
+        )
+    )
+
+    assert result["cache_status"] == "miss_ai_fallback"
+    assert result["extraction_mode"] == "deterministic"
+    assert result["summary"] == "Fallback summary"
+    assert backend.summaries[0].confidence == 0.3
+
+
 def test_page_activity_updates_progress_on_cache_hit(monkeypatch, caplog) -> None:
     document_id = uuid4()
 

@@ -1,6 +1,8 @@
 import pytest
 
 from orderflow_intelligence.core.config import settings
+from orderflow_intelligence.core.groq_client import GroqNetworkError
+from orderflow_intelligence.graph import intake_graph
 from orderflow_intelligence.graph.intake_graph import run_extraction_graph
 
 
@@ -69,6 +71,27 @@ def test_intake_graph_extracts_obligations_with_deterministic_fallback() -> None
         assert "page_number" in obl
         assert "owner_hint" in obl
         assert "priority" in obl
+
+
+def test_intake_graph_falls_back_when_groq_network_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "orderflow_ai_default_llm_provider", "groq")
+    monkeypatch.setattr(settings, "orderflow_ai_groq_api_key", "configured")
+
+    def fail_groq(**_kwargs):
+        raise GroqNetworkError("Network blocked while calling Groq.")
+
+    monkeypatch.setattr(intake_graph, "call_groq_json", fail_groq)
+
+    result = run_extraction_graph(
+        raw_text="The authority shall submit a compliance report within 7 days.",
+        confidence_threshold=0.78,
+        page_number=3,
+        document_id="test-doc-groq-network",
+    )
+
+    assert result["extraction_mode"] == "deterministic"
+    assert result["ai_failure_code"] == "groq_network_error"
+    assert len(result["obligations"]) >= 1
 
 
 def test_intake_graph_output_is_deterministic() -> None:
