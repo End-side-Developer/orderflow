@@ -305,7 +305,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
 function Fact({ label, value }: { label: string; value: string | null }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
+    <div className="rounded-md bg-muted px-3 py-2">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className="mt-1 break-words text-sm font-semibold text-foreground">
         {value || "-"}
@@ -353,7 +353,7 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
             {page.important_highlights.length > 0 ? (
               <div className="mt-3 flex flex-col gap-2">
                 {page.important_highlights.slice(0, 2).map((highlight, index) => (
-                  <div key={`${highlight.text}-${index}`} className="rounded-md bg-slate-50 p-3">
+                  <div key={`${highlight.text}-${index}`} className="rounded-md bg-muted p-3">
                     <div className="mb-1 flex flex-wrap gap-2">
                       <Badge variant={highlight.significance === "critical" ? "warn" : "muted"}>
                         {highlight.significance}
@@ -408,7 +408,7 @@ function MiniList({
 }) {
   const visibleItems = items.filter(Boolean).slice(0, 3);
   return (
-    <div className="rounded-md bg-slate-50 p-3">
+    <div className="rounded-md bg-muted p-3">
       <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{title}</p>
       {visibleItems.length > 0 ? (
         <ul className="flex flex-col gap-1">
@@ -559,7 +559,7 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         {graph.narrative_steps.map((step, index) => (
-          <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-slate-50 p-3">
+          <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-slate-800 p-3">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
               {index + 1}
             </div>
@@ -616,7 +616,7 @@ function EvidenceList({
   return (
     <div className="mt-3 space-y-2">
       {visibleEvidence.slice(0, 2).map((item, index) => (
-        <div key={`${item.page_number ?? "source"}-${index}`} className="rounded-md bg-slate-50 p-3">
+        <div key={`${item.page_number ?? "source"}-${index}`} className="rounded-md bg-muted p-3">
           <div className="mb-1 flex flex-wrap gap-2">
             {item.page_number ? (
               <Badge variant="outline">Page {item.page_number}</Badge>

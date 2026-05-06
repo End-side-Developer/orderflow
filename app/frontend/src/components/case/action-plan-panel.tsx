@@ -283,7 +283,7 @@ function ActionPlanItemCard({
         </div>
 
         {confidencePercent != null ? (
-          <div className="rounded-md bg-slate-50 p-3">
+          <div className="rounded-md bg-muted p-3">
             <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-foreground">
               <span>Extraction confidence</span>
               <span className="flex flex-wrap items-center justify-end gap-2">
@@ -358,7 +358,7 @@ function Detail({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-md bg-slate-50 p-3">
+    <div className="rounded-md bg-muted p-3">
       <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
         {label}
@@ -372,7 +372,7 @@ function Detail({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
+    <div className="rounded-md bg-muted px-3 py-2">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className="mt-1 text-lg font-semibold text-foreground">{value}</div>
     </div>

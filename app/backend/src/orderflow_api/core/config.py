@@ -27,6 +27,10 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://orderflow:orderflow@localhost:5432/orderflow",
         validation_alias="ORDERFLOW_API_DATABASE_URL",
     )
+    orderflow_api_use_stub_repository: bool = Field(
+        default=False,
+        validation_alias="ORDERFLOW_API_USE_STUB_REPOSITORY",
+    )
     orderflow_api_s3_endpoint: str = Field(
         default="http://localhost:9000",
         validation_alias="ORDERFLOW_API_S3_ENDPOINT",

@@ -169,7 +169,7 @@ export function DashboardPanel({ documentId }: DashboardPanelProps) {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {stats.departmentTotals.map((group) => (
-            <div key={group.name} className="rounded-md bg-slate-50 px-3 py-2">
+            <div key={group.name} className="rounded-md bg-muted px-3 py-2">
               <div className="break-words text-sm font-semibold text-foreground">
                 {group.name}
               </div>
@@ -288,7 +288,7 @@ function SourceEvidence({ item }: { item: ObligationRecord }) {
   }
 
   return (
-    <div className="mt-3 rounded-md bg-slate-50 p-3">
+    <div className="mt-3 rounded-md bg-slate-800 p-3">
       <div className="mb-1 flex items-center gap-2">
         <FileText className="h-4 w-4 text-muted-foreground" />
         <p className="text-xs font-semibold uppercase text-muted-foreground">
@@ -327,7 +327,7 @@ function SmallFact({
   icon?: "date";
 }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
+    <div className="rounded-md bg-muted px-3 py-2">
       <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon === "date" ? <CalendarDays className="h-4 w-4" /> : null}
         {label}

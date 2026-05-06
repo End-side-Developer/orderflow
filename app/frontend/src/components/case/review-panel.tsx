@@ -561,7 +561,7 @@ function ReviewItemCard({
         </div>
 
         {confidencePercent != null ? (
-          <div className="rounded-md bg-slate-50 p-3">
+          <div className="rounded-md bg-muted p-3">
             <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-foreground">
               <span>Extraction confidence</span>
               <span className="flex flex-wrap items-center justify-end gap-2">
@@ -748,7 +748,7 @@ function RegenerationFeedbackDialog({
           </div>
 
           {item.citation?.clause_span ? (
-            <div className="rounded-md bg-slate-50 p-3">
+            <div className="rounded-md bg-muted p-3">
               <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
                 Current cited source
               </p>
@@ -803,7 +803,7 @@ function InlineForm({
   onSubmit: () => void;
 }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-md border border-slate-200 bg-slate-800 p-3">
       <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
       <div className="flex flex-col gap-3">{children}</div>
       <div className="mt-3 flex flex-wrap gap-2">

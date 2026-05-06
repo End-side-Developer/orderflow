@@ -277,7 +277,7 @@ function Highlights({ pageSummary }: { pageSummary: PageSummaryRecord }) {
   return (
     <div className="flex flex-col gap-3">
       {pageSummary.important_highlights.map((highlight, index) => (
-        <div key={`${highlight.text}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 shadow-sm">
+        <div key={`${highlight.text}-${index}`} className="rounded-lg border border-slate-200 bg-slate-800/50 p-4 shadow-sm">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant={highlight.significance === "critical" ? "destructive" : "secondary"} className="text-[10px] font-semibold uppercase tracking-wider">
               {highlight.significance}

@@ -45,7 +45,7 @@ const NODE_COLUMNS: Record<CaseFlowNode["node_type"], number> = {
 
 const NODE_STYLE: Record<CaseFlowNode["node_type"], string> = {
   party: "border-blue-400/40 bg-blue-500/10",
-  event: "border-slate-400/40 bg-slate-500/10",
+  event: "border-slate-400/40 bg-slate-8000/10",
   order: "border-amber-400/40 bg-amber-500/10",
   obligation: "border-red-400/40 bg-red-500/10",
 };
@@ -59,7 +59,7 @@ function CaseNodeCard({ data }: NodeProps<Node<CaseNodeData>>) {
         data.active ? "ring-2 ring-primary" : "hover:bg-muted/20",
       )}
     >
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-slate-500" />
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-slate-8000" />
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-foreground">{data.label}</span>
         {data.pageRef != null ? (
@@ -73,7 +73,7 @@ function CaseNodeCard({ data }: NodeProps<Node<CaseNodeData>>) {
           {data.detail}
         </p>
       ) : null}
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-slate-500" />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-slate-8000" />
     </div>
   );
 }
