@@ -54,9 +54,7 @@ export function EmptyState({
             <Link href={actionHref}>{actionLabel}</Link>
           </Button>
         ) : null}
-        {onAction && actionLabel ? (
-          <Button onClick={onAction}>{actionLabel}</Button>
-        ) : null}
+        {onAction && actionLabel ? <Button onClick={onAction}>{actionLabel}</Button> : null}
       </CardContent>
     </Card>
   );

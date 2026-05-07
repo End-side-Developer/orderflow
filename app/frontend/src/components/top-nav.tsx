@@ -180,8 +180,8 @@ export function TopNav() {
           </div>
 
           {/* User menu — shown when auth status is resolved */}
-          {status !== "loading" && (
-            user ? (
+          {status !== "loading" &&
+            (user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -239,8 +239,7 @@ export function TopNav() {
               >
                 Sign in
               </Link>
-            )
-          )}
+            ))}
         </div>
       </div>
     </header>

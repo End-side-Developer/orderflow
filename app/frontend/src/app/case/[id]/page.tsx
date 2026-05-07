@@ -16,11 +16,7 @@ import { DashboardPanel } from "../../../components/case/dashboard-panel";
 import { PdfViewer } from "../../../components/pdf-viewer";
 import { CitationVisualRef, DocumentRecord, getDocument } from "../../../lib/api/client";
 
-export default function CaseWizardPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function CaseWizardPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
   const documentId = decodeURIComponent(id);
@@ -123,9 +119,7 @@ export default function CaseWizardPage({
               isPolling={isPolling}
             />
           )}
-          {activeStage === "summary" && (
-            <SummaryPanel documentId={documentId} />
-          )}
+          {activeStage === "summary" && <SummaryPanel documentId={documentId} />}
           {activeStage === "action_plan" && (
             <ActionPlanPanel
               documentId={documentId}
@@ -142,9 +136,7 @@ export default function CaseWizardPage({
               onProceedToDashboard={() => setActiveStage("dashboard")}
             />
           )}
-          {activeStage === "dashboard" && (
-            <DashboardPanel documentId={documentId} />
-          )}
+          {activeStage === "dashboard" && <DashboardPanel documentId={documentId} />}
         </div>
 
         <div className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm xl:min-h-0">

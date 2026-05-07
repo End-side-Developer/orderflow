@@ -33,7 +33,9 @@ export function KpiTile({ label, value, hint, tone = "default", icon, className 
           </span>
           {icon ? <span className="text-muted-foreground">{icon}</span> : null}
         </div>
-        <div className={cn("text-3xl font-semibold leading-tight tracking-tight", TONE_VALUE[tone])}>
+        <div
+          className={cn("text-3xl font-semibold leading-tight tracking-tight", TONE_VALUE[tone])}
+        >
           {value}
         </div>
         {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}

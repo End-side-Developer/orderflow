@@ -413,7 +413,10 @@ export default function UploadPage() {
         return;
       }
       const buildStringArray = (value: string): string[] | undefined => {
-        const list = value.split(",").map((s) => s.trim()).filter(Boolean);
+        const list = value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         return list.length > 0 ? list : undefined;
       };
       const envelope: IndianECourtsIntakeEnvelope = {
@@ -517,15 +520,9 @@ export default function UploadPage() {
     setStatusText("Page extraction workflow started. Opening the case workspace...");
 
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "orderflow:last_uploaded_document_id",
-        uploadResult.data.id,
-      );
+      window.localStorage.setItem("orderflow:last_uploaded_document_id", uploadResult.data.id);
       window.localStorage.setItem("orderflow:last_uploaded_document_label", file.name);
-      window.localStorage.setItem(
-        "orderflow:current_document_id",
-        uploadResult.data.id,
-      );
+      window.localStorage.setItem("orderflow:current_document_id", uploadResult.data.id);
       window.localStorage.removeItem("orderflow:last_uploaded_ai_reason");
       window.localStorage.removeItem("orderflow:last_uploaded_workflow_warning");
     }
@@ -817,7 +814,11 @@ export default function UploadPage() {
                 </CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2">
                   <Field id="ccms_reference_id" label="CCMS reference id">
-                    <Input id="ccms_reference_id" name="ccms_reference_id" placeholder="CCMS-REF-2026-001" />
+                    <Input
+                      id="ccms_reference_id"
+                      name="ccms_reference_id"
+                      placeholder="CCMS-REF-2026-001"
+                    />
                   </Field>
                   <Field id="ccms_delivery_timestamp" label="CCMS delivery timestamp (ISO)">
                     <Input
@@ -827,10 +828,18 @@ export default function UploadPage() {
                     />
                   </Field>
                   <Field id="ccms_document_type" label="CCMS document type">
-                    <Input id="ccms_document_type" name="ccms_document_type" placeholder="final_order" />
+                    <Input
+                      id="ccms_document_type"
+                      name="ccms_document_type"
+                      placeholder="final_order"
+                    />
                   </Field>
                   <Field id="ccms_source_url" label="CCMS source URL">
-                    <Input id="ccms_source_url" name="ccms_source_url" placeholder="https://...pdf" />
+                    <Input
+                      id="ccms_source_url"
+                      name="ccms_source_url"
+                      placeholder="https://...pdf"
+                    />
                   </Field>
                   <Field id="ccms_source_gateway" label="CCMS source gateway">
                     <Input
@@ -840,13 +849,21 @@ export default function UploadPage() {
                     />
                   </Field>
                   <Field id="ccms_receipt_id" label="CCMS receipt id">
-                    <Input id="ccms_receipt_id" name="ccms_receipt_id" placeholder="CCMS-RECEIPT-001" />
+                    <Input
+                      id="ccms_receipt_id"
+                      name="ccms_receipt_id"
+                      placeholder="CCMS-RECEIPT-001"
+                    />
                   </Field>
                   <Field id="cis_case_id" label="CIS case id">
                     <Input id="cis_case_id" name="cis_case_id" placeholder="CIS-CASE-2026-981" />
                   </Field>
                   <Field id="cis_court_name" label="CIS court name">
-                    <Input id="cis_court_name" name="cis_court_name" placeholder="High Court of Karnataka" />
+                    <Input
+                      id="cis_court_name"
+                      name="cis_court_name"
+                      placeholder="High Court of Karnataka"
+                    />
                   </Field>
                   <Field id="cis_court_code" label="CIS court code">
                     <Input id="cis_court_code" name="cis_court_code" placeholder="KAHC01" />
@@ -861,25 +878,49 @@ export default function UploadPage() {
                     <Input id="cis_parties" name="cis_parties" placeholder="State, Petitioner" />
                   </Field>
                   <Field id="cis_petitioners" label="CIS petitioners">
-                    <Input id="cis_petitioners" name="cis_petitioners" placeholder="Petitioner 1, Petitioner 2" />
+                    <Input
+                      id="cis_petitioners"
+                      name="cis_petitioners"
+                      placeholder="Petitioner 1, Petitioner 2"
+                    />
                   </Field>
                   <Field id="cis_respondents" label="CIS respondents">
-                    <Input id="cis_respondents" name="cis_respondents" placeholder="Union of India, State" />
+                    <Input
+                      id="cis_respondents"
+                      name="cis_respondents"
+                      placeholder="Union of India, State"
+                    />
                   </Field>
                   <Field id="cis_case_type" label="CIS case type">
                     <Input id="cis_case_type" name="cis_case_type" placeholder="Writ Petition" />
                   </Field>
                   <Field id="cis_filing_number" label="CIS filing number">
-                    <Input id="cis_filing_number" name="cis_filing_number" placeholder="Filing No. 1234/2025" />
+                    <Input
+                      id="cis_filing_number"
+                      name="cis_filing_number"
+                      placeholder="Filing No. 1234/2025"
+                    />
                   </Field>
                   <Field id="cis_diary_number" label="CIS diary number">
-                    <Input id="cis_diary_number" name="cis_diary_number" placeholder="Diary No. 9876/2025" />
+                    <Input
+                      id="cis_diary_number"
+                      name="cis_diary_number"
+                      placeholder="Diary No. 9876/2025"
+                    />
                   </Field>
                   <Field id="cis_judge_names" label="CIS judge names">
-                    <Input id="cis_judge_names" name="cis_judge_names" placeholder="Justice A, Justice B" />
+                    <Input
+                      id="cis_judge_names"
+                      name="cis_judge_names"
+                      placeholder="Justice A, Justice B"
+                    />
                   </Field>
                   <Field id="cis_hearing_stage" label="CIS hearing stage">
-                    <Input id="cis_hearing_stage" name="cis_hearing_stage" placeholder="Judgment pronounced" />
+                    <Input
+                      id="cis_hearing_stage"
+                      name="cis_hearing_stage"
+                      placeholder="Judgment pronounced"
+                    />
                   </Field>
                   <Field id="cis_state" label="CIS state">
                     <Input id="cis_state" name="cis_state" placeholder="Karnataka" />
@@ -952,11 +993,7 @@ export default function UploadPage() {
 
             <div className="flex justify-end">
               <Button type="submit" size="lg" disabled={submitting}>
-                {submitting ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <UploadCloud />
-                )}
+                {submitting ? <Loader2 className="animate-spin" /> : <UploadCloud />}
                 {submitting ? "Working..." : "Ingest and start page extraction"}
               </Button>
             </div>
@@ -1021,10 +1058,7 @@ export default function UploadPage() {
               variant="outline"
               onClick={() => {
                 if (typeof window !== "undefined") {
-                  window.localStorage.setItem(
-                    "orderflow:current_document_id",
-                    duplicateExistingId,
-                  );
+                  window.localStorage.setItem("orderflow:current_document_id", duplicateExistingId);
                 }
                 router.push(`/case/${encodeURIComponent(duplicateExistingId)}`);
               }}
@@ -1039,15 +1073,7 @@ export default function UploadPage() {
   );
 }
 
-function Field({
-  id,
-  label,
-  children,
-}: {
-  id: string;
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">

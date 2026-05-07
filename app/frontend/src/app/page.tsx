@@ -203,9 +203,7 @@ export default function OverviewPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Recent reviewer activity</CardTitle>
-                <CardDescription>
-                  Audit trail without opening each case.
-                </CardDescription>
+                <CardDescription>Audit trail without opening each case.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {recentActivity.length === 0 ? (

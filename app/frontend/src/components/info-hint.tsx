@@ -2,11 +2,7 @@
 
 import { Info } from "lucide-react";
 import { GLOSSARY } from "@/lib/glossary";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface InfoHintProps {
   glossaryKey?: string;
@@ -16,7 +12,7 @@ interface InfoHintProps {
 
 export function InfoHint({ glossaryKey, text, side = "top" }: InfoHintProps) {
   const body = text ?? (glossaryKey ? GLOSSARY[glossaryKey]?.helpText : "");
-  
+
   if (!body) return null;
 
   return (

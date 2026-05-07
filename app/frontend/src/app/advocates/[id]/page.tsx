@@ -203,4 +203,3 @@ export default function AdvocateDetailPage({ params }: { params: Promise<{ id: s
     </div>
   );
 }
-

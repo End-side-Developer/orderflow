@@ -164,9 +164,7 @@ export default function VerificationsPage() {
                       </>
                     )}
                   </div>
-                  {p.bio && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{p.bio}</p>
-                  )}
+                  {p.bio && <p className="text-sm text-muted-foreground line-clamp-2">{p.bio}</p>}
                   <div className="flex gap-2 pt-2">
                     <Button
                       size="sm"

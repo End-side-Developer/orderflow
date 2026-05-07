@@ -1,4 +1,5 @@
 """Unit tests for the core permission/role matrix."""
+
 from __future__ import annotations
 
 from orderflow_api.core.auth.permissions import (
@@ -10,6 +11,7 @@ from orderflow_api.core.auth.permissions import (
 
 
 # ──── Citizen ────────────────────────────────────────────────────────────────
+
 
 def test_citizen_has_self_read() -> None:
     assert has_permission(Role.CITIZEN, Permission.SELF_READ)
@@ -57,6 +59,7 @@ def test_citizen_cannot_verify_advocates() -> None:
 
 # ──── Advocate ───────────────────────────────────────────────────────────────
 
+
 def test_advocate_has_case_read() -> None:
     assert has_permission(Role.ADVOCATE, Permission.CASE_READ)
 
@@ -97,6 +100,7 @@ def test_advocate_cannot_manage_users() -> None:
 
 # ──── Judge ──────────────────────────────────────────────────────────────────
 
+
 def test_judge_has_obligation_write() -> None:
     assert has_permission(Role.JUDGE, Permission.OBLIGATION_WRITE)
 
@@ -133,6 +137,7 @@ def test_judge_cannot_manage_users() -> None:
 
 # ──── Government ─────────────────────────────────────────────────────────────
 
+
 def test_government_has_user_manage() -> None:
     assert has_permission(Role.GOVERNMENT, Permission.USER_MANAGE)
 
@@ -150,6 +155,7 @@ def test_government_has_all_permissions() -> None:
 
 
 # ──── Hierarchy monotonicity ──────────────────────────────────────────────────
+
 
 def test_permission_count_increases_with_privilege_level() -> None:
     sizes = [

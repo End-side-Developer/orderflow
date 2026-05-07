@@ -52,18 +52,13 @@ export function RecommendedAdvocatesPanel({ documentId }: RecommendedAdvocatesPa
     };
   }, [documentId]);
 
-  const filterSummary = useMemo(
-    () => (data ? describeFilters(data.filters) : null),
-    [data],
-  );
+  const filterSummary = useMemo(() => (data ? describeFilters(data.filters) : null), [data]);
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm">Advocates who can help</CardTitle>
-        <CardDescription>
-          Ranked from verified profiles using case-level signals.
-        </CardDescription>
+        <CardDescription>Ranked from verified profiles using case-level signals.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 pt-0">
         {loading ? (
@@ -98,13 +93,18 @@ export function RecommendedAdvocatesPanel({ documentId }: RecommendedAdvocatesPa
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {advocate.profile.specializations.slice(0, 2).map((specialization) => (
-                        <Badge key={specialization} variant="secondary" className="text-[10px] capitalize">
+                        <Badge
+                          key={specialization}
+                          variant="secondary"
+                          className="text-[10px] capitalize"
+                        >
                           {specialization}
                         </Badge>
                       ))}
                       {advocate.profile.ratings_count > 0 ? (
                         <span className="text-[11px] text-muted-foreground">
-                          ★ {advocate.profile.ratings_avg?.toFixed(1) ?? "—"} ({advocate.profile.ratings_count})
+                          ★ {advocate.profile.ratings_avg?.toFixed(1) ?? "—"} (
+                          {advocate.profile.ratings_count})
                         </span>
                       ) : null}
                     </div>
@@ -118,4 +118,3 @@ export function RecommendedAdvocatesPanel({ documentId }: RecommendedAdvocatesPa
     </Card>
   );
 }
-

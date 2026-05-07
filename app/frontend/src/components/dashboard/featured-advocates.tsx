@@ -77,9 +77,7 @@ export function FeaturedAdvocates() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">
-          Featured advocates
-        </h2>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Featured advocates</h2>
         <Link
           href="/advocates"
           className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"

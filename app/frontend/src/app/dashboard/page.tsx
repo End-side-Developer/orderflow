@@ -311,9 +311,7 @@ export default function DashboardPage() {
                     </span>
                     Case overview <InfoHint glossaryKey="workbench" />
                   </CardTitle>
-                  <CardDescription>
-                    Full case overview and workflow management.
-                  </CardDescription>
+                  <CardDescription>Full case overview and workflow management.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild>

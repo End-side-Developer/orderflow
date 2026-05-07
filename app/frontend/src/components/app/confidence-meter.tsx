@@ -24,7 +24,12 @@ export function getConfidenceTone(value: number): {
   return { label: "Low", textClass: "text-destructive", indicatorClass: "bg-destructive" };
 }
 
-export function ConfidenceMeter({ value, label, compact = false, className }: ConfidenceMeterProps) {
+export function ConfidenceMeter({
+  value,
+  label,
+  compact = false,
+  className,
+}: ConfidenceMeterProps) {
   const tone = getConfidenceTone(value);
   const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
 

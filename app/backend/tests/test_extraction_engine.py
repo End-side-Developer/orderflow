@@ -56,15 +56,9 @@ def test_decode_document_text_extracts_marathi_pdf_payload(monkeypatch) -> None:
     )
 
     marathi_clause = (
-        "प्रतिवादीने सात दिवसांच्या आत अनुपालन प्रतिज्ञापत्र दाखल करावे "
-        "आणि न्यायालयात सादर करावे."
+        "प्रतिवादीने सात दिवसांच्या आत अनुपालन प्रतिज्ञापत्र दाखल करावे " "आणि न्यायालयात सादर करावे."
     )
-    payload = (
-        b"%PDF-1.7\n"
-        b"1 0 obj\n("
-        + marathi_clause.encode("utf-8")
-        + b")\nendobj\n"
-    )
+    payload = b"%PDF-1.7\n" b"1 0 obj\n(" + marathi_clause.encode("utf-8") + b")\nendobj\n"
 
     parsed = extraction_engine.decode_document_text(
         payload,
@@ -154,9 +148,7 @@ def test_decode_document_text_rejects_pypdf_replacement_char_mojibake(monkeypatc
 
 
 def test_looks_like_natural_language_accepts_devanagari() -> None:
-    marathi_text = (
-        "प्रतिवादीने सात दिवसांच्या आत अनुपालन प्रतिज्ञापत्र दाखल करावे."
-    )
+    marathi_text = "प्रतिवादीने सात दिवसांच्या आत अनुपालन प्रतिज्ञापत्र दाखल करावे."
     assert extraction_engine._looks_like_natural_language(marathi_text) is True
 
 

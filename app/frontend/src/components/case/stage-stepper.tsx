@@ -13,7 +13,8 @@ export type WizardStage = "extraction" | "summary" | "action_plan" | "review" | 
 
 export function getWizardStageFromJobStage(jobStage: ExtractionJobStage | undefined): WizardStage {
   if (!jobStage) return "extraction";
-  if (jobStage === "pending" || jobStage === "pages_extracting" || jobStage === "pages_done") return "extraction";
+  if (jobStage === "pending" || jobStage === "pages_extracting" || jobStage === "pages_done")
+    return "extraction";
   if (jobStage === "summary_pending" || jobStage === "summary_done") return "summary";
   if (jobStage === "action_plan_pending" || jobStage === "action_plan_done") return "action_plan";
   if (jobStage === "review_in_progress") return "review";
@@ -50,8 +51,8 @@ export function StageStepper({
                 isActive
                   ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
                   : isLocked
-                  ? "text-slate-400 cursor-not-allowed"
-                  : "text-slate-700 hover:bg-slate-50"
+                    ? "text-slate-400 cursor-not-allowed"
+                    : "text-slate-700 hover:bg-slate-50"
               }`}
             >
               {isCompleted ? (

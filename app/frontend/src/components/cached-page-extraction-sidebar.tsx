@@ -70,8 +70,8 @@ export function CachedPageExtractionSidebar({
           <FileText />
           <AlertTitle>Page {currentPage} has no cached extraction yet</AlertTitle>
           <AlertDescription>
-            Start intake or wait for page extraction to complete. This viewer will not call a separate
-            AI endpoint.
+            Start intake or wait for page extraction to complete. This viewer will not call a
+            separate AI endpoint.
           </AlertDescription>
         </Alert>
       </aside>
@@ -79,11 +79,7 @@ export function CachedPageExtractionSidebar({
   }
 
   const confidence = clampPercent((pageSummary.confidence ?? 0) * 100);
-  const sourceLabel = [
-    pageSummary.ai_provider,
-    pageSummary.ai_model,
-    pageSummary.prompt_version,
-  ]
+  const sourceLabel = [pageSummary.ai_provider, pageSummary.ai_model, pageSummary.prompt_version]
     .filter(Boolean)
     .join(" / ");
 
@@ -157,7 +153,10 @@ export function CachedPageExtractionSidebar({
               {pageSummary.entities.length > 0 ? (
                 <div className="grid gap-2">
                   {pageSummary.entities.map((entity, index) => (
-                    <div key={`${entity.name}-${index}`} className="rounded-md border border-border p-3">
+                    <div
+                      key={`${entity.name}-${index}`}
+                      className="rounded-md border border-border p-3"
+                    >
                       <div className="mb-2 flex items-start gap-2">
                         <Landmark className="mt-0.5 shrink-0 text-muted-foreground" />
                         <div className="min-w-0 flex-1">
@@ -165,7 +164,9 @@ export function CachedPageExtractionSidebar({
                             {entity.name}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-2">
-                            {entity.entity_type ? <Badge variant="secondary">{entity.entity_type}</Badge> : null}
+                            {entity.entity_type ? (
+                              <Badge variant="secondary">{entity.entity_type}</Badge>
+                            ) : null}
                             {entity.role ? <Badge variant="outline">{entity.role}</Badge> : null}
                             <ConfidenceBadge value={entity.confidence} />
                           </div>
@@ -211,7 +212,10 @@ export function CachedPageExtractionSidebar({
           <TabsContent value="dates" className="m-0 flex flex-col gap-3">
             {pageSummary.dates.length > 0 ? (
               pageSummary.dates.map((date, index) => (
-                <div key={`${date.date_text}-${index}`} className="rounded-md border border-border p-3">
+                <div
+                  key={`${date.date_text}-${index}`}
+                  className="rounded-md border border-border p-3"
+                >
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <CalendarDays className="text-muted-foreground" />
                     <p className="break-words text-sm font-semibold text-card-foreground">
@@ -234,10 +238,15 @@ export function CachedPageExtractionSidebar({
           <TabsContent value="directions" className="m-0 flex flex-col gap-3">
             {pageSummary.directions.length > 0 ? (
               pageSummary.directions.map((direction, index) => (
-                <div key={`${direction.direction_text}-${index}`} className="rounded-md border border-border p-3">
+                <div
+                  key={`${direction.direction_text}-${index}`}
+                  className="rounded-md border border-border p-3"
+                >
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <ListChecks className="text-muted-foreground" />
-                    <Badge variant={direction.directive_kind === "mandatory" ? "warn" : "secondary"}>
+                    <Badge
+                      variant={direction.directive_kind === "mandatory" ? "warn" : "secondary"}
+                    >
                       {direction.directive_kind}
                     </Badge>
                     <Badge variant={direction.compliance_required === "yes" ? "good" : "muted"}>
@@ -249,7 +258,9 @@ export function CachedPageExtractionSidebar({
                     {direction.direction_text}
                   </p>
                   {direction.source_location ? (
-                    <p className="mt-2 text-xs text-muted-foreground">{direction.source_location}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {direction.source_location}
+                    </p>
                   ) : null}
                 </div>
               ))
@@ -346,13 +357,7 @@ function ConfidenceBadge({ value }: { value: number | null }) {
   return <Badge variant={percent >= 70 ? "good" : "warn"}>{percent}%</Badge>;
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
       <h4 className="text-xs font-semibold uppercase text-muted-foreground">{title}</h4>

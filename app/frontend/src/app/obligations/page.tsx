@@ -22,11 +22,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -73,8 +69,24 @@ const OBLIGATION_POLL_MS = 15000;
 const SIMILAR_CASE_LIMIT = 5;
 
 const SIMILARITY_STOPWORDS = new Set([
-  "the", "and", "for", "with", "this", "that", "from", "into", "shall", "must",
-  "case", "court", "order", "document", "within", "under", "against", "between",
+  "the",
+  "and",
+  "for",
+  "with",
+  "this",
+  "that",
+  "from",
+  "into",
+  "shall",
+  "must",
+  "case",
+  "court",
+  "order",
+  "document",
+  "within",
+  "under",
+  "against",
+  "between",
 ]);
 
 type BoardColumns = {
@@ -205,7 +217,9 @@ function buildRelatedCaseRecommendations(
     const similarityScore =
       lexicalSimilarity + (ownerOverlap ? 0.2 : 0) + (priorityOverlap ? 0.1 : 0);
     const rationaleTags = [
-      ...Array.from(overlapTokens).slice(0, 3).map((token) => `pattern:${token}`),
+      ...Array.from(overlapTokens)
+        .slice(0, 3)
+        .map((token) => `pattern:${token}`),
       ownerOverlap ? "owner-overlap" : null,
       priorityOverlap ? "priority-overlap" : null,
     ].filter((value): value is string => Boolean(value));
@@ -399,12 +413,15 @@ function ObligationsContent() {
       .filter((item) => item.escalation?.open)
       .slice()
       .sort((left, right) => {
-        const ll = left.escalation, rl = right.escalation;
+        const ll = left.escalation,
+          rl = right.escalation;
         if (!ll || !rl) return 0;
         const levelDelta = rankEscalationLevel(rl.level) - rankEscalationLevel(ll.level);
         if (levelDelta !== 0) return levelDelta;
-        const ld = typeof ll.days_until_due === "number" ? ll.days_until_due : Number.POSITIVE_INFINITY;
-        const rd = typeof rl.days_until_due === "number" ? rl.days_until_due : Number.POSITIVE_INFINITY;
+        const ld =
+          typeof ll.days_until_due === "number" ? ll.days_until_due : Number.POSITIVE_INFINITY;
+        const rd =
+          typeof rl.days_until_due === "number" ? rl.days_until_due : Number.POSITIVE_INFINITY;
         return ld - rd;
       });
   }, [items]);
@@ -496,9 +513,7 @@ function ObligationsContent() {
                 Stage: {documentWorkbench.document.stage.replaceAll("_", " ")}
               </Badge>
             ) : null}
-            {documentWorkbench ? (
-              <span>Next: {documentWorkbench.document.next_action}</span>
-            ) : null}
+            {documentWorkbench ? <span>Next: {documentWorkbench.document.next_action}</span> : null}
           </span>
         }
         actions={
@@ -588,7 +603,11 @@ function ObligationsContent() {
           ) : null}
 
           <section className="grid gap-3 md:grid-cols-3">
-            <KpiTile label="Total obligations" value={items.length} hint="Loaded for this document" />
+            <KpiTile
+              label="Total obligations"
+              value={items.length}
+              hint="Loaded for this document"
+            />
             <KpiTile
               label="Open escalations"
               value={openEscalations.length}
@@ -598,9 +617,7 @@ function ObligationsContent() {
             <KpiTile
               label="Critical escalations"
               value={criticalEscalations}
-              hint={
-                lastRefreshedAt ? `Refreshed ${formatDateTime(lastRefreshedAt)}` : "n/a"
-              }
+              hint={lastRefreshedAt ? `Refreshed ${formatDateTime(lastRefreshedAt)}` : "n/a"}
               tone={criticalEscalations > 0 ? "destructive" : "default"}
             />
           </section>
@@ -620,12 +637,17 @@ function ObligationsContent() {
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-semibold text-foreground">{item.title}</span>
                       <span className="text-xs text-muted-foreground">
-                        Due: {formatDueDate(item.due_date)} · Review: {item.review_state.replace("_", " ")}
+                        Due: {formatDueDate(item.due_date)} · Review:{" "}
+                        {item.review_state.replace("_", " ")}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusPill kind="escalation" value={item.escalation?.level ?? "none"} />
-                      <Button size="sm" variant="outline" onClick={() => setOpenObligationId(item.id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setOpenObligationId(item.id)}
+                      >
                         Open
                       </Button>
                     </div>
@@ -635,7 +657,9 @@ function ObligationsContent() {
             </Card>
           ) : null}
 
-          {(serverRelatedCases.length > 0 || relatedCases.length > 0 || relatedCasesState === "loading") ? (
+          {serverRelatedCases.length > 0 ||
+          relatedCases.length > 0 ||
+          relatedCasesState === "loading" ? (
             <Collapsible defaultOpen={false}>
               <Card>
                 <CardHeader className="pb-3">
@@ -773,13 +797,7 @@ function ObligationsContent() {
   );
 }
 
-function ObligationListRow({
-  item,
-  onOpen,
-}: {
-  item: ObligationRecord;
-  onOpen: () => void;
-}) {
+function ObligationListRow({ item, onOpen }: { item: ObligationRecord; onOpen: () => void }) {
   return (
     <button
       type="button"
@@ -1047,9 +1065,7 @@ function ObligationDetail({
             <CardTitle className="text-sm">Confidence</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <ConfidenceMeter
-              value={typeof item.confidence === "number" ? item.confidence : 0}
-            />
+            <ConfidenceMeter value={typeof item.confidence === "number" ? item.confidence : 0} />
           </CardContent>
         </Card>
 
@@ -1084,9 +1100,7 @@ function ObligationDetail({
                 Save
               </Button>
             </form>
-            {actionError ? (
-              <p className="mt-2 text-sm text-destructive">{actionError}</p>
-            ) : null}
+            {actionError ? <p className="mt-2 text-sm text-destructive">{actionError}</p> : null}
           </CardContent>
         </Card>
 
@@ -1096,9 +1110,7 @@ function ObligationDetail({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Citation</CardTitle>
-              <CardDescription className="text-xs">
-                {item.citation.clause_span}
-              </CardDescription>
+              <CardDescription className="text-xs">{item.citation.clause_span}</CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
               <Button
@@ -1115,7 +1127,10 @@ function ObligationDetail({
               {citationState === "ready" && citationItems.length > 0 ? (
                 <div className="mt-3 flex flex-col gap-2">
                   {citationItems.map((clause) => (
-                    <div key={clause.id} className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+                    <div
+                      key={clause.id}
+                      className="rounded-md border border-border bg-muted/30 p-3 text-sm"
+                    >
                       <div className="text-xs text-muted-foreground">
                         Page {clause.page_number ?? "n/a"} · Clause {clause.clause_index} ·{" "}
                         {clause.citation_span}
@@ -1149,7 +1164,9 @@ function ObligationDetail({
               <Badge variant={completionVerification.dateValidityPass ? "good" : "destructive"}>
                 Date {completionVerification.dateValidityPass ? "pass" : "fail"}
               </Badge>
-              <Badge variant={completionVerification.sourceConsistencyPass ? "good" : "destructive"}>
+              <Badge
+                variant={completionVerification.sourceConsistencyPass ? "good" : "destructive"}
+              >
                 Source {completionVerification.sourceConsistencyPass ? "pass" : "fail"}
               </Badge>
             </div>
@@ -1194,9 +1211,7 @@ function ObligationDetail({
             {item.status === "completed" ? (
               <p className="text-xs text-muted-foreground">Obligation is already completed.</p>
             ) : null}
-            {completionError ? (
-              <p className="text-sm text-destructive">{completionError}</p>
-            ) : null}
+            {completionError ? <p className="text-sm text-destructive">{completionError}</p> : null}
             <Button
               size="sm"
               variant="good"
@@ -1224,9 +1239,7 @@ function ObligationDetail({
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                {auditState === "loading" ? (
-                  <Skeleton className="h-12 w-full" />
-                ) : null}
+                {auditState === "loading" ? <Skeleton className="h-12 w-full" /> : null}
                 {auditState === "error" ? (
                   <p className="text-sm text-destructive">{auditError}</p>
                 ) : null}
@@ -1324,9 +1337,7 @@ function RelatedCaseRow({
           Tags: {tags.join(", ") || "pattern-overlap"}
         </span>
         {sample.length > 0 ? (
-          <span className="text-xs text-muted-foreground">
-            Sample: {sample.join(" · ")}
-          </span>
+          <span className="text-xs text-muted-foreground">Sample: {sample.join(" · ")}</span>
         ) : null}
       </div>
       <div className="flex items-center gap-2">

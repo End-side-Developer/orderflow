@@ -128,7 +128,10 @@ function meaningfulTokens(value: string): string[] {
 }
 
 function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/gi, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0900-\u097f]+/gi, " ")
+    .trim();
 }
 
 function clampFraction(value: number): number {
@@ -505,12 +508,12 @@ export function PdfViewer({
         <div className="min-w-0 overflow-auto bg-background p-4">
           <div className="relative mx-auto inline-block rounded-md bg-white shadow-2xl">
             <canvas ref={canvasRef} className="rounded-md bg-white" />
-          <PdfOverlayLayer
-            annotations={overlayAnnotations}
-            currentPage={currentPage}
-            scale={scale}
-            activeRefs={activeVisualRefs}
-          />
+            <PdfOverlayLayer
+              annotations={overlayAnnotations}
+              currentPage={currentPage}
+              scale={scale}
+              activeRefs={activeVisualRefs}
+            />
           </div>
         </div>
 
@@ -524,19 +527,12 @@ export function PdfViewer({
             onJumpToPage={handlePageChange}
           />
           {currentPageHasPlaces ? (
-            <details
-              open
-              className="border-l border-border bg-card px-4 pb-4"
-            >
+            <details open className="border-l border-border bg-card px-4 pb-4">
               <summary className="cursor-pointer py-3 text-sm font-semibold text-card-foreground">
                 Locations on this page
               </summary>
               <div>
-                <CaseIncidenceMap
-                  places={places}
-                  mode="single-page"
-                  currentPage={currentPage}
-                />
+                <CaseIncidenceMap places={places} mode="single-page" currentPage={currentPage} />
               </div>
             </details>
           ) : null}

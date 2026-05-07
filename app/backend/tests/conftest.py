@@ -1,4 +1,5 @@
 """Shared test helpers loaded automatically by pytest for all tests."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

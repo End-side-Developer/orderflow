@@ -21,22 +21,9 @@ interface TtsControlsProps {
   className?: string;
 }
 
-export function TtsControls({
-  text,
-  preferredLanguage,
-  resetSignal,
-  className,
-}: TtsControlsProps) {
-  const {
-    speak,
-    pause,
-    resume,
-    stop,
-    isSpeaking,
-    isPaused,
-    isSupported,
-    supportedLanguages,
-  } = useTts();
+export function TtsControls({ text, preferredLanguage, resetSignal, className }: TtsControlsProps) {
+  const { speak, pause, resume, stop, isSpeaking, isPaused, isSupported, supportedLanguages } =
+    useTts();
 
   const [language, setLanguage] = useState<SupportedTtsLanguage>(
     normalizeTtsLanguage(preferredLanguage),
@@ -79,9 +66,19 @@ export function TtsControls({
   }
 
   return (
-    <div className={cn("flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-3", className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-3",
+        className,
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={handlePlay} disabled={!isSupported || !text.trim()}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handlePlay}
+          disabled={!isSupported || !text.trim()}
+        >
           <Play className="h-3.5 w-3.5" />
           Listen
         </Button>
@@ -110,7 +107,10 @@ export function TtsControls({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <Select value={language} onValueChange={(value) => setLanguage(value as SupportedTtsLanguage)}>
+        <Select
+          value={language}
+          onValueChange={(value) => setLanguage(value as SupportedTtsLanguage)}
+        >
           <SelectTrigger className="h-8">
             <SelectValue placeholder="Language" />
           </SelectTrigger>
@@ -148,11 +148,12 @@ export function TtsControls({
       ) : null}
 
       {isSupported && !text.trim() ? (
-        <p className="text-xs text-muted-foreground">No summary text available for this page yet.</p>
+        <p className="text-xs text-muted-foreground">
+          No summary text available for this page yet.
+        </p>
       ) : null}
 
       {voiceWarning ? <p className="text-xs text-muted-foreground">{voiceWarning}</p> : null}
     </div>
   );
 }
-

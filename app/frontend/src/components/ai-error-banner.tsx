@@ -177,9 +177,7 @@ export function AiErrorBanner({ error, onRetry, compact = false, className }: Ai
           {error.error.code ?? "unknown_error"}
           {error.request_id ? ` · ${error.request_id.slice(0, 8)}` : ""}
         </p>
-        {retryHint ? (
-          <p className="mt-1 text-xs font-semibold">{retryHint}</p>
-        ) : null}
+        {retryHint ? <p className="mt-1 text-xs font-semibold">{retryHint}</p> : null}
         {error.error.message && error.error.message !== recipe.title ? (
           <p className="mt-2 break-words rounded-md bg-black/30 px-2 py-1 font-mono text-[11px] opacity-90">
             {error.error.message}

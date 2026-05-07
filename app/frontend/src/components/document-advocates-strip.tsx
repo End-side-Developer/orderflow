@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import {
-  claimAdvocateCase,
-  listDocumentAdvocates,
-  type AdvocateCaseLink,
-} from "@/lib/api/client";
+import { claimAdvocateCase, listDocumentAdvocates, type AdvocateCaseLink } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,9 +47,7 @@ export function DocumentAdvocatesStrip({ documentId }: DocumentAdvocatesStripPro
         <CardTitle className="text-sm">Counsel on record</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading counsel links…</p>
-        ) : null}
+        {loading ? <p className="text-sm text-muted-foreground">Loading counsel links…</p> : null}
         {!loading && error ? (
           <p className="text-sm text-muted-foreground">Could not load counsel links: {error}</p>
         ) : null}
@@ -71,7 +65,10 @@ export function DocumentAdvocatesStrip({ documentId }: DocumentAdvocatesStripPro
                 <span className="font-medium text-foreground">
                   {item.advocate_full_name ?? "Advocate"}
                 </span>
-                <Badge variant={item.status === "verified" ? "good" : "warn"} className="text-[10px]">
+                <Badge
+                  variant={item.status === "verified" ? "good" : "warn"}
+                  className="text-[10px]"
+                >
                   {item.status}
                 </Badge>
               </Link>

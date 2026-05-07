@@ -146,9 +146,7 @@ export default function ProfilePage() {
                 {saveError}
               </Alert>
             )}
-            {saveOk && (
-              <Alert className="text-sm">Profile updated successfully.</Alert>
-            )}
+            {saveOk && <Alert className="text-sm">Profile updated successfully.</Alert>}
 
             <div className="flex flex-col gap-1.5">
               <Label>Email</Label>

@@ -6,13 +6,7 @@ import { AlertTriangle, BarChart3, CheckCircle2, FileText, Sparkles, X } from "l
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,7 +37,11 @@ const CATEGORY_VARIANT: Record<string, "accent" | "warn" | "good" | "destructive
   Miscellaneous: "muted",
 };
 
-function complexityTone(score: number): { label: string; indicatorClass: string; textClass: string } {
+function complexityTone(score: number): {
+  label: string;
+  indicatorClass: string;
+  textClass: string;
+} {
   if (score <= 3) return { label: "Low", indicatorClass: "bg-good", textClass: "text-good" };
   if (score <= 6) return { label: "Moderate", indicatorClass: "bg-warn", textClass: "text-warn" };
   return { label: "High", indicatorClass: "bg-destructive", textClass: "text-destructive" };
@@ -317,7 +315,12 @@ function ComplexityRow({ score }: { score: number }) {
           indicatorClassName={tone.indicatorClass}
           className="flex-1"
         />
-        <span className={cn("min-w-[44px] text-right text-sm font-semibold tabular-nums", tone.textClass)}>
+        <span
+          className={cn(
+            "min-w-[44px] text-right text-sm font-semibold tabular-nums",
+            tone.textClass,
+          )}
+        >
           {score}/10
         </span>
       </div>
@@ -337,10 +340,20 @@ function Section({
   tone?: "good" | "destructive";
   children: React.ReactNode;
 }) {
-  const colour = tone === "good" ? "text-good" : tone === "destructive" ? "text-destructive" : "text-muted-foreground";
+  const colour =
+    tone === "good"
+      ? "text-good"
+      : tone === "destructive"
+        ? "text-destructive"
+        : "text-muted-foreground";
   return (
     <section className="flex flex-col gap-2">
-      <h4 className={cn("flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide", colour)}>
+      <h4
+        className={cn(
+          "flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide",
+          colour,
+        )}
+      >
         {icon}
         {label}
       </h4>

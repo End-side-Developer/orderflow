@@ -5,7 +5,13 @@ import { MessageCircle, X, Send, AlertCircle, Loader2 } from "lucide-react";
 
 import { useAuthStore } from "@/lib/auth/store";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -81,7 +87,7 @@ export function AiChatWidget() {
                   </div>
                 </div>
               ))}
-              
+
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="bg-background border border-border rounded-lg px-4 py-2 text-sm flex items-center text-muted-foreground">
@@ -89,7 +95,7 @@ export function AiChatWidget() {
                   </div>
                 </div>
               )}
-              
+
               {error && (
                 <Alert variant="destructive" className="mt-4">
                   <AlertCircle className="h-4 w-4" />
@@ -98,7 +104,7 @@ export function AiChatWidget() {
               )}
             </div>
 
-            <form 
+            <form
               onSubmit={handleSubmit}
               className="p-3 bg-background border-t border-border flex items-center gap-2"
             >

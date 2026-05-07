@@ -52,7 +52,14 @@ export function StatusPill(props: StatusPillProps) {
   } as const;
 
   const dictionary = map[props.kind] as Record<string, { variant: Variant; label: string }>;
-  const entry = dictionary[props.value as string] ?? { variant: "muted" as Variant, label: String(props.value) };
+  const entry = dictionary[props.value as string] ?? {
+    variant: "muted" as Variant,
+    label: String(props.value),
+  };
 
-  return <Badge variant={entry.variant} className={cn(props.className)}>{entry.label}</Badge>;
+  return (
+    <Badge variant={entry.variant} className={cn(props.className)}>
+      {entry.label}
+    </Badge>
+  );
 }

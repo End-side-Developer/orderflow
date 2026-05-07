@@ -158,17 +158,8 @@
 
   /* Subtle radial backdrop for hero / page-header sections */
   .surface-spotlight {
-    background:
-      radial-gradient(
-        circle at 0% 0%,
-        hsl(var(--primary) / 0.18),
-        transparent 55%
-      ),
-      radial-gradient(
-        circle at 100% 0%,
-        hsl(var(--accent) / 0.14),
-        transparent 50%
-      ),
+    background: radial-gradient(circle at 0% 0%, hsl(var(--primary) / 0.18), transparent 55%),
+      radial-gradient(circle at 100% 0%, hsl(var(--accent) / 0.14), transparent 50%),
       hsl(var(--surface));
   }
 
@@ -244,11 +235,7 @@
 
   /* Subtle gradient text for high-emphasis numbers */
   .text-gradient-primary {
-    background: linear-gradient(
-      135deg,
-      hsl(var(--primary)) 0%,
-      hsl(var(--accent)) 100%
-    );
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;

@@ -49,15 +49,11 @@ function AdvocateCard({ advocate }: { advocate: AdvocateDirectoryItem }) {
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">
-          {advocate.full_name ?? advocate.email}
-        </CardTitle>
+        <CardTitle className="text-base">{advocate.full_name ?? advocate.email}</CardTitle>
         <p className="text-xs text-muted-foreground font-mono">{p.bar_council_id}</p>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3">
-        {p.bio && (
-          <p className="text-sm text-muted-foreground line-clamp-2">{p.bio}</p>
-        )}
+        {p.bio && <p className="text-sm text-muted-foreground line-clamp-2">{p.bio}</p>}
         {p.specializations.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {p.specializations.slice(0, 4).map((s) => (
@@ -66,16 +62,18 @@ function AdvocateCard({ advocate }: { advocate: AdvocateDirectoryItem }) {
               </Badge>
             ))}
             {p.specializations.length > 4 && (
-              <Badge variant="outline" className="text-xs">+{p.specializations.length - 4}</Badge>
+              <Badge variant="outline" className="text-xs">
+                +{p.specializations.length - 4}
+              </Badge>
             )}
           </div>
         )}
         <div className="flex items-center justify-between text-xs text-muted-foreground mt-auto">
-          {p.years_of_experience !== null && (
-            <span>{p.years_of_experience}y exp</span>
-          )}
+          {p.years_of_experience !== null && <span>{p.years_of_experience}y exp</span>}
           {(advocate.case_count ?? 0) > 0 && (
-            <span>{advocate.case_count} case{advocate.case_count === 1 ? "" : "s"}</span>
+            <span>
+              {advocate.case_count} case{advocate.case_count === 1 ? "" : "s"}
+            </span>
           )}
           {p.consultation_fee_min_inr !== null && (
             <span>
@@ -84,7 +82,9 @@ function AdvocateCard({ advocate }: { advocate: AdvocateDirectoryItem }) {
             </span>
           )}
           {p.ratings_count > 0 && (
-            <span>★ {p.ratings_avg?.toFixed(1) ?? "—"} ({p.ratings_count})</span>
+            <span>
+              ★ {p.ratings_avg?.toFixed(1) ?? "—"} ({p.ratings_count})
+            </span>
           )}
         </div>
         <Button asChild variant="outline" size="sm" className="mt-2 w-full">
@@ -124,11 +124,11 @@ export default function AdvocatesPage() {
   }
 
   useEffect(() => {
-    void load({ 
-      q: q || undefined, 
-      specialization: specialization === "all" ? undefined : specialization, 
-      language: language === "all" ? undefined : language, 
-      offset 
+    void load({
+      q: q || undefined,
+      specialization: specialization === "all" ? undefined : specialization,
+      language: language === "all" ? undefined : language,
+      offset,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -136,22 +136,22 @@ export default function AdvocatesPage() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setOffset(0);
-    void load({ 
-      q: q || undefined, 
-      specialization: specialization === "all" ? undefined : specialization, 
-      language: language === "all" ? undefined : language, 
-      offset: 0 
+    void load({
+      q: q || undefined,
+      specialization: specialization === "all" ? undefined : specialization,
+      language: language === "all" ? undefined : language,
+      offset: 0,
     });
   }
 
   function handlePage(dir: "prev" | "next") {
     const newOffset = dir === "next" ? offset + PAGE_SIZE : Math.max(0, offset - PAGE_SIZE);
     setOffset(newOffset);
-    void load({ 
-      q: q || undefined, 
-      specialization: specialization === "all" ? undefined : specialization, 
-      language: language === "all" ? undefined : language, 
-      offset: newOffset 
+    void load({
+      q: q || undefined,
+      specialization: specialization === "all" ? undefined : specialization,
+      language: language === "all" ? undefined : language,
+      offset: newOffset,
     });
   }
 
@@ -167,7 +167,9 @@ export default function AdvocatesPage() {
       {/* Filters */}
       <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
-          <Label htmlFor="adv-q" className="text-xs">Search</Label>
+          <Label htmlFor="adv-q" className="text-xs">
+            Search
+          </Label>
           <Input
             id="adv-q"
             className="w-56"
@@ -206,7 +208,9 @@ export default function AdvocatesPage() {
             </SelectContent>
           </Select>
         </div>
-        <Button type="submit" disabled={loading}>Search</Button>
+        <Button type="submit" disabled={loading}>
+          Search
+        </Button>
       </form>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -234,13 +238,23 @@ export default function AdvocatesPage() {
       {/* Pagination */}
       {total > PAGE_SIZE && (
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => handlePage("prev")}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={offset === 0}
+            onClick={() => handlePage("prev")}
+          >
             Previous
           </Button>
           <span className="text-sm text-muted-foreground">
             {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
           </span>
-          <Button variant="outline" size="sm" disabled={offset + PAGE_SIZE >= total} onClick={() => handlePage("next")}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={offset + PAGE_SIZE >= total}
+            onClick={() => handlePage("next")}
+          >
             Next
           </Button>
         </div>
