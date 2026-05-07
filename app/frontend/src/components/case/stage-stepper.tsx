@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, ChevronRight } from "lucide-react";
 import { ExtractionJobStage } from "../../lib/api/client";
 
 const STAGES = [
@@ -35,43 +35,63 @@ export function StageStepper({
   const activeIndex = STAGES.findIndex((s) => s.id === activeStage);
 
   return (
-    <div className="flex items-center gap-2 p-4 bg-white border-b overflow-x-auto">
-      {STAGES.map((stage, index) => {
-        const isCompleted = index < currentIndex;
-        const isCurrent = index === currentIndex;
-        const isActive = index === activeIndex;
-        const isLocked = index > currentIndex;
+    <div className="flex items-center gap-2 p-3 bg-surface border-b border-border overflow-x-auto scrollbar-hide">
+      <div className="flex items-center gap-1 mx-auto max-w-7xl w-full px-4">
+        {STAGES.map((stage, index) => {
+          const isCompleted = index < currentIndex;
+          const isActive = index === activeIndex;
+          const isLocked = index > currentIndex;
 
-        return (
-          <div key={stage.id} className="flex items-center gap-2 min-w-max">
-            <button
-              onClick={() => !isLocked && onStageClick(stage.id as WizardStage)}
-              disabled={isLocked}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors ${
-                isActive
-                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
-                  : isLocked
-                    ? "text-slate-400 cursor-not-allowed"
-                    : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {isCompleted ? (
-                <CheckCircle2 className="w-5 h-5 text-green-500" />
-              ) : isCurrent ? (
-                <Circle className="w-5 h-5 text-blue-500 fill-blue-50" />
-              ) : (
-                <Circle className="w-5 h-5 text-slate-300" />
+          return (
+            <div key={stage.id} className="flex items-center gap-1 flex-1 last:flex-none">
+              <button
+                onClick={() => !isLocked && onStageClick(stage.id as WizardStage)}
+                disabled={isLocked}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-md transition-all duration-200 relative min-w-max ${
+                  isLocked ? "cursor-not-allowed" : "cursor-pointer"
+                } ${
+                  isActive
+                    ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                    : isLocked
+                      ? "text-muted-foreground/30 grayscale"
+                      : isCompleted
+                        ? "text-foreground hover:bg-muted/50"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                {isCompleted && (
+                  <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
+                )}
+                <span
+                  className={`text-xs font-semibold tracking-wide uppercase transition-colors ${
+                    isActive
+                      ? "text-primary"
+                      : isLocked
+                        ? ""
+                        : isCompleted
+                          ? "text-foreground"
+                          : "text-muted-foreground"
+                  }`}
+                >
+                  {stage.label}
+                </span>
+                {isActive && (
+                  <div className="absolute -bottom-[15px] left-0 right-0 h-0.5 bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.5)]" />
+                )}
+              </button>
+              {index < STAGES.length - 1 && (
+                <div className="flex-1 flex items-center justify-center px-2 min-w-[1rem]">
+                  <ChevronRight
+                    className={`w-4 h-4 transition-colors duration-500 ${
+                      index < currentIndex ? "text-primary/60" : "text-border"
+                    }`}
+                  />
+                </div>
               )}
-              <span className={`text-sm font-medium ${isLocked ? "opacity-70" : ""}`}>
-                {stage.label}
-              </span>
-            </button>
-            {index < STAGES.length - 1 && (
-              <div className={`w-8 h-px ${isLocked ? "bg-slate-200" : "bg-blue-200"}`} />
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

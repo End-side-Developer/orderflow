@@ -75,14 +75,14 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
 
   if (docError || progressError) {
     return (
-      <div className="flex flex-col h-full bg-slate-50">
+      <div className="flex flex-col h-full bg-muted">
         <div className="flex-1 flex items-center justify-center">
-          <div className="bg-red-50 text-red-600 p-6 rounded-lg max-w-md">
+          <div className="bg-destructive/10 text-destructive p-6 rounded-lg max-w-md">
             <h2 className="text-lg font-bold mb-2">Error Loading Case</h2>
             <p>{docError || progressError?.message}</p>
             <button
               onClick={() => router.push("/dashboard")}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              className="mt-4 px-4 py-2 bg-destructive text-destructive-foreground rounded hover:opacity-90"
             >
               Back to Dashboard
             </button>
@@ -94,9 +94,9 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
 
   if (docLoading || progressLoading) {
     return (
-      <div className="flex flex-col h-full bg-slate-50">
+      <div className="flex flex-col h-full bg-muted">
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-slate-500 animate-pulse">Loading case data...</div>
+          <div className="text-muted-foreground animate-pulse">Loading case data...</div>
         </div>
       </div>
     );

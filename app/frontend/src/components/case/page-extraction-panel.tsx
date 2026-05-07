@@ -129,150 +129,164 @@ export function PageExtractionPanel({
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-5 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-col gap-4 p-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Page extraction</h2>
-          <p className="mt-1 text-sm text-slate-600">{statusMessage}</p>
-          {progress?.next_action ? (
-            <p className="mt-1 text-xs font-medium text-slate-500">Next: {progress.next_action}</p>
+          <h2 className="text-lg font-semibold text-foreground">Page extraction</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {statusMessage}
+            {progress?.next_action && ` — Next: ${progress.next_action}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant={canContinue ? "good" : "secondary"}>{stage.replaceAll("_", " ")}</Badge>
+          <Badge variant={isPolling ? "muted" : "good"}>
+            {isPolling ? "Polling fallback" : "Live updates"}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Main content: left = progress + OCR + alerts, right = excerpt */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Left column */}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 rounded-md border border-border p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-foreground">Pages completed</span>
+              <span className="text-sm font-semibold tabular-nums text-foreground">
+                {pagesCompleted} / {pagesTotal || "-"}
+              </span>
+            </div>
+            <Progress value={percent} className="h-2.5" />
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <Metric label="Current" value={currentPage ?? "-"} />
+              <Metric label="Percent" value={`${percent}%`} />
+              <Metric label="Concurrency" value={progress?.current_concurrency ?? "-"} />
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border p-4 shadow-sm">
+            <div className="mb-3 flex items-center gap-2">
+              {ocrStatus.tone === "good" ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              ) : ocrStatus.tone === "bad" ? (
+                <AlertTriangle className="h-4 w-4 text-rose-600" />
+              ) : ocrStatus.tone === "running" ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              )}
+              <h3 className="text-sm font-semibold text-foreground">Text source</h3>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="font-medium text-foreground">{ocrStatus.label}</div>
+              {ocrStatus.detail ? (
+                <div className="leading-5 text-muted-foreground">{ocrStatus.detail}</div>
+              ) : null}
+              {ocrStatus.error ? (
+                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                  {ocrStatus.error}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {actionError || progress?.error?.message || isPaused || retryMessage ? (
+            <div className="flex flex-col gap-2">
+              {actionError ? (
+                <Alert variant="destructive" className="py-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle className="text-sm">Request failed</AlertTitle>
+                  <AlertDescription className="text-xs">{actionError}</AlertDescription>
+                </Alert>
+              ) : null}
+              {progress?.error?.message ? (
+                <Alert variant="destructive" className="py-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle className="text-sm">Extraction error</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    {progress.error.message}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {isPaused || retryMessage ? (
+                <Alert className="py-2">
+                  <Clock3 className="h-4 w-4" />
+                  <AlertTitle className="text-sm">Retry scheduled</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    {retryMessage ?? `Paused until ${formatDate(progress?.paused_until)}`}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
           ) : null}
         </div>
-        <Badge variant={canContinue ? "good" : "secondary"}>{stage.replaceAll("_", " ")}</Badge>
-        <Badge variant={isPolling ? "muted" : "good"}>
-          {isPolling ? "Polling fallback" : "Live updates"}
-        </Badge>
-      </div>
 
-      {actionError ? (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Request failed</AlertTitle>
-          <AlertDescription>{actionError}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {progress?.error?.message ? (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Extraction error</AlertTitle>
-          <AlertDescription>{progress.error.message}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {isPaused || retryMessage ? (
-        <Alert>
-          <Clock3 className="h-4 w-4" />
-          <AlertTitle>Retry scheduled</AlertTitle>
-          <AlertDescription>
-            {retryMessage ?? `Paused until ${formatDate(progress?.paused_until)}`}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      <div className="space-y-3 rounded-md border border-slate-200 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-slate-700">Pages completed</span>
-          <span className="text-sm font-semibold tabular-nums text-slate-950">
-            {pagesCompleted} / {pagesTotal || "-"}
-          </span>
-        </div>
-        <Progress value={percent} className="h-2.5" />
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          <Metric label="Current" value={currentPage ?? "-"} />
-          <Metric label="Percent" value={`${percent}%`} />
-          <Metric label="Concurrency" value={progress?.current_concurrency ?? "-"} />
-        </div>
-      </div>
-
-      <div className="rounded-md border border-slate-200 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Current page excerpt</h3>
-        </div>
-        <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-          {excerpt.text || "No excerpt available yet."}
-        </p>
-        {failureReason ? (
-          <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
-            <div className="font-semibold">Why it failed</div>
-            <div className="mt-1 leading-5">{failureReason}</div>
-            <div className="mt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void handleStartIntake(true)}
-                disabled={isStarting}
-              >
-                <RefreshCw className="mr-2 h-3 w-3" />
-                Retry intake
-              </Button>
+        {/* Right column: excerpt */}
+        <div className="flex min-h-[200px] flex-col rounded-md border border-border p-4 shadow-sm lg:col-span-2">
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">Current page excerpt</h3>
             </div>
-
-            {failureCode || technicalError ? (
-              <div className="mt-2 text-rose-700">
-                {failureCode ? <div>Code: {failureCode}</div> : null}
-                {technicalError ? <div>Type: {technicalError}</div> : null}
-                {aiProvider ? (
-                  <div>
-                    Provider: {aiProvider}
-                    {aiModel ? ` / ${aiModel}` : ""}
+            {cacheStatus ? (
+              <Badge variant="muted" className="text-[10px]">
+                {cacheStatus}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+              {excerpt.text || "No excerpt available yet."}
+            </p>
+            {failureReason ? (
+              <div className="mt-auto shrink-0 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                <div className="font-semibold">Why it failed</div>
+                <div className="mt-1 leading-5">{failureReason}</div>
+                {failureCode || technicalError ? (
+                  <div className="mt-2 text-rose-700">
+                    {failureCode ? <div>Code: {failureCode}</div> : null}
+                    {technicalError ? <div>Type: {technicalError}</div> : null}
+                    {aiProvider ? (
+                      <div>
+                        Provider: {aiProvider}
+                        {aiModel ? ` / ${aiModel}` : ""}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
             ) : null}
           </div>
-        ) : null}
-        {cacheStatus ? (
-          <Badge variant="muted" className="mt-3">
-            {cacheStatus}
-          </Badge>
-        ) : null}
-      </div>
-
-      <div className="rounded-md border border-slate-200 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          {ocrStatus.tone === "good" ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          ) : ocrStatus.tone === "bad" ? (
-            <AlertTriangle className="h-4 w-4 text-rose-600" />
-          ) : ocrStatus.tone === "running" ? (
-            <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
-          ) : (
-            <FileText className="h-4 w-4 text-slate-500" />
-          )}
-          <h3 className="text-sm font-semibold text-slate-900">Text source</h3>
-        </div>
-        <div className="space-y-2 text-sm">
-          <div className="font-medium text-slate-900">{ocrStatus.label}</div>
-          {ocrStatus.detail ? (
-            <div className="leading-5 text-slate-600">{ocrStatus.detail}</div>
-          ) : null}
-          {ocrStatus.error ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
-              {ocrStatus.error}
-            </div>
-          ) : null}
         </div>
       </div>
 
-      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+      {/* Footer actions */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-border pt-4">
         <Button
+          size="sm"
           type="button"
           variant="outline"
-          onClick={() => void handleStartIntake()}
-          disabled={canStart || isStarting}
+          onClick={() => void handleStartIntake(true)}
+          disabled={isStarting || (canContinue && !failureReason)}
         >
-          <RefreshCw />
-          Refresh intake
+          <RefreshCw className={`mr-2 h-4 w-4 ${isStarting ? "animate-spin" : ""}`} />
+          {failureReason ? "Retry intake" : "Refresh intake"}
         </Button>
         <Button
+          size="sm"
           type="button"
           variant="good"
+          className="ml-auto"
           onClick={() => void handleContinueToSummary()}
           disabled={!canContinue || isContinuing}
         >
-          {isContinuing ? <Loader2 className="animate-spin" /> : <ArrowRight />}
+          {isContinuing ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ArrowRight className="mr-2 h-4 w-4" />
+          )}
           Continue to Summary
         </Button>
       </div>
@@ -282,9 +296,9 @@ export function PageExtractionPanel({
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 font-semibold tabular-nums text-slate-950">{value}</div>
+    <div className="rounded-md bg-muted px-3 py-2">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 font-semibold tabular-nums text-foreground">{value}</div>
     </div>
   );
 }
