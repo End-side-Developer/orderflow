@@ -77,6 +77,8 @@ export function PdfViewer({
   places = [],
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<{ cancel?: () => void } | null>(null);
+  const renderSequenceRef = useRef(0);
   const [pdf, setPdf] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [totalPages, setTotalPages] = useState(0);
@@ -194,11 +196,20 @@ export function PdfViewer({
 
   // Render current page
   useEffect(() => {
+    let cancelled = false;
+    const renderSequence = renderSequenceRef.current + 1;
+    renderSequenceRef.current = renderSequence;
+
     async function renderPage() {
       if (loading || !pdf || !canvasRef.current) return;
 
       try {
+        renderTaskRef.current?.cancel?.();
+        renderTaskRef.current = null;
+
         const page = await pdf.getPage(currentPage);
+        if (cancelled || renderSequence !== renderSequenceRef.current || !canvasRef.current) return;
+
         const canvas = canvasRef.current;
         const context = canvas.getContext("2d");
 
@@ -207,6 +218,7 @@ export function PdfViewer({
         const viewport = page.getViewport({ scale });
         canvas.height = viewport.height;
         canvas.width = viewport.width;
+        context.clearRect(0, 0, canvas.width, canvas.height);
 
         const renderContext = {
           canvasContext: context,
@@ -214,13 +226,27 @@ export function PdfViewer({
           canvas: canvas,
         };
 
-        await page.render(renderContext).promise;
+        const renderTask = page.render(renderContext);
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+        if (renderSequence === renderSequenceRef.current) {
+          renderTaskRef.current = null;
+        }
       } catch (err) {
+        if (err instanceof Error && err.name === "RenderingCancelledException") {
+          return;
+        }
         console.error("Error rendering page:", err);
       }
     }
 
     void renderPage();
+
+    return () => {
+      cancelled = true;
+      renderTaskRef.current?.cancel?.();
+      renderTaskRef.current = null;
+    };
   }, [loading, pdf, currentPage, scale]);
 
   // Handle page change

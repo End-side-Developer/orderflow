@@ -993,6 +993,12 @@ export type PageSummaryRecord = {
   prompt_version: string | null;
   source_excerpt: string | null;
   ai_token_usage: Record<string, unknown> | null;
+  text_source: "native_pdf" | "ocr" | "low_text_fallback";
+  ocr_engine: string | null;
+  ocr_engine_version: string | null;
+  ocr_confidence: number | null;
+  ocr_language: string | null;
+  ocr_error: string | null;
   generated_at: string;
   created_at: string;
   updated_at: string;

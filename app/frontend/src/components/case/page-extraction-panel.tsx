@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  CheckCircle2,
   Clock3,
   FileText,
   Loader2,
-  Play,
   RefreshCw,
 } from "lucide-react";
 
@@ -48,8 +48,40 @@ export function PageExtractionPanel({
   const stage = progress?.stage ?? "pending";
   const statusMessage = progress?.status_message ?? stageLabel(stage);
   const cacheStatus = progress?.current_page_cache_status ?? excerpt.cacheStatus;
+  const ocrStatus = buildOcrStatus(progress?.current_page_excerpt ?? null);
   const isPaused = Boolean(progress?.is_paused ?? progress?.paused_until);
-  const retryMessage = buildRetryMessage(progress);
+  
+  // Automatically calculate target time for countdown
+  const targetDate = useMemo(() => {
+    if (progress?.paused_until) {
+      return new Date(progress.paused_until);
+    }
+    if (progress?.updated_at && progress?.retry_after_seconds) {
+      return new Date(new Date(progress.updated_at).getTime() + progress.retry_after_seconds * 1000);
+    }
+    return null;
+  }, [progress?.paused_until, progress?.updated_at, progress?.retry_after_seconds]);
+
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(progress?.retry_after_seconds ?? null);
+
+  useEffect(() => {
+    if (!targetDate) {
+      setRemainingSeconds(progress?.retry_after_seconds ?? null);
+      return;
+    }
+    const updateTimer = () => {
+      const diff = Math.floor((targetDate.getTime() - Date.now()) / 1000);
+      setRemainingSeconds(diff > 0 ? diff : 0);
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate?.getTime(), progress?.retry_after_seconds]);
+
+  const retryMessage = remainingSeconds !== null 
+    ? `Retrying in ${remainingSeconds}s.` 
+    : (progress?.paused_until ? `Paused until ${formatDate(progress?.paused_until)}.` : null);
+
   const failureReason = recordStringValue(
     progress?.current_page_excerpt,
     "error_message",
@@ -214,19 +246,33 @@ export function PageExtractionPanel({
         ) : null}
       </div>
 
-      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-        <Button
-          type="button"
-          onClick={() => void handleStartIntake()}
-          disabled={!canStart || isStarting}
-        >
-          {isStarting ? (
-            <Loader2 className="animate-spin" />
+      <div className="rounded-md border border-slate-200 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          {ocrStatus.tone === "good" ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          ) : ocrStatus.tone === "bad" ? (
+            <AlertTriangle className="h-4 w-4 text-rose-600" />
+          ) : ocrStatus.tone === "running" ? (
+            <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
           ) : (
-            <Play />
+            <FileText className="h-4 w-4 text-slate-500" />
           )}
-          Start intake
-        </Button>
+          <h3 className="text-sm font-semibold text-slate-900">Text source</h3>
+        </div>
+        <div className="space-y-2 text-sm">
+          <div className="font-medium text-slate-900">{ocrStatus.label}</div>
+          {ocrStatus.detail ? (
+            <div className="leading-5 text-slate-600">{ocrStatus.detail}</div>
+          ) : null}
+          {ocrStatus.error ? (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+              {ocrStatus.error}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
         <Button
           type="button"
           variant="outline"
@@ -278,15 +324,54 @@ function normalizeExcerpt(excerpt: ExtractionJobCurrentPageExcerpt | null) {
   return { pageNumber, cacheStatus, text };
 }
 
-function buildRetryMessage(progress: ExtractionJobStatusData | null) {
-  if (!progress) return null;
-  if (progress.retry_after_seconds) {
-    return `Retrying in ${progress.retry_after_seconds}s.`;
+function buildOcrStatus(excerpt: ExtractionJobCurrentPageExcerpt | null) {
+  const textSource = stringValue(excerpt?.text_source);
+  const ocrStatus = stringValue(excerpt?.ocr_status);
+  const engine = stringValue(excerpt?.ocr_engine);
+  const language = stringValue(excerpt?.ocr_language);
+  const error = stringValue(excerpt?.ocr_error);
+  const confidence = confidenceText(excerpt?.ocr_confidence);
+
+  if (ocrStatus === "running") {
+    return {
+      label: "OCR running",
+      detail: engine ? `Trying ${engine}.` : "Rendering this PDF page for OCR.",
+      error: null,
+      tone: "running" as const,
+    };
   }
-  if (progress.paused_until) {
-    return `Paused until ${formatDate(progress.paused_until)}.`;
+
+  if (textSource === "ocr" || ocrStatus === "done") {
+    return {
+      label: `OCR complete${engine ? `: ${engine}` : ""}`,
+      detail: [confidence ? `Confidence ${confidence}` : null, language ? `Language ${language}` : null]
+        .filter(Boolean)
+        .join(" · "),
+      error: null,
+      tone: "good" as const,
+    };
   }
-  return null;
+
+  if (textSource === "low_text_fallback" || ocrStatus === "failed" || error) {
+    return {
+      label: "OCR failed: retry page",
+      detail: engine ? `Attempted ${engine}.` : "OCR could not produce enough reliable text.",
+      error,
+      tone: "bad" as const,
+    };
+  }
+
+  return {
+    label: "Native text found",
+    detail: "Using the PDF text layer for extraction.",
+    error: null,
+    tone: "neutral" as const,
+  };
+}
+
+function confidenceText(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `${Math.round(value * 100)}%`;
 }
 
 function stageLabel(stage: string) {
