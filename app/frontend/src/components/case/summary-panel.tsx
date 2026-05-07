@@ -19,13 +19,16 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CaseFlowGraph } from "@/components/case-flow-graph";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CaseDocumentSummaryData,
+  CaseFlowData,
   DocumentSummaryDirective,
   DocumentSummaryEntity,
   DocumentSummaryFlowGraph,
+  DocumentSummaryFlowNodeType,
   DocumentSummaryImportantDate,
   DocumentSummaryResponsibleDepartment,
   DocumentSummarySourceEvidence,
@@ -43,9 +46,7 @@ const CaseIncidenceMap = dynamic(
   () => import("@/components/case-incidence-map").then((mod) => mod.CaseIncidenceMap),
   {
     ssr: false,
-    loading: () => (
-      <div className="p-4 text-sm text-slate-500">Loading case map...</div>
-    ),
+    loading: () => <div className="p-4 text-sm text-slate-500">Loading case map...</div>,
   },
 );
 
@@ -61,9 +62,11 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
     () => clampPercent((summary?.confidence ?? 0) * 100),
     [summary?.confidence],
   );
-  const mapAvailable = Boolean(
-    summary?.map_data?.available && summary.map_data.places.length > 0,
+  const summaryFlowData = useMemo(
+    () => toCaseFlowData(summary?.flow_graph ?? null, documentId),
+    [documentId, summary?.flow_graph],
   );
+  const mapAvailable = Boolean(summary?.map_data?.places && summary.map_data.places.length > 0);
   const needsHumanReview = confidencePercent < 70;
 
   useEffect(() => {
@@ -84,11 +87,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       })
       .catch((requestError) => {
         if (cancelled) return;
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Could not load summary.",
-        );
+        setError(requestError instanceof Error ? requestError.message : "Could not load summary.");
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -112,9 +111,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       }
     } catch (requestError) {
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not request action plan.",
+        requestError instanceof Error ? requestError.message : "Could not request action plan.",
       );
     } finally {
       setIsGeneratingActionPlan(false);
@@ -150,23 +147,17 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">
-            Full judgment summary
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-950">Full judgment summary</h2>
           <p className="mt-1 text-sm text-slate-600">
             {summary.case_basics.case_number ?? summary.case_basics.case_type ?? "Case summary"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">
-            {summary.ai_model ?? "summary model"}
-          </Badge>
+          <Badge variant="secondary">{summary.ai_model ?? "summary model"}</Badge>
           <Badge variant={confidencePercent >= 70 ? "good" : "warn"}>
             {confidencePercent}% confidence
           </Badge>
-          {needsHumanReview ? (
-            <Badge variant="warn">Needs human review.</Badge>
-          ) : null}
+          {needsHumanReview ? <Badge variant="warn">Needs human review.</Badge> : null}
         </div>
       </div>
 
@@ -189,9 +180,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
-            Page-wise summary
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900">Page-wise summary</h3>
         </div>
         <PageWiseSummaryList pages={pageSummaries} />
       </section>
@@ -199,9 +188,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Scale className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
-            Case basics
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900">Case basics</h3>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Fact label="Court" value={summary.case_basics.court_name} />
@@ -210,10 +197,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
           <Fact label="Judge" value={summary.case_basics.judge_name} />
           <Fact label="Petitioner" value={summary.case_basics.petitioner} />
           <Fact label="Respondent" value={summary.case_basics.respondent} />
-          <Fact
-            label="Department"
-            value={summary.case_basics.department_involved}
-          />
+          <Fact label="Department" value={summary.case_basics.department_involved} />
           <Fact label="Subject" value={summary.case_basics.main_subject} />
         </div>
       </section>
@@ -258,16 +242,18 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
         </TabsContent>
 
         <TabsContent value="flow">
-          <FlowGraph graph={summary.flow_graph} />
+          <FlowGraph graph={summary.flow_graph} visualData={summaryFlowData} />
         </TabsContent>
 
         {mapAvailable ? (
           <TabsContent value="map">
-            <div className="overflow-hidden rounded-md border border-slate-200">
-              <CaseIncidenceMap
-                places={summary.map_data?.places ?? []}
-                mode="flow"
-              />
+            <div className="flex flex-col gap-2">
+              <div className="overflow-hidden rounded-md border border-slate-200">
+                <CaseIncidenceMap places={summary.map_data?.places ?? []} mode="flow" />
+              </div>
+              {summary.map_data?.reason ? (
+                <p className="text-xs text-slate-500">{summary.map_data.reason}</p>
+              ) : null}
             </div>
           </TabsContent>
         ) : null}
@@ -278,11 +264,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       ) : null}
 
       <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => window.location.reload()}
-        >
+        <Button type="button" variant="outline" onClick={() => window.location.reload()}>
           <RefreshCw />
           Refresh summary
         </Button>
@@ -291,11 +273,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
           onClick={() => void handleGenerateActionPlan()}
           disabled={isGeneratingActionPlan}
         >
-          {isGeneratingActionPlan ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <ArrowRight />
-          )}
+          {isGeneratingActionPlan ? <Loader2 className="animate-spin" /> : <ArrowRight />}
           Generate Action Plan
         </Button>
       </div>
@@ -307,9 +285,7 @@ function Fact({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2">
       <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 break-words text-sm font-semibold text-slate-950">
-        {value || "-"}
-      </div>
+      <div className="mt-1 break-words text-sm font-semibold text-slate-950">{value || "-"}</div>
     </div>
   );
 }
@@ -397,15 +373,7 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
   );
 }
 
-function MiniList({
-  title,
-  items,
-  empty,
-}: {
-  title: string;
-  items: string[];
-  empty: string;
-}) {
+function MiniList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
   const visibleItems = items.filter(Boolean).slice(0, 3);
   return (
     <div className="rounded-md bg-slate-50 p-3">
@@ -425,16 +393,15 @@ function MiniList({
   );
 }
 
-function DirectiveList({
-  directives,
-}: {
-  directives: DocumentSummaryDirective[];
-}) {
+function DirectiveList({ directives }: { directives: DocumentSummaryDirective[] }) {
   if (directives.length === 0) return <EmptyPanel label="No directives found." />;
   return (
     <div className="space-y-3">
       {directives.map((directive, index) => (
-        <div key={`${directive.direction_text}-${index}`} className="rounded-md border border-slate-200 p-4">
+        <div
+          key={`${directive.direction_text}-${index}`}
+          className="rounded-md border border-slate-200 p-4"
+        >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant={directive.directive_kind === "mandatory" ? "warn" : "secondary"}>
               {directive.directive_kind}
@@ -446,9 +413,7 @@ function DirectiveList({
               <Badge variant="outline">Page {directive.source_page_number}</Badge>
             ) : null}
           </div>
-          <p className="break-words text-sm leading-6 text-slate-800">
-            {directive.direction_text}
-          </p>
+          <p className="break-words text-sm leading-6 text-slate-800">{directive.direction_text}</p>
           <EvidenceList evidence={directive.source_evidence} />
         </div>
       ))}
@@ -466,14 +431,10 @@ function DateList({ dates }: { dates: DocumentSummaryImportantDate[] }) {
             <CalendarDays className="mt-0.5 h-4 w-4 text-slate-500" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="break-words text-sm font-semibold text-slate-950">
-                  {date.label}
-                </p>
+                <p className="break-words text-sm font-semibold text-slate-950">{date.label}</p>
                 {date.is_inferred ? <Badge variant="warn">inferred</Badge> : null}
               </div>
-              <p className="mt-1 text-sm text-slate-700">
-                {date.date_text ?? date.source ?? "-"}
-              </p>
+              <p className="mt-1 text-sm text-slate-700">{date.date_text ?? date.source ?? "-"}</p>
               <EvidenceList evidence={date.source_evidence} />
             </div>
           </div>
@@ -491,9 +452,7 @@ function EntityList({ entities }: { entities: DocumentSummaryEntity[] }) {
         <div key={`${entity.name}-${index}`} className="rounded-md border border-slate-200 p-4">
           <div className="mb-2 flex items-center gap-2">
             <Users className="h-4 w-4 text-slate-500" />
-            <p className="break-words text-sm font-semibold text-slate-950">
-              {entity.name}
-            </p>
+            <p className="break-words text-sm font-semibold text-slate-950">{entity.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {entity.entity_type ? <Badge variant="secondary">{entity.entity_type}</Badge> : null}
@@ -508,11 +467,7 @@ function EntityList({ entities }: { entities: DocumentSummaryEntity[] }) {
   );
 }
 
-function DepartmentList({
-  departments,
-}: {
-  departments: DocumentSummaryResponsibleDepartment[];
-}) {
+function DepartmentList({ departments }: { departments: DocumentSummaryResponsibleDepartment[] }) {
   if (departments.length === 0) {
     return <EmptyPanel label="No departments found." />;
   }
@@ -530,9 +485,7 @@ function DepartmentList({
             </p>
           </div>
           {department.reason ? (
-            <p className="mb-3 break-words text-sm leading-6 text-slate-700">
-              {department.reason}
-            </p>
+            <p className="mb-3 break-words text-sm leading-6 text-slate-700">{department.reason}</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {department.legal_department_role ? (
@@ -551,12 +504,19 @@ function DepartmentList({
   );
 }
 
-function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
+function FlowGraph({
+  graph,
+  visualData,
+}: {
+  graph: DocumentSummaryFlowGraph | null;
+  visualData: CaseFlowData | null;
+}) {
   if (!graph || graph.nodes.length === 0) {
     return <EmptyPanel label="No flow graph found." />;
   }
   return (
     <div className="flex flex-col gap-4">
+      <CaseFlowGraph data={visualData} compact />
       <div className="flex flex-col gap-2">
         {graph.narrative_steps.map((step, index) => (
           <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-slate-50 p-3">
@@ -575,22 +535,16 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
               <Badge variant="secondary">{node.node_type}</Badge>
               {node.page_ref ? <Badge variant="outline">Page {node.page_ref}</Badge> : null}
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950">
-              {node.label}
-            </p>
+            <p className="break-words text-sm font-semibold text-slate-950">{node.label}</p>
             {node.detail ? (
-              <p className="mt-2 break-words text-sm leading-6 text-slate-700">
-                {node.detail}
-              </p>
+              <p className="mt-2 break-words text-sm leading-6 text-slate-700">{node.detail}</p>
             ) : null}
           </div>
         ))}
       </div>
       {graph.edges.length > 0 ? (
         <div className="rounded-md border border-slate-200 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase text-slate-500">
-            Flow links
-          </p>
+          <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Flow links</p>
           <div className="flex flex-wrap gap-2">
             {graph.edges.map((edge) => (
               <Badge key={edge.id} variant="outline">
@@ -604,23 +558,48 @@ function FlowGraph({ graph }: { graph: DocumentSummaryFlowGraph | null }) {
   );
 }
 
-function EvidenceList({
-  evidence,
-}: {
-  evidence: DocumentSummarySourceEvidence[];
-}) {
-  const visibleEvidence = evidence.filter(
-    (item) => item.page_number || item.source_excerpt,
-  );
+function toCaseFlowData(
+  graph: DocumentSummaryFlowGraph | null,
+  documentId: string,
+): CaseFlowData | null {
+  if (!graph || graph.nodes.length === 0) return null;
+  return {
+    document_id: graph.document_id || documentId,
+    nodes: graph.nodes.map((node) => ({
+      id: node.id,
+      node_type: coerceFlowNodeType(node.node_type),
+      label: node.label,
+      detail: node.detail,
+      page_ref: node.page_ref,
+    })),
+    edges: graph.edges,
+  };
+}
+
+function coerceFlowNodeType(nodeType: string): DocumentSummaryFlowNodeType {
+  if (
+    nodeType === "party" ||
+    nodeType === "event" ||
+    nodeType === "order" ||
+    nodeType === "obligation"
+  ) {
+    return nodeType;
+  }
+  return "obligation";
+}
+
+function EvidenceList({ evidence }: { evidence: DocumentSummarySourceEvidence[] }) {
+  const visibleEvidence = evidence.filter((item) => item.page_number || item.source_excerpt);
   if (visibleEvidence.length === 0) return null;
   return (
     <div className="mt-3 space-y-2">
       {visibleEvidence.slice(0, 2).map((item, index) => (
-        <div key={`${item.page_number ?? "source"}-${index}`} className="rounded-md bg-slate-50 p-3">
+        <div
+          key={`${item.page_number ?? "source"}-${index}`}
+          className="rounded-md bg-slate-50 p-3"
+        >
           <div className="mb-1 flex flex-wrap gap-2">
-            {item.page_number ? (
-              <Badge variant="outline">Page {item.page_number}</Badge>
-            ) : null}
+            {item.page_number ? <Badge variant="outline">Page {item.page_number}</Badge> : null}
             {item.confidence != null ? (
               <Badge variant="muted">{clampPercent(item.confidence * 100)}%</Badge>
             ) : null}

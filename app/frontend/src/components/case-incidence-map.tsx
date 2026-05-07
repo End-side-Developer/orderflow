@@ -2,27 +2,19 @@
 
 import { useEffect, useMemo } from "react";
 import L from "leaflet";
-import {
-  MapContainer,
-  Marker,
-  Polyline,
-  Popup,
-  TileLayer,
-  useMap,
-} from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export type PlaceType =
-  | "court"
-  | "property"
-  | "incident"
-  | "address"
-  | "jurisdiction"
-  | "other";
+export type PlaceType = "court" | "property" | "incident" | "address" | "jurisdiction" | "other";
 
-export type GeocodeSource = "nominatim" | "cache" | "fallback_court_metadata" | "none";
+export type GeocodeSource =
+  | "nominatim"
+  | "cache"
+  | "fallback_court_metadata"
+  | "local_fallback"
+  | "none";
 
 export type ExtractedPlace = {
   id: string;
@@ -90,9 +82,7 @@ export function CaseIncidenceMap({
     return null;
   }
 
-  const positions = visiblePlaces.map(
-    (place) => [place.lat, place.lng] satisfies [number, number],
-  );
+  const positions = visiblePlaces.map((place) => [place.lat, place.lng] satisfies [number, number]);
   const center = positions[0] ?? DEFAULT_CENTER;
   const shouldDrawFlow = mode === "flow" && positions.length > 1;
 

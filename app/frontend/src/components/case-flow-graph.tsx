@@ -22,7 +22,8 @@ import { getDocumentCaseFlow, type CaseFlowData, type CaseFlowNode } from "@/lib
 import { cn } from "@/lib/utils";
 
 interface CaseFlowGraphProps {
-  documentId: string;
+  documentId?: string;
+  data?: CaseFlowData | null;
   currentPage?: number;
   onNodePageJump?: (page: number) => void;
   compact?: boolean;
@@ -139,25 +140,39 @@ function toFlowGraph(
 
 export function CaseFlowGraph({
   documentId,
+  data: providedData,
   currentPage,
   onNodePageJump,
   compact = false,
 }: CaseFlowGraphProps) {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!providedData);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<CaseFlowData | null>(null);
+  const [loadedData, setLoadedData] = useState<CaseFlowData | null>(null);
 
   useEffect(() => {
+    if (providedData) {
+      setLoading(false);
+      setError(null);
+      setLoadedData(null);
+      return;
+    }
+    if (!documentId) {
+      setLoading(false);
+      setError("Document id is required to build case flow.");
+      setLoadedData(null);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setData(null);
+    setLoadedData(null);
 
     (async () => {
       const result = await getDocumentCaseFlow(documentId);
       if (cancelled) return;
       if (result.ok) {
-        setData(result.data);
+        setLoadedData(result.data);
       } else {
         setError(result.error.message);
       }
@@ -167,7 +182,9 @@ export function CaseFlowGraph({
     return () => {
       cancelled = true;
     };
-  }, [documentId]);
+  }, [documentId, providedData]);
+
+  const data = providedData ?? loadedData;
 
   const flowElements = useMemo(() => {
     if (!data) return null;
@@ -177,7 +194,9 @@ export function CaseFlowGraph({
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-4 text-sm text-muted-foreground">Building case flow...</CardContent>
+        <CardContent className="p-4 text-sm text-muted-foreground">
+          Building case flow...
+        </CardContent>
       </Card>
     );
   }

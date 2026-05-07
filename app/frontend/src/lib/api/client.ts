@@ -562,9 +562,20 @@ export type DocumentSummaryFlowGraph = {
   narrative_steps: string[];
 };
 
-export type ExtractedPlaceType = "court" | "property" | "incident" | "address" | "jurisdiction" | "other";
+export type ExtractedPlaceType =
+  | "court"
+  | "property"
+  | "incident"
+  | "address"
+  | "jurisdiction"
+  | "other";
 
-export type ExtractedPlaceGeocodeSource = "nominatim" | "cache" | "fallback_court_metadata" | "none";
+export type ExtractedPlaceGeocodeSource =
+  | "nominatim"
+  | "cache"
+  | "fallback_court_metadata"
+  | "local_fallback"
+  | "none";
 
 export type ExtractedPlace = {
   id: string;

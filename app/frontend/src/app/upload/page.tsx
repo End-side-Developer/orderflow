@@ -1,8 +1,20 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Cpu, FileSearch, Globe, Search, UploadCloud } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Cpu,
+  FileSearch,
+  FileText,
+  Globe,
+  Loader2,
+  Search,
+  Sparkles,
+  UploadCloud,
+  XCircle,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/app/page-header";
 import { InfoHint } from "@/components/info-hint";
@@ -12,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -19,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   downloadDocument,
   getDocument,
@@ -58,6 +72,13 @@ const AI_MODES = [
   { id: "gemini", label: "Gemini", desc: "Google models" },
 ];
 
+const STEPS: Array<{ id: 1 | 2 | 3 | 4; label: string; description: string }> = [
+  { id: 1, label: "Pick source", description: "Upload file or fetch eCourts" },
+  { id: 2, label: "Add metadata", description: "Case details and AI mode" },
+  { id: 3, label: "Run extraction", description: "Pipeline processes the PDF" },
+  { id: 4, label: "Open workspace", description: "Review in case workbench" },
+];
+
 function toText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -89,6 +110,12 @@ function decodeBase64ToBytes(value: string): ArrayBuffer {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
+}
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / Math.pow(1024, idx)).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 }
 function applyIndianECourtsEnvelopeToForm(
   form: HTMLFormElement,
@@ -131,6 +158,22 @@ const STAGE_VARIANT: Record<UploadStage, "muted" | "warn" | "good" | "destructiv
   error: "destructive",
 };
 
+const STAGE_PROGRESS: Record<UploadStage, number> = {
+  idle: 0,
+  uploading: 35,
+  workflow: 70,
+  success: 100,
+  error: 100,
+};
+
+const STAGE_TO_STEP: Record<UploadStage, 1 | 2 | 3 | 4> = {
+  idle: 1,
+  uploading: 3,
+  workflow: 3,
+  success: 4,
+  error: 3,
+};
+
 export default function UploadPage() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -143,10 +186,15 @@ export default function UploadPage() {
   const [onlineLookupId, setOnlineLookupId] = useState("");
   const [onlineLookupStatus, setOnlineLookupStatus] = useState<string | null>(null);
   const [onlineLookupError, setOnlineLookupError] = useState<string | null>(null);
+  const [onlineLookupLoading, setOnlineLookupLoading] = useState(false);
   const [documentLookupId, setDocumentLookupId] = useState("");
   const [documentLookupStatus, setDocumentLookupStatus] = useState<string | null>(null);
   const [documentLookupError, setDocumentLookupError] = useState<string | null>(null);
+  const [documentLookupLoading, setDocumentLookupLoading] = useState(false);
   const [selectedAiMode, setSelectedAiMode] = useState<string>("backend_default");
+  const [selectedFileMeta, setSelectedFileMeta] = useState<{ name: string; size: number } | null>(
+    null,
+  );
 
   const stageLabel = useMemo(() => {
     return {
@@ -157,6 +205,13 @@ export default function UploadPage() {
       idle: "Ready",
     }[stage];
   }, [stage]);
+
+  const activeStep = STAGE_TO_STEP[stage];
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0];
+    setSelectedFileMeta(file ? { name: file.name, size: file.size } : null);
+  }
 
   async function handleOnlineIndianECourtsLookup(): Promise<void> {
     const identifier = onlineLookupId.trim();
@@ -173,10 +228,12 @@ export default function UploadPage() {
     }
     setOnlineLookupError(null);
     setOnlineLookupStatus("Fetching case details from Indian eCourts source…");
+    setOnlineLookupLoading(true);
     const lookupResult = await lookupIndianECourtsIntake(identifier);
     if (!lookupResult.ok) {
       setOnlineLookupError(lookupResult.error.message);
       setOnlineLookupStatus(null);
+      setOnlineLookupLoading(false);
       return;
     }
     const payload = lookupResult.data;
@@ -189,6 +246,7 @@ export default function UploadPage() {
           type: payload.source_file_type || "application/pdf",
         });
         setFileValue(form, file);
+        setSelectedFileMeta({ name: file.name, size: file.size });
         setOnlineLookupStatus(
           `Fetched ${payload.source_file_name} and prefilled the full CCMS/CIS form from ${payload.resolved_source_url}.`,
         );
@@ -197,6 +255,8 @@ export default function UploadPage() {
           "Case metadata was fetched and prefilled, but the PDF file could not be restored automatically.",
         );
         setOnlineLookupError("Could not decode the fetched PDF payload.");
+      } finally {
+        setOnlineLookupLoading(false);
       }
     }, 0);
   }
@@ -215,10 +275,12 @@ export default function UploadPage() {
     }
     setDocumentLookupError(null);
     setDocumentLookupStatus("Loading saved document…");
+    setDocumentLookupLoading(true);
     const lookupResult = await getDocument(lookupId);
     if (!lookupResult.ok) {
       setDocumentLookupError(lookupResult.error.message);
       setDocumentLookupStatus(null);
+      setDocumentLookupLoading(false);
       return;
     }
     const documentRecord = lookupResult.data;
@@ -263,6 +325,7 @@ export default function UploadPage() {
               downloadResult.contentType ?? documentRecord.source_file_type ?? "application/pdf";
             const file = new File([downloadResult.blob], fileName, { type: fileType });
             setFileValue(form, file);
+            setSelectedFileMeta({ name: file.name, size: file.size });
             setDocumentLookupStatus(
               `Loaded ${documentRecord.id} and restored ${fileName}. The form is prefilled and ready.`,
             );
@@ -274,11 +337,15 @@ export default function UploadPage() {
             setDocumentLookupError(
               error instanceof Error ? error.message : "Document file load failed",
             );
+          })
+          .finally(() => {
+            setDocumentLookupLoading(false);
           });
       } catch (error) {
         setDocumentLookupError(
           error instanceof Error ? error.message : "Document file load failed",
         );
+        setDocumentLookupLoading(false);
       }
     }, 0);
   }
@@ -469,10 +536,11 @@ export default function UploadPage() {
   const submitting = stage === "uploading" || stage === "workflow";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 py-6">
       <PageHeader
         eyebrow={
           <span className="flex items-center gap-1.5">
+            <UploadCloud className="h-3.5 w-3.5" />
             Add new case <InfoHint glossaryKey="intake" />
           </span>
         }
@@ -480,11 +548,63 @@ export default function UploadPage() {
         subtitle="Pick a file or fetch from Indian eCourts. Page extraction starts automatically in the case workflow."
       />
 
+      {/* Stepper */}
+      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Intake progress">
+        {STEPS.map((step) => {
+          const isActive = step.id === activeStep;
+          const isComplete = step.id < activeStep || stage === "success";
+          return (
+            <li
+              key={step.id}
+              className={cn(
+                "relative flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                isActive
+                  ? "border-primary/40 bg-primary/10"
+                  : isComplete
+                    ? "border-good/40 bg-good/10"
+                    : "border-border bg-card/60",
+              )}
+            >
+              <span
+                className={cn(
+                  "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : isComplete
+                      ? "bg-good text-good-foreground"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {isComplete && step.id < activeStep ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  step.id
+                )}
+              </span>
+              <div className="flex flex-col">
+                <span
+                  className={cn(
+                    "text-sm font-semibold leading-tight",
+                    isActive ? "text-foreground" : "text-foreground/90",
+                  )}
+                >
+                  {step.label}
+                </span>
+                <span className="text-xs text-muted-foreground">{step.description}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      {/* Top: lookup helpers */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="card-interactive">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Globe className="h-4 w-4" />
+              <span className="icon-chip">
+                <Globe className="h-4 w-4" />
+              </span>
               Indian eCourts fetch
             </CardTitle>
             <CardDescription>
@@ -502,12 +622,19 @@ export default function UploadPage() {
             <Button
               type="button"
               onClick={() => void handleOnlineIndianECourtsLookup()}
-              disabled={!onlineLookupId.trim()}
+              disabled={!onlineLookupId.trim() || onlineLookupLoading}
             >
-              <Search />
-              Fetch and prefill form
+              {onlineLookupLoading ? <Loader2 className="animate-spin" /> : <Search />}
+              {onlineLookupLoading ? "Fetching…" : "Fetch and prefill form"}
             </Button>
-            {onlineLookupStatus ? (
+            {onlineLookupLoading ? (
+              <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/40 p-3">
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ) : null}
+            {onlineLookupStatus && !onlineLookupLoading ? (
               <Alert>
                 <AlertDescription>{onlineLookupStatus}</AlertDescription>
               </Alert>
@@ -520,10 +647,12 @@ export default function UploadPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="card-interactive">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FileSearch className="h-4 w-4" />
+              <span className="icon-chip icon-chip-accent">
+                <FileSearch className="h-4 w-4" />
+              </span>
               Reload saved document
             </CardTitle>
             <CardDescription>
@@ -542,12 +671,19 @@ export default function UploadPage() {
               type="button"
               variant="outline"
               onClick={() => void handleLoadDocumentById()}
-              disabled={!documentLookupId.trim()}
+              disabled={!documentLookupId.trim() || documentLookupLoading}
             >
-              <FileSearch />
-              Load and prefill form
+              {documentLookupLoading ? <Loader2 className="animate-spin" /> : <FileSearch />}
+              {documentLookupLoading ? "Loading…" : "Load and prefill form"}
             </Button>
-            {documentLookupStatus ? (
+            {documentLookupLoading ? (
+              <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/40 p-3">
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ) : null}
+            {documentLookupStatus && !documentLookupLoading ? (
               <Alert>
                 <AlertDescription>{documentLookupStatus}</AlertDescription>
               </Alert>
@@ -561,17 +697,76 @@ export default function UploadPage() {
         </Card>
       </div>
 
+      {/* Intake form */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Intake form</CardTitle>
+        <CardHeader className="border-b border-border">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="icon-chip">
+              <UploadCloud className="h-4 w-4" />
+            </span>
+            Intake form
+          </CardTitle>
           <CardDescription>
             All fields except the file are optional. Switch to Indian eCourts to enable CCMS/CIS
             metadata.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-5">
-            <div className="grid gap-3 md:grid-cols-2">
+        <CardContent className="pt-6">
+          <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-6">
+            {/* File dropzone */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="judgment" className="text-sm font-medium">
+                Judgment file
+              </Label>
+              <label
+                htmlFor="judgment"
+                className="dropzone cursor-pointer"
+                data-active={selectedFileMeta ? "true" : "false"}
+              >
+                <input
+                  id="judgment"
+                  name="judgment"
+                  type="file"
+                  required
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                />
+                {selectedFileMeta ? (
+                  <div className="flex w-full max-w-md items-center gap-3 rounded-md border border-primary/30 bg-primary/10 p-3 text-left">
+                    <span className="icon-chip">
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {selectedFileMeta.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatBytes(selectedFileMeta.size)} · click to replace
+                      </p>
+                    </div>
+                    <CheckCircle2 className="h-4 w-4 text-good" />
+                  </div>
+                ) : (
+                  <>
+                    <span className="icon-chip">
+                      <UploadCloud className="h-5 w-5" />
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-foreground">
+                        Click to choose a PDF
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Single judgment, up to ~50 MB · application/pdf
+                      </span>
+                    </div>
+                  </>
+                )}
+              </label>
+            </div>
+
+            {/* Source / case basics */}
+            <div className="grid gap-4 md:grid-cols-2">
               <Field id="intake_source" label="Intake source">
                 <Select
                   value={intakeSource}
@@ -589,15 +784,6 @@ export default function UploadPage() {
                 </Select>
                 <input type="hidden" name="intake_source" value={intakeSource} />
               </Field>
-              <Field id="judgment" label="Judgment file">
-                <Input id="judgment" name="judgment" type="file" required accept="application/pdf" />
-              </Field>
-              <Field id="case_id" label="Case id (optional)">
-                <Input id="case_id" name="case_id" placeholder="CASE-2026-001" />
-              </Field>
-              <Field id="department" label="Department (optional)">
-                <Input id="department" name="department" placeholder="District Administration" />
-              </Field>
               <Field id="source_language" label="Source language">
                 <Select value={sourceLanguage} onValueChange={setSourceLanguage}>
                   <SelectTrigger id="source_language">
@@ -613,10 +799,16 @@ export default function UploadPage() {
                   </SelectContent>
                 </Select>
               </Field>
+              <Field id="case_id" label="Case id (optional)">
+                <Input id="case_id" name="case_id" placeholder="CASE-2026-001" />
+              </Field>
+              <Field id="department" label="Department (optional)">
+                <Input id="department" name="department" placeholder="District Administration" />
+              </Field>
             </div>
 
             {intakeSource === "indian_ecourts" ? (
-              <Card className="bg-muted/30">
+              <Card className="border-dashed bg-muted/20">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm">CCMS / CIS metadata</CardTitle>
                   <CardDescription>
@@ -706,10 +898,21 @@ export default function UploadPage() {
               </Card>
             ) : null}
 
-            <div className="flex flex-col gap-2">
-              <Label className="flex items-center gap-2">
-                <Cpu className="h-3.5 w-3.5" /> AI extraction mode
-              </Label>
+            {/* AI mode */}
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-4">
+              <div className="flex items-center gap-2">
+                <span className="icon-chip icon-chip-accent">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <div className="flex flex-col">
+                  <Label className="flex items-center gap-2 text-sm font-semibold">
+                    <Cpu className="h-3.5 w-3.5" /> AI extraction mode
+                  </Label>
+                  <span className="text-xs text-muted-foreground">
+                    Choose the model used to read and structure the judgment.
+                  </span>
+                </div>
+              </div>
               <input type="hidden" name="ai_mode" value={selectedAiMode} />
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {AI_MODES.map((mode) => {
@@ -720,14 +923,19 @@ export default function UploadPage() {
                       type="button"
                       onClick={() => setSelectedAiMode(mode.id)}
                       className={cn(
-                        "flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors",
+                        "flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-all",
                         active
-                          ? "border-primary/60 bg-primary/10 text-foreground"
-                          : "border-border bg-card hover:border-border hover:bg-secondary/40",
+                          ? "border-primary/60 bg-primary/15 ring-1 ring-primary/30"
+                          : "border-border bg-card hover:border-primary/30 hover:bg-secondary/40",
                       )}
                       aria-pressed={active}
                     >
-                      <span className={cn("text-sm font-semibold", active ? "text-primary" : "text-foreground")}>
+                      <span
+                        className={cn(
+                          "text-sm font-semibold",
+                          active ? "text-primary" : "text-foreground",
+                        )}
+                      >
                         {mode.label}
                       </span>
                       <span className="text-xs text-muted-foreground">{mode.desc}</span>
@@ -735,17 +943,20 @@ export default function UploadPage() {
                   );
                 })}
               </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field id="ai_model" label="AI model override (optional)">
-                <Input id="ai_model" name="ai_model" placeholder="gemini-2.0-flash" />
-              </Field>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field id="ai_model" label="AI model override (optional)">
+                  <Input id="ai_model" name="ai_model" placeholder="gemini-2.0-flash" />
+                </Field>
+              </div>
             </div>
 
             <div className="flex justify-end">
-              <Button type="submit" disabled={submitting}>
-                <UploadCloud />
+              <Button type="submit" size="lg" disabled={submitting}>
+                {submitting ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <UploadCloud />
+                )}
                 {submitting ? "Working..." : "Ingest and start page extraction"}
               </Button>
             </div>
@@ -753,24 +964,58 @@ export default function UploadPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base">Pipeline status</CardTitle>
-            <CardDescription>{statusText}</CardDescription>
+      {/* Pipeline status */}
+      <Card
+        className={cn(
+          stage === "error" && "border-destructive/40",
+          stage === "success" && "border-good/40",
+          (stage === "uploading" || stage === "workflow") && "border-primary/40",
+        )}
+      >
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "icon-chip",
+                stage === "error" && "icon-chip-destructive",
+                stage === "success" && "icon-chip-good",
+                stage === "workflow" && "icon-chip-warn",
+                stage === "idle" && "border-border bg-muted/40 text-muted-foreground",
+              )}
+            >
+              {stage === "error" ? (
+                <XCircle className="h-4 w-4" />
+              ) : stage === "success" ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+            </span>
+            <div>
+              <CardTitle className="text-base">Pipeline status</CardTitle>
+              <CardDescription>{statusText}</CardDescription>
+            </div>
           </div>
           <Badge variant={STAGE_VARIANT[stage]}>{stageLabel}</Badge>
         </CardHeader>
-        {errorText ? (
-          <CardContent className="pt-0">
+        <CardContent className="flex flex-col gap-4 pt-0">
+          <Progress value={STAGE_PROGRESS[stage]} className="h-1.5" />
+          {submitting ? (
+            <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-3">
+              <Skeleton className="h-3 w-3/5" />
+              <Skeleton className="h-3 w-2/5" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+          ) : null}
+          {errorText ? (
             <Alert variant="destructive">
               <AlertTitle>Pipeline error</AlertTitle>
               <AlertDescription>{errorText}</AlertDescription>
             </Alert>
-          </CardContent>
-        ) : null}
-        {duplicateExistingId ? (
-          <CardContent className="pt-0">
+          ) : null}
+          {duplicateExistingId ? (
             <Button
               type="button"
               variant="outline"
@@ -787,8 +1032,8 @@ export default function UploadPage() {
               Open existing document
               <ArrowRight />
             </Button>
-          </CardContent>
-        ) : null}
+          ) : null}
+        </CardContent>
       </Card>
     </div>
   );
@@ -805,7 +1050,9 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </Label>
       {children}
     </div>
   );

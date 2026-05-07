@@ -3,12 +3,24 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  FileText,
+  Gavel,
+  LayoutDashboard,
+  MessageCircle,
+  Plus,
+  Scale,
+  ShieldCheck,
+  UserCog,
+  Users,
+} from "lucide-react";
 
 import type { WorkbenchOverviewData } from "@/lib/api/client";
 import { getWorkbenchOverview } from "@/lib/api/client";
 import { QuickActionCard } from "@/components/dashboard/quick-action-card";
 import { FeaturedAdvocates } from "@/components/dashboard/featured-advocates";
-import { Users, Scale, MessageCircle } from "lucide-react";
 import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +28,55 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoHint } from "@/components/info-hint";
+import { PageHeader } from "@/components/app/page-header";
+import { KpiTile, type KpiTone } from "@/components/app/kpi-tile";
+
+type Kpi = {
+  label: string;
+  value: number;
+  tone: KpiTone;
+  icon: React.ReactNode;
+  hint?: string;
+};
+
+function DashboardLoadingSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 py-6">
+      <div className="rounded-xl border border-border bg-surface px-6 py-7">
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-5 w-24 rounded-full" />
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardContent className="flex flex-col gap-3 p-5">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="h-3 w-32" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[...Array(3)].map((_, i) => (
+          <Card key={i}>
+            <CardContent className="flex items-center gap-4 p-5">
+              <Skeleton className="h-9 w-9 rounded-lg" />
+              <div className="flex flex-1 flex-col gap-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+              <Skeleton className="h-4 w-4" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -45,32 +106,65 @@ export default function DashboardPage() {
 
   if (status === "loading" || !user) {
     if (status === "loading") {
-      return (
-        <div className="space-y-4 py-8">
-          <Skeleton className="h-8 w-48" />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-32 w-full" />
-            ))}
-          </div>
-        </div>
-      );
+      return <DashboardLoadingSkeleton />;
     }
     return null;
   }
 
+  const displayName = user.full_name?.trim() || user.email.split("@")[0];
+
+  const kpis: Kpi[] | null = overview
+    ? [
+        {
+          label: "Total documents",
+          value: overview.summary.total_documents,
+          tone: "default",
+          icon: <FileText className="h-4 w-4" />,
+          hint: "Across every department",
+        },
+        {
+          label: "Pending review",
+          value: overview.summary.pending_review,
+          tone: "warn",
+          icon: <ClipboardCheck className="h-4 w-4" />,
+          hint: "Waiting on action",
+        },
+        {
+          label: "Critical",
+          value: overview.summary.critical_escalations,
+          tone: "destructive",
+          icon: <AlertTriangle className="h-4 w-4" />,
+          hint: "Escalations to triage",
+        },
+      ]
+    : null;
+
   return (
-    <div className="space-y-8 py-8">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">
-          Welcome, {user.full_name ?? user.email.split("@")[0]}
-        </h1>
-        <Badge variant="outline">{ROLE_LABELS[user.role]}</Badge>
-      </div>
+    <div className="flex flex-col gap-6 py-6">
+      <PageHeader
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5">
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            Dashboard
+          </span>
+        }
+        title={`Welcome back, ${displayName}`}
+        subtitle="Pick up where you left off — review documents, manage your workflow, or start a new intake."
+        actions={
+          <Badge
+            variant="outline"
+            className="border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary"
+          >
+            {ROLE_LABELS[user.role]}
+          </Badge>
+        }
+      />
 
       {/* Quick actions for all roles */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Quick actions</h2>
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Quick actions
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <QuickActionCard
             icon={<Scale />}
@@ -80,20 +174,26 @@ export default function DashboardPage() {
           />
           <QuickActionCard
             icon={<MessageCircle />}
+            tone="accent"
             title="Ask AI Assistant"
             description="Get answers about terminology and case help."
             onClick={() => window.dispatchEvent(new Event("orderflow:open-ai-chat"))}
           />
         </div>
-      </div>
+      </section>
 
       {/* Citizen dashboard */}
       {user.role === "citizen" && (
-        <div className="space-y-8">
-          <div className="grid gap-4 sm:grid-cols-1">
-            <Card>
+        <div className="flex flex-col gap-8">
+          <section>
+            <Card className="card-interactive overflow-hidden">
               <CardHeader>
-                <CardTitle>Your cases</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="icon-chip">
+                    <Users className="h-4 w-4" />
+                  </span>
+                  Your cases
+                </CardTitle>
                 <CardDescription>
                   View public obligations and case status linked to your matters.
                 </CardDescription>
@@ -104,17 +204,22 @@ export default function DashboardPage() {
                 </Button>
               </CardContent>
             </Card>
-          </div>
+          </section>
           <FeaturedAdvocates />
         </div>
       )}
 
       {/* Advocate dashboard */}
       {user.role === "advocate" && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card>
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Card className="card-interactive">
             <CardHeader>
-              <CardTitle>My profile</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <span className="icon-chip">
+                  <UserCog className="h-4 w-4" />
+                </span>
+                My profile
+              </CardTitle>
               <CardDescription>View and edit your public advocate profile.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -123,9 +228,12 @@ export default function DashboardPage() {
               </Button>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="card-interactive">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
+                <span className="icon-chip icon-chip-accent">
+                  <FileText className="h-4 w-4" />
+                </span>
                 Read documents <InfoHint glossaryKey="analyze" />
               </CardTitle>
               <CardDescription>Access document summaries and obligations.</CardDescription>
@@ -136,9 +244,14 @@ export default function DashboardPage() {
               </Button>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="card-interactive">
             <CardHeader>
-              <CardTitle>Directory listing</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <span className="icon-chip icon-chip-good">
+                  <Users className="h-4 w-4" />
+                </span>
+                Directory listing
+              </CardTitle>
               <CardDescription>See how your profile appears publicly.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -147,76 +260,101 @@ export default function DashboardPage() {
               </Button>
             </CardContent>
           </Card>
-        </div>
+        </section>
       )}
 
       {/* Judge / Government dashboard */}
       {(user.role === "judge" || user.role === "government") && (
         <>
-          {loadingOverview ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[...Array(4)].map((_, i) => (
-                <Skeleton key={i} className="h-28 w-full" />
-              ))}
-            </div>
-          ) : overview ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { label: "Total documents", value: overview.summary.total_documents },
-                { label: "Pending review", value: overview.summary.pending_review },
-                { label: "Critical", value: overview.summary.critical_escalations },
-              ].map((kpi) => (
-                <Card key={kpi.label}>
-                  <CardContent className="pt-6">
-                    <p className="text-3xl font-bold">{kpi.value}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{kpi.label}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : null}
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              At a glance
+            </h2>
+            {loadingOverview ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[...Array(4)].map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="flex flex-col gap-3 p-5">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-8 w-16" />
+                      <Skeleton className="h-3 w-32" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : kpis ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {kpis.map((kpi) => (
+                  <KpiTile
+                    key={kpi.label}
+                    label={kpi.label}
+                    value={kpi.value}
+                    tone={kpi.tone}
+                    icon={kpi.icon}
+                    hint={kpi.hint}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </section>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  Case overview <InfoHint glossaryKey="workbench" />
-                </CardTitle>
-                <CardDescription>Full case overview and workflow management.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild>
-                  <Link href="/">Open case overview</Link>
-                </Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  Add new case <InfoHint glossaryKey="intake" />
-                </CardTitle>
-                <CardDescription>Upload new judgments for processing.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild variant="outline">
-                  <Link href="/upload">Upload document</Link>
-                </Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  Advocate approvals <InfoHint glossaryKey="verifications" />
-                </CardTitle>
-                <CardDescription>Review pending advocate registrations.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild variant="outline">
-                  <Link href="/admin/verifications">Review queue</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Workflow
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Card className="card-interactive">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="icon-chip">
+                      <Gavel className="h-4 w-4" />
+                    </span>
+                    Case overview <InfoHint glossaryKey="workbench" />
+                  </CardTitle>
+                  <CardDescription>
+                    Full case overview and workflow management.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild>
+                    <Link href="/">Open case overview</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card className="card-interactive">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="icon-chip icon-chip-accent">
+                      <Plus className="h-4 w-4" />
+                    </span>
+                    Add new case <InfoHint glossaryKey="intake" />
+                  </CardTitle>
+                  <CardDescription>Upload new judgments for processing.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild variant="outline">
+                    <Link href="/upload">Upload document</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card className="card-interactive">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="icon-chip icon-chip-good">
+                      <ShieldCheck className="h-4 w-4" />
+                    </span>
+                    Advocate approvals <InfoHint glossaryKey="verifications" />
+                  </CardTitle>
+                  <CardDescription>Review pending advocate registrations.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild variant="outline">
+                    <Link href="/admin/verifications">Review queue</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
         </>
       )}
     </div>

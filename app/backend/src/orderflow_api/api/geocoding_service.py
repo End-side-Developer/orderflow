@@ -16,6 +16,27 @@ from orderflow_api.schemas.page_summaries import ExtractedPlace, PlaceType
 
 _PUNCTUATION_RE = re.compile(r"[^\w\s]", re.UNICODE)
 _WHITESPACE_RE = re.compile(r"\s+")
+_LOCAL_PLACE_FALLBACKS: dict[str, tuple[float, float, float]] = {
+    "delhi": (28.6139, 77.2090, 0.72),
+    "new delhi": (28.6139, 77.2090, 0.74),
+    "mumbai": (19.0760, 72.8777, 0.72),
+    "bengaluru": (12.9716, 77.5946, 0.72),
+    "bangalore": (12.9716, 77.5946, 0.72),
+    "chennai": (13.0827, 80.2707, 0.72),
+    "kolkata": (22.5726, 88.3639, 0.72),
+    "hyderabad": (17.3850, 78.4867, 0.72),
+    "pune": (18.5204, 73.8567, 0.72),
+    "ahmedabad": (23.0225, 72.5714, 0.72),
+    "jaipur": (26.9124, 75.7873, 0.72),
+    "lucknow": (26.8467, 80.9462, 0.72),
+    "patna": (25.5941, 85.1376, 0.72),
+    "bhopal": (23.2599, 77.4126, 0.72),
+    "indore": (22.7196, 75.8577, 0.72),
+    "gurugram": (28.4595, 77.0266, 0.72),
+    "gurgaon": (28.4595, 77.0266, 0.72),
+    "noida": (28.5355, 77.3910, 0.72),
+    "chandigarh": (30.7333, 76.7794, 0.72),
+}
 
 
 def normalize_place_name(value: str) -> str:
@@ -90,11 +111,19 @@ def geocode_place(
 ) -> ExtractedPlace:
     """Geocode a single place, preserving null coordinates on failure."""
     resolved_state_hint = place.state or state_hint
+    local_fallback = _local_place_fallback(place)
     cached = geocode_cache_persistence.get_cached_geocode(
         place.normalized_name,
         resolved_state_hint,
     )
     if cached is not None:
+        if not cached.is_positive and local_fallback is not None:
+            return _apply_local_fallback(
+                place,
+                state_hint=resolved_state_hint,
+                query=_build_query(place, state_hint=state_hint),
+                fallback=local_fallback,
+            )
         return place.model_copy(
             update={
                 "lat": cached.lat,
@@ -112,6 +141,14 @@ def geocode_place(
         query = court_fallback_query
         result = _search_nominatim(query)
         source = "fallback_court_metadata"
+
+    if result is None and local_fallback is not None:
+        return _apply_local_fallback(
+            place,
+            state_hint=resolved_state_hint,
+            query=query,
+            fallback=local_fallback,
+        )
 
     if result is None:
         geocode_cache_persistence.upsert_geocode_cache(
@@ -155,6 +192,47 @@ def geocode_place(
             "lng": lng,
             "geocode_confidence": confidence,
             "geocode_source": source,
+        }
+    )
+
+
+def _local_place_fallback(place: ExtractedPlace) -> tuple[float, float, float] | None:
+    keys = [
+        place.normalized_name,
+        normalize_place_name(place.name),
+        normalize_place_name(place.district or ""),
+    ]
+    for key in keys:
+        if key in _LOCAL_PLACE_FALLBACKS:
+            return _LOCAL_PLACE_FALLBACKS[key]
+    return None
+
+
+def _apply_local_fallback(
+    place: ExtractedPlace,
+    *,
+    state_hint: str | None,
+    query: str,
+    fallback: tuple[float, float, float],
+) -> ExtractedPlace:
+    lat, lng, confidence = fallback
+    geocode_cache_persistence.upsert_geocode_cache(
+        normalized_name=place.normalized_name,
+        state_hint=state_hint,
+        query=query,
+        lat=lat,
+        lng=lng,
+        confidence=confidence,
+        source="local_fallback",
+        provider_payload={"source": "local_city_centroid"},
+        negative_expires_at=None,
+    )
+    return place.model_copy(
+        update={
+            "lat": lat,
+            "lng": lng,
+            "geocode_confidence": confidence,
+            "geocode_source": "local_fallback",
         }
     )
 

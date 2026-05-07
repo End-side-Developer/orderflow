@@ -92,11 +92,15 @@ def test_intake_workflow_payload_helpers_keep_gates_explicit() -> None:
     assert page_context["page_number"] == "2"
     assert page_context["total_pages"] == "3"
     assert page_context["content_hash"] == "hash-two"
-    assert page_context["prompt_version"] == (intake.DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION)
+    assert page_context["prompt_version"] == (
+        intake.DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION
+    )
     assert completed_context["content_hash_2"] == "hash-two"
     assert completed_context["page_numbers"] == "1,2,3"
     assert completed_context["ai_model"] == (intake.DEFAULT_PAGE_EXTRACTION_MODEL)
-    assert completed_by_number == {2: {"page_number": 2, "cache_status": "skipped_completed"}}
+    assert completed_by_number == {
+        2: {"page_number": 2, "cache_status": "skipped_completed"}
+    }
     assert not intake_workflow._payload_bool(payload, "auto_advance_summary")
     assert not intake_workflow._payload_bool(
         payload,
@@ -388,7 +392,9 @@ def test_full_summary_uses_cached_page_summaries(monkeypatch) -> None:
         lambda: backend,
     )
 
-    result = asyncio.run(intake.activity_generate_full_summary({"document_id": str(document_id)}))
+    result = asyncio.run(
+        intake.activity_generate_full_summary({"document_id": str(document_id)})
+    )
 
     assert result["cache_status"] == "miss_generated"
     assert "1 cached page summary record(s)" in result["overview"]
@@ -435,7 +441,9 @@ def test_full_summary_cache_hit_skips_provider_calls(monkeypatch) -> None:
         lambda: backend,
     )
 
-    result = asyncio.run(intake.activity_generate_full_summary({"document_id": str(document_id)}))
+    result = asyncio.run(
+        intake.activity_generate_full_summary({"document_id": str(document_id)})
+    )
 
     assert result["cache_status"] == "hit"
     assert result["overview"] == "Cached summary"
@@ -537,6 +545,32 @@ def test_key_directives_include_flags_and_references() -> None:
     assert directives[1]["source_paragraph_reference"] == "Clause 3"
 
 
+def test_key_directives_fall_back_to_page_directions_without_obligations() -> None:
+    page_summaries = [
+        Record(
+            page_number=2,
+            directions=[
+                Record(
+                    direction_text="The Railway shall complete rehabilitation review.",
+                    source_location="para 14",
+                    directive_kind="mandatory",
+                    compliance_required="yes",
+                    confidence=0.82,
+                )
+            ],
+        )
+    ]
+
+    directives = intake._merge_directive_lists(
+        intake._build_key_directives([]),
+        intake._build_page_directives(page_summaries),
+    )
+
+    assert directives[0]["direction_text"].startswith("The Railway shall")
+    assert directives[0]["source_page_number"] == 2
+    assert directives[0]["source_paragraph_reference"] == "para 14"
+
+
 def test_important_dates_marks_inferred_and_page_dates() -> None:
     obligations = [
         Record(
@@ -551,6 +585,15 @@ def test_important_dates_marks_inferred_and_page_dates() -> None:
         Record(
             page_number=1,
             page_text="Hearing on 12/06/2026 and order on 15/06/2026.",
+            dates=[
+                Record(
+                    date_text="20 February 2018",
+                    label="presentation date",
+                    source_location="page 1 facts",
+                    is_inferred=False,
+                    confidence=0.88,
+                )
+            ],
             confidence=0.9,
         )
     ]
@@ -558,6 +601,7 @@ def test_important_dates_marks_inferred_and_page_dates() -> None:
     dates = intake._build_important_dates(obligations, page_summaries)
 
     assert dates[0]["is_inferred"] is True
+    assert any(item["date_text"] == "20 February 2018" for item in dates)
     assert any(item["date_text"] == "12/06/2026" for item in dates)
 
 
@@ -570,12 +614,39 @@ def test_entities_and_departments_include_source_evidence() -> None:
             citation=SimpleNamespace(page_number=5),
         )
     ]
+    page_summaries = [
+        Record(
+            page_number=1,
+            entities=[
+                Record(
+                    name="Northern Railways",
+                    entity_type="department",
+                    role="respondent",
+                    source_location="party block",
+                    confidence=0.8,
+                )
+            ],
+            departments=[
+                Record(
+                    name="Delhi Urban Shelter Improvement Board",
+                    role="rehabilitation authority",
+                    source_location="relief discussion",
+                    confidence=0.74,
+                )
+            ],
+        )
+    ]
 
-    entities = intake._build_entities(obligations)
-    departments = intake._build_responsible_departments(obligations)
+    entities = intake._build_entities(obligations, page_summaries)
+    departments = intake._build_responsible_departments(obligations, page_summaries)
 
     assert entities[0]["metadata"]["source_evidence"]
     assert departments[0]["source_evidence"]
+    assert any(entity["name"] == "Northern Railways" for entity in entities)
+    assert any(
+        department["primary_department"] == "Delhi Urban Shelter Improvement Board"
+        for department in departments
+    )
 
 
 def test_flow_graph_includes_party_and_next_edges() -> None:
@@ -615,6 +686,43 @@ def test_flow_graph_includes_party_and_next_edges() -> None:
     assert "party" in node_types
     assert "event" in node_types
     assert "next" in edge_relations
+
+
+def test_flow_graph_includes_page_directions_without_obligations() -> None:
+    page_summaries = [
+        Record(
+            page_number=1,
+            summary="Intro page",
+            directions=[
+                Record(
+                    direction_text="The respondent shall verify eligibility.",
+                    source_location="para 9",
+                )
+            ],
+        )
+    ]
+
+    graph = intake._build_flow_graph(
+        intake.DocumentSummaryContext(
+            document_id=str(uuid4()),
+            document_uuid=uuid4(),
+            prompt_version="v1",
+            ai_provider="openai",
+            ai_model="gpt-4o",
+            bypass_cache=False,
+        ),
+        page_summaries,
+        [],
+        {"petitioner": None, "respondent": None},
+    )
+
+    obligation_nodes = [
+        node for node in graph["nodes"] if node["node_type"] == "obligation"
+    ]
+
+    assert obligation_nodes
+    assert obligation_nodes[0]["label"].startswith("The respondent shall")
+    assert any("page-level direction" in step for step in graph["narrative_steps"])
 
 
 def test_map_data_rule_requires_geo_and_distinct_pages() -> None:
@@ -680,20 +788,32 @@ def test_map_data_rule_returns_reason_on_failure() -> None:
 
     map_data = intake._build_map_data(page_summaries)
 
-    assert map_data["available"] is False
-    assert map_data["places"] == []
-    assert "Map flow not generated" in map_data["reason"]
+    assert map_data["available"] is True
+    assert len(map_data["places"]) == 1
+    assert "route flow needs at least 2 places" in map_data["reason"]
 
 
 def test_nature_of_action_classification_covers_required_categories() -> None:
     cases = [
         ("Pay arrears", "Pay salary arrears within 30 days.", "payment"),
         ("Appointment order", "Appoint the petitioner as teacher.", "appointment"),
-        ("Submit representation", "Submit representation to the authority.", "submission"),
+        (
+            "Submit representation",
+            "Submit representation to the authority.",
+            "submission",
+        ),
         ("Policy update", "Issue policy guideline for compliance.", "policy"),
         ("Reconsider claim", "Consider afresh the pending claim.", "reconsideration"),
-        ("Personal hearing", "Schedule personal hearing for the petitioner.", "hearing"),
-        ("Appeal review", "File appeal review petition within limitation.", "appeal_review"),
+        (
+            "Personal hearing",
+            "Schedule personal hearing for the petitioner.",
+            "hearing",
+        ),
+        (
+            "Appeal review",
+            "File appeal review petition within limitation.",
+            "appeal_review",
+        ),
         ("Update record", "Update service record details.", "record_update"),
         ("General note", "No action required at this time.", "other"),
     ]
@@ -751,14 +871,18 @@ def test_user_facing_page_error_messages_cover_required_categories() -> None:
 
     cases = [
         (
-            FakeProviderError("requests_per_minute quota exceeded", retry_after_seconds=7),
+            FakeProviderError(
+                "requests_per_minute quota exceeded", retry_after_seconds=7
+            ),
             {},
             "ai_rate_limit_rpm",
             "rpm_limit",
             "AI RPM limit reached",
         ),
         (
-            FakeProviderError("tokens_per_minute quota exceeded", retry_after_seconds=7),
+            FakeProviderError(
+                "tokens_per_minute quota exceeded", retry_after_seconds=7
+            ),
             {},
             "ai_rate_limit_tpm",
             "tpm_limit",
@@ -866,7 +990,9 @@ def test_mark_intake_stage_activity_updates_stage(monkeypatch) -> None:
     monkeypatch.setattr(intake, "_load_stage_marker_backend", lambda: backend)
 
     result = asyncio.run(
-        intake.activity_mark_intake_stage({"document_id": str(document_id), "stage": "pages_done"})
+        intake.activity_mark_intake_stage(
+            {"document_id": str(document_id), "stage": "pages_done"}
+        )
     )
 
     assert result["stage"] == "pages_done"
@@ -1154,7 +1280,9 @@ def test_page_activity_second_same_request_uses_cache_without_provider(
     assert second["summary"] == "Generated page summary"
     assert second["summary_id"] == first["summary_id"]
     assert len(backend.summaries) == 1
-    assert backend.progress_calls[-1][1]["current_page_excerpt"]["cache_status"] == "hit"
+    assert (
+        backend.progress_calls[-1][1]["current_page_excerpt"]["cache_status"] == "hit"
+    )
 
 
 def test_page_activity_changed_prompt_version_calls_provider_again(
@@ -1441,7 +1569,9 @@ def test_page_activity_ocr_success_feeds_ai_and_cache_signature(monkeypatch) -> 
     assert result["ocr_engine"] == "paddleocr"
     assert provider_calls[0]["page_text"].startswith("OCR extracted court order")
     assert backend.summaries[0].content_hash.startswith("hash:ocr:paddleocr:3.1.0")
-    assert backend.progress_calls[0][1]["current_page_excerpt"]["ocr_status"] == "running"
+    assert (
+        backend.progress_calls[0][1]["current_page_excerpt"]["ocr_status"] == "running"
+    )
     assert backend.progress_calls[-1][1]["current_page_excerpt"]["ocr_status"] == "done"
 
 
@@ -1538,7 +1668,9 @@ def test_page_activity_ocr_failure_persists_low_text_metadata(monkeypatch) -> No
     assert result["text_source"] == "low_text_fallback"
     assert result["ocr_error"] == "no_ocr_engine_succeeded"
     assert backend.summaries[0].ocr_error == "no_ocr_engine_succeeded"
-    assert backend.progress_calls[-1][1]["current_page_excerpt"]["ocr_status"] == "failed"
+    assert (
+        backend.progress_calls[-1][1]["current_page_excerpt"]["ocr_status"] == "failed"
+    )
 
 
 def test_page_activity_ai_failure_falls_back_to_deterministic(monkeypatch) -> None:
@@ -1693,7 +1825,9 @@ def test_page_activity_updates_progress_on_cache_hit(monkeypatch, caplog) -> Non
     assert excerpt["cache_status"] == "hit"
     assert excerpt["content_hash"] == "hash-two"
     cache_logs = [
-        record for record in caplog.records if record.message == "orderflow_worker_cache_hit"
+        record
+        for record in caplog.records
+        if record.message == "orderflow_worker_cache_hit"
     ]
     assert len(cache_logs) == 1
     assert cache_logs[0].orderflow == {
@@ -1794,8 +1928,13 @@ def test_page_activity_records_failure_without_deleting_completed_pages(
     assert progress["current_page_excerpt"]["error_code"] == "ai_timeout"
     assert progress["current_page_excerpt"]["error_category"] == "timeout"
     assert progress["current_page_excerpt"]["partial_failure"] is True
-    assert "2 of 5 pages were saved" in progress["current_page_excerpt"]["error_message"]
-    assert "completed pages will be reused" in progress["current_page_excerpt"]["error_message"]
+    assert (
+        "2 of 5 pages were saved" in progress["current_page_excerpt"]["error_message"]
+    )
+    assert (
+        "completed pages will be reused"
+        in progress["current_page_excerpt"]["error_message"]
+    )
     assert backend.fail_calls[-1][1]["error_code"] == "ai_timeout"
 
 
@@ -1883,7 +2022,8 @@ def test_action_plan_partial_retry_promotes_only_extracted_items(
                 for key, value in values.items():
                     setattr(updated, key, value)
                 self.obligations = [
-                    updated if item.id == obligation_id else item for item in self.obligations
+                    updated if item.id == obligation_id else item
+                    for item in self.obligations
                 ]
                 return updated
             return None
@@ -2032,7 +2172,8 @@ def test_action_plan_generation_persists_items_as_lifecycle_obligations(
                 for key, value in values.items():
                     setattr(updated, key, value)
                 self.obligations = [
-                    updated if item.id == obligation_id else item for item in self.obligations
+                    updated if item.id == obligation_id else item
+                    for item in self.obligations
                 ]
                 return updated
             return None
@@ -2207,7 +2348,9 @@ def test_action_plan_one_shot_when_job_done(monkeypatch) -> None:
             raise AssertionError("Unexpected AI extraction on one-shot cache hit")
 
         def extract_obligations(self, *_args, **_kwargs):
-            raise AssertionError("Unexpected deterministic extraction on one-shot cache hit")
+            raise AssertionError(
+                "Unexpected deterministic extraction on one-shot cache hit"
+            )
 
         def replace_document_extraction(self, *_args, **_kwargs):
             raise AssertionError("Unexpected extraction replace on one-shot cache hit")

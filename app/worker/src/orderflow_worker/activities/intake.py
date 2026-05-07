@@ -28,14 +28,24 @@ from orderflow_worker.core.ai_versions import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION = PAGE_EXTRACTION_PROMPT_VERSION
-DEFAULT_PAGE_EXTRACTION_MODEL = settings.orderflow_ai_default_model or PAGE_EXTRACTION_MODEL
-DEFAULT_PAGE_EXTRACTION_PROVIDER = settings.orderflow_ai_default_provider or PAGE_EXTRACTION_PROVIDER
+DEFAULT_PAGE_EXTRACTION_MODEL = (
+    settings.orderflow_ai_default_model or PAGE_EXTRACTION_MODEL
+)
+DEFAULT_PAGE_EXTRACTION_PROVIDER = (
+    settings.orderflow_ai_default_provider or PAGE_EXTRACTION_PROVIDER
+)
 DEFAULT_DOCUMENT_SUMMARY_PROMPT_VERSION = DOCUMENT_SUMMARY_PROMPT_VERSION
-DEFAULT_DOCUMENT_SUMMARY_MODEL = settings.orderflow_ai_default_model or DOCUMENT_SUMMARY_MODEL
-DEFAULT_DOCUMENT_SUMMARY_PROVIDER = settings.orderflow_ai_default_provider or DOCUMENT_SUMMARY_PROVIDER
+DEFAULT_DOCUMENT_SUMMARY_MODEL = (
+    settings.orderflow_ai_default_model or DOCUMENT_SUMMARY_MODEL
+)
+DEFAULT_DOCUMENT_SUMMARY_PROVIDER = (
+    settings.orderflow_ai_default_provider or DOCUMENT_SUMMARY_PROVIDER
+)
 DEFAULT_ACTION_PLAN_PROMPT_VERSION = ACTION_PLAN_PROMPT_VERSION
 DEFAULT_ACTION_PLAN_MODEL = settings.orderflow_ai_default_model or ACTION_PLAN_MODEL
-DEFAULT_ACTION_PLAN_PROVIDER = settings.orderflow_ai_default_provider or ACTION_PLAN_PROVIDER
+DEFAULT_ACTION_PLAN_PROVIDER = (
+    settings.orderflow_ai_default_provider or ACTION_PLAN_PROVIDER
+)
 SUMMARY_DONE_STAGES = {
     "summary_done",
     "action_plan_pending",
@@ -215,7 +225,9 @@ async def _run_page_extraction_cached(
         text_source=text_source,
         ocr_metadata=ocr_metadata,
     )
-    effective_content_hash = context.content_hash or backend.calculate_page_content_hash(hash_source)
+    effective_content_hash = (
+        context.content_hash or backend.calculate_page_content_hash(hash_source)
+    )
     if not context.bypass_cache and not context.content_hash:
         cached = backend.get_cached_page_summary(
             document_id=context.document_uuid,
@@ -271,9 +283,13 @@ async def _run_page_extraction_cached(
         or context.page_number == 1
         or bool(getattr(backend.settings, "orderflow_ocr_enabled", False))
     )
-    low_text_fallback = (not page_text) or (quality_low and quality_gate_active) or (
-        len(page_text) < _low_text_min_chars(backend.settings)
-        and (ocr_attempted or context.page_number == 1)
+    low_text_fallback = (
+        (not page_text)
+        or (quality_low and quality_gate_active)
+        or (
+            len(page_text) < _low_text_min_chars(backend.settings)
+            and (ocr_attempted or context.page_number == 1)
+        )
     )
     if low_text_fallback and text_source != "ocr":
         text_source = "low_text_fallback"
@@ -422,7 +438,9 @@ def _low_text_source_excerpt(page_number: int, page_text: str) -> str:
     return f"Page {page_number}: no readable text layer was available for this page."
 
 
-def _should_run_ocr(page_text: str, settings: Any, source_language: str | None = None) -> bool:
+def _should_run_ocr(
+    page_text: str, settings: Any, source_language: str | None = None
+) -> bool:
     if not getattr(settings, "orderflow_ocr_enabled", False):
         return False
     return _text_quality_is_low(page_text, settings, source_language)
@@ -436,7 +454,9 @@ def _text_quality_is_low(
     text = page_text.strip()
     if len(text) < _low_text_min_chars(settings):
         return True
-    if _expected_script_ratio(text, source_language) < _min_expected_script_ratio(source_language):
+    if _expected_script_ratio(text, source_language) < _min_expected_script_ratio(
+        source_language
+    ):
         return True
     if _mojibake_token_ratio(text) >= 0.42 and _latin_readability_score(text) < 0.25:
         return True
@@ -583,7 +603,9 @@ def _ocr_metadata(result: Any) -> dict[str, Any]:
         "ocr_confidence": _confidence_or_none(_attr_or_key(result, "confidence")),
         "ocr_language": _string_value(_attr_or_key(result, "language_hint")),
         "ocr_error": _string_value(_attr_or_key(result, "error")),
-        "ocr_duration_ms": _positive_int(_attr_or_key(result, "duration_ms"), default=0),
+        "ocr_duration_ms": _positive_int(
+            _attr_or_key(result, "duration_ms"), default=0
+        ),
     }
 
 
@@ -954,7 +976,8 @@ async def activity_extract_action_plan(
     if not source_items:
         message = "No extracted obligations are available"
         raise ValueError(
-            f"{message} for action-plan generation: " f"document_id={context.document_id}",
+            f"{message} for action-plan generation: "
+            f"document_id={context.document_id}",
         )
 
     updated_items = []
@@ -983,7 +1006,9 @@ async def activity_extract_action_plan(
         )
         updated_items.append(updated)
 
-    all_items = _filter_action_plan_items(backend.list_persisted_obligations(context.document_uuid))
+    all_items = _filter_action_plan_items(
+        backend.list_persisted_obligations(context.document_uuid)
+    )
     job_stage = _mark_action_plan_done(backend, context)
     return _action_plan_result(
         context=context,
@@ -1215,7 +1240,9 @@ def _normalize_page_extraction_context(
     prompt_version: str | None,
 ) -> PageExtractionContext:
     payload = document_id if isinstance(document_id, dict) else {}
-    document_id_value = _string_value(payload.get("document_id") if payload else document_id)
+    document_id_value = _string_value(
+        payload.get("document_id") if payload else document_id
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for page extraction")
 
@@ -1247,13 +1274,22 @@ def _normalize_page_extraction_context(
             payload.get("total_pages"),
             default=normalized_page_number,
         ),
-        ai_provider=(_string_value(payload.get("ai_provider")) or DEFAULT_PAGE_EXTRACTION_PROVIDER),
-        ai_model=(_string_value(payload.get("ai_model")) or DEFAULT_PAGE_EXTRACTION_MODEL),
+        ai_provider=(
+            _string_value(payload.get("ai_provider"))
+            or DEFAULT_PAGE_EXTRACTION_PROVIDER
+        ),
+        ai_model=(
+            _string_value(payload.get("ai_model")) or DEFAULT_PAGE_EXTRACTION_MODEL
+        ),
         temperature=_float_value(payload.get("temperature"), default=0.3),
         bypass_cache=_bool_value(payload.get("bypass_cache")),
         source_language=_string_value(payload.get("source_language")) or "en",
-        translation_status=(_string_value(payload.get("translation_status")) or "not_required"),
-        translation_required=(_string_value(payload.get("translation_required")) or "false"),
+        translation_status=(
+            _string_value(payload.get("translation_status")) or "not_required"
+        ),
+        translation_required=(
+            _string_value(payload.get("translation_required")) or "false"
+        ),
     )
 
 
@@ -1263,7 +1299,9 @@ def _normalize_document_summary_context(
     prompt_version: str | None,
 ) -> DocumentSummaryContext:
     payload = document_id if isinstance(document_id, dict) else {}
-    document_id_value = _string_value(payload.get("document_id") if payload else document_id)
+    document_id_value = _string_value(
+        payload.get("document_id") if payload else document_id
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for full summary generation")
 
@@ -1276,9 +1314,12 @@ def _normalize_document_summary_context(
         document_uuid=UUID(document_id_value),
         prompt_version=normalized_prompt_version,
         ai_provider=(
-            _string_value(payload.get("ai_provider")) or DEFAULT_DOCUMENT_SUMMARY_PROVIDER
+            _string_value(payload.get("ai_provider"))
+            or DEFAULT_DOCUMENT_SUMMARY_PROVIDER
         ),
-        ai_model=(_string_value(payload.get("ai_model")) or DEFAULT_DOCUMENT_SUMMARY_MODEL),
+        ai_model=(
+            _string_value(payload.get("ai_model")) or DEFAULT_DOCUMENT_SUMMARY_MODEL
+        ),
         bypass_cache=_bool_value(payload.get("bypass_cache")),
     )
 
@@ -1289,7 +1330,9 @@ def _normalize_stage_marker_context(
     stage: str | None,
 ) -> StageMarkerContext:
     payload = document_id if isinstance(document_id, dict) else {}
-    document_id_value = _string_value(payload.get("document_id") if payload else document_id)
+    document_id_value = _string_value(
+        payload.get("document_id") if payload else document_id
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for intake stage updates")
 
@@ -1306,7 +1349,9 @@ def _normalize_stage_marker_context(
 
 def _normalize_pause_context(payload: dict[str, Any] | str) -> PauseContext:
     raw_payload = payload if isinstance(payload, dict) else {}
-    document_id_value = _string_value(raw_payload.get("document_id") if raw_payload else payload)
+    document_id_value = _string_value(
+        raw_payload.get("document_id") if raw_payload else payload
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for intake pause")
 
@@ -1336,7 +1381,9 @@ def _normalize_pause_context(payload: dict[str, Any] | str) -> PauseContext:
 
 def _normalize_resume_context(payload: dict[str, Any] | str) -> ResumeContext:
     raw_payload = payload if isinstance(payload, dict) else {}
-    document_id_value = _string_value(raw_payload.get("document_id") if raw_payload else payload)
+    document_id_value = _string_value(
+        raw_payload.get("document_id") if raw_payload else payload
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for intake resume")
 
@@ -1354,16 +1401,24 @@ def _normalize_completed_pages_context(
     payload: dict[str, Any] | str,
 ) -> CompletedPagesContext:
     raw_payload = payload if isinstance(payload, dict) else {}
-    document_id_value = _string_value(raw_payload.get("document_id") if raw_payload else payload)
+    document_id_value = _string_value(
+        raw_payload.get("document_id") if raw_payload else payload
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for completed-page lookup")
 
     page_numbers = _page_numbers_from_completed_payload(raw_payload)
     prompt_version = (
-        _string_value(raw_payload.get("prompt_version")) or DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION
+        _string_value(raw_payload.get("prompt_version"))
+        or DEFAULT_PAGE_EXTRACTION_PROMPT_VERSION
     )
-    ai_provider = _string_value(raw_payload.get("ai_provider")) or DEFAULT_PAGE_EXTRACTION_PROVIDER
-    ai_model = _string_value(raw_payload.get("ai_model")) or DEFAULT_PAGE_EXTRACTION_MODEL
+    ai_provider = (
+        _string_value(raw_payload.get("ai_provider"))
+        or DEFAULT_PAGE_EXTRACTION_PROVIDER
+    )
+    ai_model = (
+        _string_value(raw_payload.get("ai_model")) or DEFAULT_PAGE_EXTRACTION_MODEL
+    )
     total_pages = _positive_int(
         raw_payload.get("total_pages"),
         default=max(page_numbers) if page_numbers else 1,
@@ -1393,7 +1448,9 @@ def _normalize_action_plan_context(
     prompt_version: str | None,
 ) -> ActionPlanContext:
     payload = document_id if isinstance(document_id, dict) else {}
-    document_id_value = _string_value(payload.get("document_id") if payload else document_id)
+    document_id_value = _string_value(
+        payload.get("document_id") if payload else document_id
+    )
     if document_id_value is None:
         raise ValueError("document_id is required for action-plan generation")
 
@@ -1405,7 +1462,9 @@ def _normalize_action_plan_context(
         document_id=document_id_value,
         document_uuid=UUID(document_id_value),
         prompt_version=normalized_prompt_version,
-        ai_provider=(_string_value(payload.get("ai_provider")) or DEFAULT_ACTION_PLAN_PROVIDER),
+        ai_provider=(
+            _string_value(payload.get("ai_provider")) or DEFAULT_ACTION_PLAN_PROVIDER
+        ),
         ai_model=(_string_value(payload.get("ai_model")) or DEFAULT_ACTION_PLAN_MODEL),
         temperature=_float_value(payload.get("temperature"), default=0.1),
         max_obligations=_positive_int(
@@ -1567,7 +1626,9 @@ def _load_action_plan_backend() -> ActionPlanBackend:
         list_persisted_clauses=list_persisted_clauses,
         list_persisted_obligations=list_persisted_obligations,
         maybe_extract_obligations_with_ai=maybe_extract_obligations_with_ai,
-        record_persisted_obligation_audit_event=(record_persisted_obligation_audit_event),
+        record_persisted_obligation_audit_event=(
+            record_persisted_obligation_audit_event
+        ),
         replace_document_extraction=replace_document_extraction,
         update_extraction_job_stage=update_extraction_job_stage,
         update_persisted_obligation=update_persisted_obligation,
@@ -1660,7 +1721,10 @@ def _page_obligation_ids(
     ids: list[UUID] = []
     for obligation in obligations:
         citation = getattr(obligation, "citation", None)
-        if citation is None or getattr(citation, "page_number", None) != context.page_number:
+        if (
+            citation is None
+            or getattr(citation, "page_number", None) != context.page_number
+        ):
             continue
         obligation_id = getattr(obligation, "id", None)
         if isinstance(obligation_id, UUID):
@@ -1681,9 +1745,13 @@ def _ai_enrich_document_summary(
     # Build a concise prompt from page summaries
     summaries_text = ""
     for ps in page_summaries[:10]:
-        summary_text = getattr(ps, "summary", None) or getattr(ps, "page_text", None) or ""
+        summary_text = (
+            getattr(ps, "summary", None) or getattr(ps, "page_text", None) or ""
+        )
         if summary_text:
-            summaries_text += f"Page {getattr(ps, 'page_number', '?')}: {summary_text[:500]}\n"
+            summaries_text += (
+                f"Page {getattr(ps, 'page_number', '?')}: {summary_text[:500]}\n"
+            )
 
     if not summaries_text.strip():
         return None
@@ -1701,7 +1769,10 @@ def _ai_enrich_document_summary(
 
     try:
         if context.ai_provider == "gemini":
-            from orderflow_api.core.gemini_client import call_gemini_json, extract_gemini_text
+            from orderflow_api.core.gemini_client import (
+                call_gemini_json,
+                extract_gemini_text,
+            )
 
             response = call_gemini_json(
                 api_key=api_key,
@@ -1733,10 +1804,17 @@ def _ai_enrich_document_summary(
             return None
 
         enriched = {**payload}
-        if "overview" in parsed and isinstance(parsed["overview"], str) and parsed["overview"].strip():
+        if (
+            "overview" in parsed
+            and isinstance(parsed["overview"], str)
+            and parsed["overview"].strip()
+        ):
             enriched["overview"] = parsed["overview"]
         if "key_directives" in parsed and isinstance(parsed["key_directives"], list):
-            enriched["key_directives"] = parsed["key_directives"]
+            enriched["key_directives"] = _merge_directive_lists(
+                payload.get("key_directives") or [],
+                _normalize_ai_key_directives(parsed["key_directives"]),
+            )
         return enriched
 
     except Exception:
@@ -1760,13 +1838,19 @@ def _build_document_summary_payload(
     return {
         "case_basics": case_basics,
         "overview": overview,
-        "key_directives": _build_key_directives(obligations),
+        "key_directives": _merge_directive_lists(
+            _build_key_directives(obligations),
+            _build_page_directives(page_summaries),
+        ),
         "important_dates": _build_important_dates(
             obligations,
             page_summaries,
         ),
-        "entities_involved": _build_entities(obligations),
-        "responsible_departments": _build_responsible_departments(obligations),
+        "entities_involved": _build_entities(obligations, page_summaries),
+        "responsible_departments": _build_responsible_departments(
+            obligations,
+            page_summaries,
+        ),
         "flow_graph": _build_flow_graph(
             context,
             page_summaries,
@@ -1789,7 +1873,7 @@ def _extract_case_basics(
     case_type = _infer_case_type(case_number, case_text)
     order_date = _extract_order_date(case_text)
     judge_name = _extract_judge_name(case_text)
-    department_involved = _infer_department_involved(obligations)
+    department_involved = _infer_department_involved(obligations, page_summaries)
     return {
         "case_number": case_number,
         "court_name": court_name,
@@ -1938,13 +2022,22 @@ def _infer_case_type(case_number: str | None, text: str) -> str | None:
     return None
 
 
-def _infer_department_involved(obligations: list[Any]) -> str | None:
+def _infer_department_involved(
+    obligations: list[Any],
+    page_summaries: list[Any] | None = None,
+) -> str | None:
     counts: dict[str, int] = {}
     for obligation in obligations:
         owner = _text_or_default(getattr(obligation, "owner_hint", None), "")
         if not owner:
             continue
         counts[owner] = counts.get(owner, 0) + 1
+    for summary in page_summaries or []:
+        for department in _page_summary_items(summary, "departments"):
+            name = _text_or_default(_attr_or_key(department, "name"), "")
+            if not name:
+                continue
+            counts[name] = counts.get(name, 0) + 1
     if not counts:
         return None
     return max(counts.items(), key=lambda item: item[1])[0]
@@ -1955,7 +2048,9 @@ def _first_label_value(lines: list[str], label: str) -> str | None:
     for line in lines:
         if label_upper not in line.upper():
             continue
-        match = re.match(r"^(.*?)(?:\s+|\.{2,})" + label_upper + r"\b", line, flags=re.IGNORECASE)
+        match = re.match(
+            r"^(.*?)(?:\s+|\.{2,})" + label_upper + r"\b", line, flags=re.IGNORECASE
+        )
         if match:
             value = match.group(1).strip(" .:-")
             if value:
@@ -1997,7 +2092,8 @@ def _build_document_overview(
     page_count = len(page_summaries)
     obligation_count = len(obligations)
     summary_parts = [
-        _text_or_default(getattr(summary, "summary", None), "") for summary in page_summaries[:3]
+        _text_or_default(getattr(summary, "summary", None), "")
+        for summary in page_summaries[:3]
     ]
     summary_text = " ".join(part for part in summary_parts if part)
     key_points = _collect_key_points(page_summaries)
@@ -2018,7 +2114,9 @@ def _build_document_overview(
     respondent = basics.get("respondent")
     if petitioner or respondent:
         if petitioner and respondent:
-            narrative.append(f"The petitioner {petitioner} filed the matter against {respondent}.")
+            narrative.append(
+                f"The petitioner {petitioner} filed the matter against {respondent}."
+            )
         elif petitioner:
             narrative.append(f"The petitioner is {petitioner}.")
         elif respondent:
@@ -2031,16 +2129,21 @@ def _build_document_overview(
     if summary_text:
         narrative.append(_truncate_text(summary_text, 700))
     else:
-        narrative.append("No page narrative was available in the cached page summaries.")
+        narrative.append(
+            "No page narrative was available in the cached page summaries."
+        )
 
     if key_points:
-        narrative.append("Key points noted: " f"{_truncate_text('; '.join(key_points), 240)}.")
+        narrative.append(
+            "Key points noted: " f"{_truncate_text('; '.join(key_points), 240)}."
+        )
 
     if obligations:
         obligation_titles = _collect_obligation_titles(obligations)
         if obligation_titles:
             narrative.append(
-                "Key directions include: " f"{_truncate_text('; '.join(obligation_titles), 260)}."
+                "Key directions include: "
+                f"{_truncate_text('; '.join(obligation_titles), 260)}."
             )
 
     narrative.append(
@@ -2088,6 +2191,95 @@ def _first_key_point(page_summaries: list[Any]) -> str | None:
     return None
 
 
+def _page_summary_items(summary: Any, field: str) -> list[Any]:
+    value = _attr_or_key(summary, field)
+    return value if isinstance(value, list) else []
+
+
+def _summary_page_number(summary: Any) -> int | None:
+    page_number = _attr_or_key(summary, "page_number")
+    return page_number if isinstance(page_number, int) and page_number >= 1 else None
+
+
+def _optional_positive_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 1:
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+        return parsed if parsed >= 1 else None
+    return None
+
+
+def _normalization_key(value: object) -> str:
+    return re.sub(r"\s+", " ", _text_or_default(value, "").lower()).strip()
+
+
+def _merge_directive_lists(
+    primary: list[dict[str, Any]],
+    secondary: list[dict[str, Any]],
+    *,
+    max_items: int = 25,
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for directive in [*primary, *secondary]:
+        text = _text_or_default(directive.get("direction_text"), "")
+        if not text:
+            continue
+        key = _normalization_key(text)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(directive)
+        if len(merged) >= max_items:
+            break
+    return merged
+
+
+def _normalize_ai_key_directives(items: list[Any]) -> list[dict[str, Any]]:
+    directives: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = _text_or_default(
+            item.get("direction_text")
+            or item.get("directive")
+            or item.get("text")
+            or item.get("title"),
+            "",
+        )
+        if not text:
+            continue
+        page_number = _optional_positive_int(
+            item.get("source_page_number") or item.get("source_page")
+        )
+        directive_kind = _text_or_default(item.get("directive_kind"), "")
+        if directive_kind not in {"mandatory", "advisory", "needs_review"}:
+            directive_kind = _infer_directive_kind(text)
+        compliance_required = _text_or_default(item.get("compliance_required"), "")
+        if compliance_required not in {"yes", "no", "needs_review"}:
+            compliance_required = _infer_compliance_flag(directive_kind)
+        directives.append(
+            {
+                "direction_text": _truncate_text(text, 600),
+                "source_page_number": page_number,
+                "source_paragraph_reference": None,
+                "source_excerpt": _truncate_text(text, 800),
+                "confidence": _confidence_or_none(item.get("confidence")),
+                "directive_kind": directive_kind,
+                "compliance_required": compliance_required,
+                "source_evidence": _source_evidence(
+                    page_number=page_number,
+                    excerpt=text,
+                    confidence=item.get("confidence"),
+                ),
+            }
+        )
+    return directives
+
+
 def _build_key_directives(obligations: list[Any]) -> list[dict[str, Any]]:
     directives: list[dict[str, Any]] = []
     for obligation in obligations[:25]:
@@ -2109,7 +2301,9 @@ def _build_key_directives(obligations: list[Any]) -> list[dict[str, Any]]:
                 "source_page_number": page_number,
                 "source_paragraph_reference": _citation_paragraph_reference(obligation),
                 "source_excerpt": _truncate_text(description or title, 800),
-                "confidence": _confidence_or_none(getattr(obligation, "confidence", None)),
+                "confidence": _confidence_or_none(
+                    getattr(obligation, "confidence", None)
+                ),
                 "directive_kind": directive_kind,
                 "compliance_required": compliance_required,
                 "source_evidence": _source_evidence(
@@ -2119,6 +2313,56 @@ def _build_key_directives(obligations: list[Any]) -> list[dict[str, Any]]:
                 ),
             }
         )
+    return directives
+
+
+def _build_page_directives(page_summaries: list[Any]) -> list[dict[str, Any]]:
+    directives: list[dict[str, Any]] = []
+    for summary in page_summaries:
+        page_number = _summary_page_number(summary)
+        for direction in _page_summary_items(summary, "directions"):
+            direction_text = _text_or_default(
+                _attr_or_key(direction, "direction_text"), ""
+            )
+            if not direction_text:
+                continue
+            source_location = _text_or_default(
+                _attr_or_key(direction, "source_location"), ""
+            )
+            directive_kind = _text_or_default(
+                _attr_or_key(direction, "directive_kind"),
+                "needs_review",
+            )
+            if directive_kind not in {"mandatory", "advisory", "needs_review"}:
+                directive_kind = _infer_directive_kind(direction_text)
+            compliance_required = _text_or_default(
+                _attr_or_key(direction, "compliance_required"),
+                "needs_review",
+            )
+            if compliance_required not in {"yes", "no", "needs_review"}:
+                compliance_required = _infer_compliance_flag(directive_kind)
+            confidence = _attr_or_key(direction, "confidence")
+            directives.append(
+                {
+                    "direction_text": _truncate_text(direction_text, 600),
+                    "source_page_number": page_number,
+                    "source_paragraph_reference": source_location or None,
+                    "source_excerpt": _truncate_text(
+                        source_location or direction_text,
+                        800,
+                    ),
+                    "confidence": _confidence_or_none(confidence),
+                    "directive_kind": directive_kind,
+                    "compliance_required": compliance_required,
+                    "source_evidence": _source_evidence(
+                        page_number=page_number,
+                        excerpt=source_location or direction_text,
+                        confidence=confidence,
+                    ),
+                }
+            )
+            if len(directives) >= 25:
+                return directives
     return directives
 
 
@@ -2173,7 +2417,9 @@ def _build_important_dates(
             {
                 "label": f"{_truncate_text(title, 120)} due date",
                 "date_text": (
-                    due_date.isoformat() if hasattr(due_date, "isoformat") else str(due_date)
+                    due_date.isoformat()
+                    if hasattr(due_date, "isoformat")
+                    else str(due_date)
                 ),
                 "source": "obligation_due_date",
                 "is_inferred": bool(
@@ -2182,7 +2428,9 @@ def _build_important_dates(
                         "",
                     )
                 ),
-                "confidence": _confidence_or_none(getattr(obligation, "confidence", None)),
+                "confidence": _confidence_or_none(
+                    getattr(obligation, "confidence", None)
+                ),
                 "source_evidence": _source_evidence(
                     page_number=page_number,
                     excerpt=title,
@@ -2190,8 +2438,73 @@ def _build_important_dates(
                 ),
             }
         )
+    page_dates = _extract_structured_dates_from_pages(page_summaries)
     timeline_dates = _extract_timeline_dates_from_pages(page_summaries)
-    return [*dates, *timeline_dates][:25]
+    return _dedupe_important_dates([*dates, *page_dates, *timeline_dates])[:25]
+
+
+def _dedupe_important_dates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    dates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        date_text = _text_or_default(item.get("date_text"), "")
+        label = _text_or_default(item.get("label"), "Referenced date")
+        page_number = None
+        evidence = item.get("source_evidence")
+        if isinstance(evidence, list) and evidence:
+            page_number = _attr_or_key(evidence[0], "page_number")
+        key = "|".join(
+            [
+                _normalization_key(date_text),
+                _normalization_key(label),
+                str(page_number or ""),
+            ]
+        )
+        if not date_text or key in seen:
+            continue
+        seen.add(key)
+        dates.append(item)
+    return dates
+
+
+def _extract_structured_dates_from_pages(
+    page_summaries: list[Any],
+    *,
+    max_items: int = 15,
+) -> list[dict[str, Any]]:
+    dates: list[dict[str, Any]] = []
+    for summary in page_summaries:
+        page_number = _summary_page_number(summary)
+        for item in _page_summary_items(summary, "dates"):
+            date_text = _text_or_default(_attr_or_key(item, "date_text"), "")
+            if not date_text:
+                continue
+            label = _text_or_default(
+                _attr_or_key(item, "label"),
+                "Referenced date",
+            )
+            source_location = _text_or_default(
+                _attr_or_key(item, "source_location"),
+                "page_level_date",
+            )
+            confidence = _attr_or_key(item, "confidence")
+            dates.append(
+                {
+                    "label": label,
+                    "date_text": date_text,
+                    "source": source_location,
+                    "is_inferred": bool(_attr_or_key(item, "is_inferred")),
+                    "confidence": _confidence_or_none(confidence),
+                    "source_evidence": _source_evidence(
+                        page_number=page_number,
+                        excerpt=source_location or date_text,
+                        confidence=confidence,
+                    ),
+                }
+            )
+            if len(dates) >= max_items:
+                return dates
+    return dates
 
 
 def _extract_timeline_dates_from_pages(
@@ -2217,7 +2530,9 @@ def _extract_timeline_dates_from_pages(
                     "date_text": match,
                     "source": "page_summary_text",
                     "is_inferred": False,
-                    "confidence": _confidence_or_none(getattr(summary, "confidence", None)),
+                    "confidence": _confidence_or_none(
+                        getattr(summary, "confidence", None)
+                    ),
                     "source_evidence": _source_evidence(
                         page_number=getattr(summary, "page_number", None),
                         excerpt=match,
@@ -2230,7 +2545,10 @@ def _extract_timeline_dates_from_pages(
     return timeline_dates
 
 
-def _build_entities(obligations: list[Any]) -> list[dict[str, Any]]:
+def _build_entities(
+    obligations: list[Any],
+    page_summaries: list[Any] | None = None,
+) -> list[dict[str, Any]]:
     seen: set[str] = set()
     entities: list[dict[str, Any]] = []
     for obligation in obligations:
@@ -2247,7 +2565,9 @@ def _build_entities(obligations: list[Any]) -> list[dict[str, Any]]:
                 "entity_type": "department",
                 "role": "responsible_owner",
                 "source_page_number": _citation_page_number(obligation),
-                "confidence": _confidence_or_none(getattr(obligation, "confidence", None)),
+                "confidence": _confidence_or_none(
+                    getattr(obligation, "confidence", None)
+                ),
                 "metadata": {
                     "source": "obligation_owner_hint",
                     "source_evidence": _source_evidence(
@@ -2258,11 +2578,49 @@ def _build_entities(obligations: list[Any]) -> list[dict[str, Any]]:
                 },
             }
         )
+    for summary in page_summaries or []:
+        page_number = _summary_page_number(summary)
+        for entity in _page_summary_items(summary, "entities"):
+            name = _text_or_default(_attr_or_key(entity, "name"), "")
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            confidence = _attr_or_key(entity, "confidence")
+            source_location = _text_or_default(
+                _attr_or_key(entity, "source_location"), ""
+            )
+            entities.append(
+                {
+                    "name": name,
+                    "entity_type": _text_or_default(
+                        _attr_or_key(entity, "entity_type"),
+                        None,
+                    ),
+                    "role": _text_or_default(_attr_or_key(entity, "role"), None),
+                    "source_page_number": page_number,
+                    "confidence": _confidence_or_none(confidence),
+                    "metadata": {
+                        "source": "page_summary_entity",
+                        "source_location": source_location or None,
+                        "source_evidence": _source_evidence(
+                            page_number=page_number,
+                            excerpt=source_location or name,
+                            confidence=confidence,
+                        ),
+                    },
+                }
+            )
+            if len(entities) >= 40:
+                return entities
     return entities
 
 
 def _build_responsible_departments(
     obligations: list[Any],
+    page_summaries: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     departments: dict[str, list[Any]] = {}
     for obligation in obligations:
@@ -2272,7 +2630,7 @@ def _build_responsible_departments(
         )
         departments.setdefault(owner, []).append(obligation)
 
-    return [
+    records = [
         {
             "primary_department": owner,
             "supporting_departments": [],
@@ -2294,6 +2652,49 @@ def _build_responsible_departments(
         }
         for owner, items in sorted(departments.items())
     ]
+    seen = {
+        _normalization_key(record.get("primary_department"))
+        for record in records
+        if record.get("primary_department")
+    }
+    for summary in page_summaries or []:
+        page_number = _summary_page_number(summary)
+        for department in _page_summary_items(summary, "departments"):
+            name = _text_or_default(_attr_or_key(department, "name"), "")
+            if not name:
+                continue
+            key = _normalization_key(name)
+            if key in seen:
+                continue
+            seen.add(key)
+            confidence = _attr_or_key(department, "confidence")
+            role = _text_or_default(_attr_or_key(department, "role"), "")
+            source_location = _text_or_default(
+                _attr_or_key(department, "source_location"),
+                "",
+            )
+            records.append(
+                {
+                    "primary_department": name,
+                    "supporting_departments": [],
+                    "legal_department_role": role or None,
+                    "petitioner": None,
+                    "respondent": None,
+                    "reason": (
+                        source_location
+                        or role
+                        or "Mentioned in page-level department extraction."
+                    ),
+                    "source_evidence": _source_evidence(
+                        page_number=page_number,
+                        excerpt=source_location or name,
+                        confidence=confidence,
+                    ),
+                }
+            )
+            if len(records) >= 25:
+                return records
+    return records
 
 
 def _build_flow_graph(
@@ -2419,6 +2820,48 @@ def _build_flow_graph(
                 }
             )
 
+    page_direction_count = 0
+    for summary in ordered_summaries:
+        page_number = _summary_page_number(summary)
+        source_page_node = f"page-{page_number}" if page_number else None
+        source_node = (
+            source_page_node
+            if source_page_node and source_page_node in event_node_ids
+            else (order_node_ids[-1] if order_node_ids else "judgment")
+        )
+        for direction in _page_summary_items(summary, "directions"):
+            direction_text = _text_or_default(
+                _attr_or_key(direction, "direction_text"), ""
+            )
+            if not direction_text:
+                continue
+            page_direction_count += 1
+            direction_id = f"page-direction-{page_direction_count}"
+            source_location = _text_or_default(
+                _attr_or_key(direction, "source_location"), ""
+            )
+            nodes.append(
+                {
+                    "id": direction_id,
+                    "node_type": "obligation",
+                    "label": _truncate_text(direction_text, 120),
+                    "detail": _truncate_text(source_location or direction_text, 180),
+                    "page_ref": page_number,
+                }
+            )
+            edges.append(
+                {
+                    "id": f"{source_node}->{direction_id}",
+                    "source": source_node,
+                    "target": direction_id,
+                    "relation": "creates",
+                }
+            )
+            if page_direction_count >= 30:
+                break
+        if page_direction_count >= 30:
+            break
+
     for index, obligation in enumerate(obligations[:30], start=1):
         obligation_id = f"obligation-{index}"
         page_number = _citation_page_number(obligation)
@@ -2457,6 +2900,7 @@ def _build_flow_graph(
         "narrative_steps": [
             f"Summarized {len(page_summaries)} cached page(s).",
             f"Linked {len(obligations)} extracted obligation(s).",
+            f"Identified {page_direction_count} page-level direction(s).",
         ],
     }
 
@@ -2470,7 +2914,11 @@ def _build_map_data(page_summaries: list[Any]) -> dict[str, Any]:
 
     for summary in page_summaries:
         for place in getattr(summary, "extracted_places", []) or []:
-            payload = place.model_dump(mode="json") if hasattr(place, "model_dump") else dict(place)
+            payload = (
+                place.model_dump(mode="json")
+                if hasattr(place, "model_dump")
+                else dict(place)
+            )
             key = str(payload.get("normalized_name") or payload.get("name") or "")
             if not key or key in seen:
                 continue
@@ -2496,40 +2944,53 @@ def _build_map_data(page_summaries: list[Any]) -> dict[str, Any]:
             if isinstance(page_number, int):
                 distinct_pages.add(page_number)
 
-    if len(geocoded) < 3:
+    if not geocoded:
         return {
             "available": False,
-            "reason": ("Map flow not generated: fewer than 3 geocoded places were " "available."),
+            "reason": "Map not generated: no geocoded places were available.",
             "places": [],
             "flow": [],
         }
 
-    if len(distinct_districts) < 2:
-        return {
-            "available": False,
-            "reason": (
-                "Map flow not generated: fewer than 2 distinct districts or "
-                "cities were detected."
+    ordered_geocoded = sorted(
+        geocoded[:50],
+        key=lambda place: (
+            (
+                place.get("source_page_number")
+                if isinstance(place.get("source_page_number"), int)
+                else 9999
             ),
-            "places": [],
-            "flow": [],
+            str(place.get("normalized_name") or place.get("name") or ""),
+        ),
+    )
+    flow = [
+        {
+            "source": left.get("id"),
+            "target": right.get("id"),
+            "relation": "next_location",
         }
+        for left, right in zip(ordered_geocoded, ordered_geocoded[1:])
+    ]
 
-    if len(distinct_pages) < 2:
-        return {
-            "available": False,
-            "reason": (
-                "Map flow not generated: location evidence was limited to a " "single page."
-            ),
-            "places": [],
-            "flow": [],
-        }
+    if len(ordered_geocoded) < 2:
+        reason = (
+            "Map generated with one geocoded place; route flow needs at least 2 places."
+        )
+    elif len(distinct_districts) < 2:
+        reason = (
+            "Map generated from geocoded places; route diversity is limited to "
+            "one detected district or city."
+        )
+    elif len(distinct_pages) < 2:
+        reason = "Map generated from geocoded places on a single source page."
+    else:
+        reason = "Built from place mentions already extracted at page level."
 
     return {
         "available": True,
-        "reason": "Built from place mentions already extracted at page level.",
-        "places": geocoded[:50],
-        "flow": [],
+        "reason": reason,
+        "places": ordered_geocoded,
+        "flow": flow,
     }
 
 
@@ -2894,7 +3355,9 @@ def _page_progress_excerpt(
         "ocr_language": payload.get("ocr_language"),
         "ocr_error": payload.get("ocr_error"),
         "source_excerpt": _truncate_text(
-            payload.get("source_excerpt") or payload.get("summary") or context.page_text,
+            payload.get("source_excerpt")
+            or payload.get("summary")
+            or context.page_text,
             360,
         ),
     }
@@ -2979,7 +3442,9 @@ def _action_plan_source_evidence_status(obligation: Any) -> dict[str, object]:
         "status": "needs_human_review" if missing_fields else "ready",
         "missing_fields": missing_fields,
         "page_number": page_number,
-        "source_excerpt": _truncate_text(source_excerpt, 360) if source_excerpt else None,
+        "source_excerpt": (
+            _truncate_text(source_excerpt, 360) if source_excerpt else None
+        ),
         "confidence": confidence,
     }
 
@@ -3111,7 +3576,9 @@ def _extract_obligations_for_action_plan(
             document_id=context.document_uuid,
         )
         extraction_mode = (
-            "ai_fallback" if getattr(ai_attempt, "attempted", False) else "deterministic"
+            "ai_fallback"
+            if getattr(ai_attempt, "attempted", False)
+            else "deterministic"
         )
 
     if not parsed_obligations:
@@ -3149,7 +3616,8 @@ def _to_parsed_clauses(
                 span_end=getattr(clause, "span_end", None),
                 text=text or normalized,
                 normalized_text=normalized or text,
-                confidence=_confidence_or_none(getattr(clause, "confidence", None)) or 0.68,
+                confidence=_confidence_or_none(getattr(clause, "confidence", None))
+                or 0.68,
             )
         )
     return parsed_clauses
@@ -3459,7 +3927,9 @@ def _completed_pages_result(
             workflow_stage="pages_extracting",
             cache_status="skipped_completed" if completed_pages else None,
         ),
-        "job_progress": _record_payload(job_progress) if job_progress is not None else None,
+        "job_progress": (
+            _record_payload(job_progress) if job_progress is not None else None
+        ),
     }
 
 

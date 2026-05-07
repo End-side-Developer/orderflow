@@ -77,7 +77,7 @@ class PageDepartment(BaseModel):
 
 
 PlaceType = Literal["court", "property", "incident", "address", "jurisdiction", "other"]
-GeocodeSource = Literal["nominatim", "cache", "fallback_court_metadata", "none"]
+GeocodeSource = Literal["nominatim", "cache", "fallback_court_metadata", "local_fallback", "none"]
 PageTextSource = Literal["native_pdf", "ocr", "low_text_fallback"]
 
 

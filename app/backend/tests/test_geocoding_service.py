@@ -89,6 +89,47 @@ def test_geocode_place_handles_failure(monkeypatch) -> None:  # noqa: ANN001
     assert writes[0]["negative_expires_at"] is not None
 
 
+def test_geocode_place_uses_local_city_fallback_after_negative_cache(
+    monkeypatch,
+) -> None:  # noqa: ANN001
+    place = _place("Delhi")
+    cache_entry = GeocodeCacheEntry(
+        normalized_name="delhi",
+        state_hint="",
+        query="Delhi, India",
+        lat=None,
+        lng=None,
+        confidence=0.0,
+        source="none",
+        provider_payload=None,
+        negative_expires_at=None,
+    )
+    writes: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        geocoding_service.geocode_cache_persistence,
+        "get_cached_geocode",
+        lambda normalized_name, state_hint: cache_entry,
+    )
+    monkeypatch.setattr(
+        geocoding_service.geocode_cache_persistence,
+        "upsert_geocode_cache",
+        lambda **kwargs: writes.append(kwargs),
+    )
+    monkeypatch.setattr(
+        geocoding_service,
+        "_search_nominatim",
+        lambda query: (_ for _ in ()).throw(AssertionError("should not call HTTP")),
+    )
+
+    geocoded = geocode_place(place)
+
+    assert geocoded.lat == 28.6139
+    assert geocoded.lng == 77.209
+    assert geocoded.geocode_source == "local_fallback"
+    assert writes[0]["source"] == "local_fallback"
+
+
 def test_geocode_place_india_bias(monkeypatch) -> None:  # noqa: ANN001
     captured: dict[str, str] = {}
 
