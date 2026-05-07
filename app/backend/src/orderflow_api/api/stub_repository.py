@@ -50,6 +50,29 @@ def get_document(document_id: UUID) -> DocumentRecord | None:
     return _DOCUMENTS.get(document_id)
 
 
+def list_documents() -> list[DocumentRecord]:
+    return sorted(_DOCUMENTS.values(), key=lambda doc: doc.created_at, reverse=True)
+
+
+def ensure_demo_documents() -> list[DocumentRecord]:
+    if _DOCUMENTS:
+        return list_documents()
+
+    create_document(_build_demo_document_request())
+    return list_documents()
+
+
+def delete_all_documents() -> int:
+    global _AUDIT_SEQUENCE
+    count = len(_DOCUMENTS)
+    _DOCUMENTS.clear()
+    _OBLIGATIONS_BY_DOCUMENT.clear()
+    _CLAUSES_BY_DOCUMENT.clear()
+    _AUDIT_EVENTS_BY_OBLIGATION.clear()
+    _AUDIT_SEQUENCE = 0
+    return count
+
+
 def list_obligations(document_id: UUID | None = None) -> list[ObligationRecord]:
     if document_id is not None:
         return list(_OBLIGATIONS_BY_DOCUMENT.get(document_id, []))
@@ -314,3 +337,41 @@ def _append_stub_obligation_audit_event(
     )
 
     _AUDIT_EVENTS_BY_OBLIGATION.setdefault(obligation_id, []).append(event)
+
+
+def _build_demo_document_request() -> DocumentCreateRequest:
+    now = datetime.now(UTC)
+    return DocumentCreateRequest(
+        source_file_name="demo-judgment.pdf",
+        source_file_type="application/pdf",
+        source_file_size=148576,
+        object_key=None,
+        checksum_sha256="0" * 64,
+        source_language="en",
+        auto_detected_language="en",
+        language_confidence=0.94,
+        translated_text_stored=False,
+        metadata={
+            "source_system": "demo_stub",
+            "ccms": {
+                "reference_id": "DHC-CCMS-DEMO-8524-2025",
+                "delivery_timestamp": now.isoformat(),
+                "document_type": "judgment",
+                "source_gateway": "demo",
+            },
+            "cis": {
+                "case_id": "W.P.(C) 8524/2025",
+                "court_name": "High Court of Delhi",
+                "bench": "Chief Justice",
+                "case_type": "W.P.(C)",
+                "filing_number": "8524/2025",
+                "hearing_stage": "Judgment pronounced",
+                "state": "Delhi",
+                "district": "New Delhi",
+            },
+            "additional_metadata": {
+                "department": "Education Department",
+                "case_topic": "Teacher recruitment dispute",
+            },
+        },
+    )

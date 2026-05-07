@@ -33,10 +33,16 @@ from orderflow_api.api.document_persistence import (
     persist_uploaded_document,
     list_all_persisted_documents,
     find_document_by_checksum,
-    delete_all_documents,
+    delete_all_documents as delete_all_persisted_documents,
     set_document_case_flow_graph,
 )
-from orderflow_api.api.stub_repository import create_document, get_document
+from orderflow_api.api.stub_repository import (
+    create_document,
+    get_document,
+    ensure_demo_documents,
+    delete_all_documents as delete_all_stub_documents,
+)
+from orderflow_api.core.config import get_settings
 from orderflow_api.core.language_service import detect_language
 from orderflow_api.core.storage import build_object_storage_client, get_object_bytes
 from orderflow_api.schemas.documents import (
@@ -65,6 +71,10 @@ from pypdf import PdfReader
 router = APIRouter(tags=["documents"])
 
 
+def _use_stub_repository() -> bool:
+    return get_settings().orderflow_api_use_stub_repository
+
+
 @router.post("/documents", response_model=DocumentEnvelope, status_code=status.HTTP_201_CREATED)
 async def create_document_route(
     request: Request,
@@ -82,7 +92,10 @@ async def list_documents_route(
     _user=Depends(require_permission(Permission.CASE_READ)),
 ) -> dict[str, object]:
     request_id = getattr(request.state, "request_id", None)
-    documents = list_all_persisted_documents()
+    if _use_stub_repository():
+        documents = ensure_demo_documents()
+    else:
+        documents = list_all_persisted_documents()
     return success(
         data={
             "total": len(documents),
@@ -98,7 +111,10 @@ async def delete_all_documents_route(
     _user=Depends(require_permission(Permission.DOCUMENT_UPLOAD)),
 ) -> dict[str, object]:
     request_id = getattr(request.state, "request_id", None)
-    deleted_count = delete_all_documents()
+    if _use_stub_repository():
+        deleted_count = delete_all_stub_documents()
+    else:
+        deleted_count = delete_all_persisted_documents()
     return success(
         data={"deleted_count": deleted_count},
         request_id=request_id,
@@ -305,6 +321,37 @@ async def upload_document_route(
 
     checksum_sha256 = hashlib.sha256(payload).hexdigest()
 
+    if _use_stub_repository():
+        metadata_dict = _parse_metadata(metadata)
+        language_metadata = _build_language_metadata(
+            payload=payload,
+            source_file_type=file.content_type,
+            source_file_name=source_file_name,
+            source_language_override=source_language,
+        )
+        metadata_dict = _merge_metadata(metadata_dict, language_metadata)
+
+        pages_total = _count_pdf_pages(payload, file.content_type)
+        if pages_total > 0:
+            metadata_dict["pages_total"] = pages_total
+
+        document = create_document(
+            DocumentCreateRequest(
+                source_file_name=source_file_name,
+                source_file_type=file.content_type,
+                source_file_size=len(payload),
+                object_key=None,
+                checksum_sha256=checksum_sha256,
+                source_language=language_metadata["source_language"],
+                auto_detected_language=language_metadata["auto_detected_language"],
+                language_confidence=language_metadata["language_confidence"],
+                translated_text_stored=language_metadata["translated_text_stored"],
+                metadata=metadata_dict,
+            )
+        )
+        request_id = getattr(request.state, "request_id", None)
+        return success(data=document, request_id=request_id, message="document_uploaded")
+
     existing_document = find_document_by_checksum(checksum_sha256)
     if existing_document:
         # Reject the upload outright so the user sees a clear "already
@@ -395,6 +442,47 @@ async def intake_indian_ecourts_route(
     import hashlib
 
     checksum_sha256 = hashlib.sha256(payload).hexdigest()
+
+    if _use_stub_repository():
+        intake_request = _parse_indian_ecourts_envelope(envelope)
+        (
+            resolved_file_name,
+            resolved_file_type,
+            metadata,
+        ) = build_indian_ecourts_document_payload(
+            envelope=intake_request,
+            upload_file_name=source_file_name,
+            upload_content_type=file.content_type,
+        )
+        language_metadata = _build_language_metadata(
+            payload=payload,
+            source_file_type=resolved_file_type,
+            source_file_name=resolved_file_name,
+            source_language_override=source_language,
+        )
+        metadata = _merge_metadata(metadata, language_metadata)
+
+        pages_total = _count_pdf_pages(payload, resolved_file_type)
+        if pages_total > 0:
+            metadata["pages_total"] = pages_total
+
+        document = create_document(
+            DocumentCreateRequest(
+                source_file_name=resolved_file_name,
+                source_file_type=resolved_file_type,
+                source_file_size=len(payload),
+                object_key=None,
+                checksum_sha256=checksum_sha256,
+                source_language=language_metadata["source_language"],
+                auto_detected_language=language_metadata["auto_detected_language"],
+                language_confidence=language_metadata["language_confidence"],
+                translated_text_stored=language_metadata["translated_text_stored"],
+                metadata=metadata,
+            )
+        )
+        request_id = getattr(request.state, "request_id", None)
+        return success(data=document, request_id=request_id, message="indian_ecourts_document_ingested")
+
     existing_document = find_document_by_checksum(checksum_sha256)
     if existing_document:
         raise HTTPException(
