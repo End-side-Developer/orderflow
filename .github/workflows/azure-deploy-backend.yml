@@ -68,6 +68,26 @@ jobs:
           cp alembic.ini deploy_bundle/
           cp requirements.txt deploy_bundle/
 
+      - name: Write startup.sh (explicit antenv activation + PYTHONPATH)
+        working-directory: ${{ env.BACKEND_DIR }}/deploy_bundle
+        run: |
+          cat > startup.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd /home/site/wwwroot
+          if [ -f /home/site/wwwroot/antenv/bin/activate ]; then
+            source /home/site/wwwroot/antenv/bin/activate
+          elif [ -d /tmp/8d* ]; then
+            ANTENV=$(ls -d /tmp/8d*/antenv 2>/dev/null | head -1)
+            [ -n "$ANTENV" ] && source "$ANTENV/bin/activate" || true
+          fi
+          export PYTHONPATH="/home/site/wwwroot/src:${PYTHONPATH:-}"
+          exec python -m uvicorn orderflow_api.main:app --host 0.0.0.0 --port 8000
+          SH
+          chmod +x startup.sh
+          echo '--- startup.sh ---'
+          cat startup.sh
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
