@@ -472,6 +472,7 @@ export type CaseIntakeStartRequest = {
   current_concurrency?: number;
   ai_provider?: "openai" | "anthropic" | "gemini" | "groq";
   ai_model?: string;
+  ai_api_key?: string;
 };
 
 export type DocumentSummaryDirectiveKind = "mandatory" | "advisory" | "needs_review";
@@ -1358,10 +1359,11 @@ export async function getCaseIntakeStatus(
 
 export async function generateCaseSummary(
   documentId: string,
+  options: { bypassCache?: boolean } = {},
 ): Promise<ApiResult<ExtractionJobStatusData>> {
-  return apiPostJson<Record<string, never>, ExtractionJobStatusData>(
+  return apiPostJson<{ bypass_cache: boolean }, ExtractionJobStatusData>(
     caseRoute(documentId, "/summary/generate"),
-    {},
+    { bypass_cache: options.bypassCache ?? false },
   );
 }
 

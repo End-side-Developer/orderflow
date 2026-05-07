@@ -196,6 +196,10 @@ async def stream_case_intake_events_route(
     )
 
 
+class CaseSummaryGenerateRequest(BaseModel):
+    bypass_cache: bool = False
+
+
 @router.post(
     "/cases/{document_id}/summary/generate",
     response_model=ExtractionJobStatusEnvelope,
@@ -203,10 +207,16 @@ async def stream_case_intake_events_route(
 )
 async def generate_case_summary_route(
     document_id: UUID,
+    payload: CaseSummaryGenerateRequest | None = None,
     request: Request = None,
     _user=Depends(require_permission(Permission.EXTRACTION_RUN)),
 ) -> dict[str, object]:
     request_id = getattr(request.state, "request_id", None) if request else None
+    request_payload = payload or CaseSummaryGenerateRequest()
+
+    if request_payload.bypass_cache:
+        from orderflow_api.api.document_summary_persistence import delete_document_summary
+        delete_document_summary(document_id)
 
     try:
         result = await request_summary_generation(document_id)

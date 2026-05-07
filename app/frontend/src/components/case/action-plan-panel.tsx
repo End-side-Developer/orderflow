@@ -31,7 +31,9 @@ const EMPTY_ACTION_ITEMS: ObligationRecord[] = [];
 
 export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPanelProps) {
   const [actionPlan, setActionPlan] = useState<CaseActionPlanData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Start false so the panel shows the "generating" state immediately instead of
+  // a spinner — only explicit user-triggered refreshes set this true.
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadActionPlan = useCallback(async () => {
@@ -57,10 +59,10 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
     }
   }, [documentId]);
 
+  // Silent initial fetch — does not touch isLoading so the "generating" state
+  // is shown immediately without a spinner blocking the view.
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setError(null);
 
     void getCaseActionPlan(documentId)
       .then((response) => {
@@ -68,27 +70,44 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
         if (response.ok) {
           setActionPlan(response.data);
         } else {
-          setActionPlan(null);
           setError(response.error.message);
         }
       })
       .catch((requestError) => {
         if (cancelled) return;
-        setActionPlan(null);
         setError(
           requestError instanceof Error
             ? requestError.message
             : "Could not load the generated action plan.",
         );
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
   }, [documentId]);
+
+  // Poll every 4 s while the plan hasn't arrived yet (generation is async).
+  // Clears automatically once the plan is set or the component unmounts.
+  useEffect(() => {
+    if (isLoading || actionPlan) return;
+
+    let cancelled = false;
+    const interval = setInterval(() => {
+      void getCaseActionPlan(documentId).then((response) => {
+        if (cancelled) return;
+        if (response.ok) {
+          setActionPlan(response.data);
+          setError(null);
+        }
+      });
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [documentId, isLoading, actionPlan]);
 
   const items = actionPlan?.items ?? EMPTY_ACTION_ITEMS;
   const stats = useMemo(() => buildActionPlanStats(items), [items]);
@@ -110,15 +129,17 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
       <div className="flex flex-col gap-4 p-6">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Action plan unavailable</AlertTitle>
+          <AlertTitle>Action plan generating…</AlertTitle>
           <AlertDescription>
-            {error ?? "The action plan has not been generated yet."}
+            {error
+              ? `${error} — checking again automatically.`
+              : "The action plan has not been generated yet. Checking automatically every few seconds."}
           </AlertDescription>
         </Alert>
         <div>
           <Button size="sm" type="button" variant="outline" onClick={() => void loadActionPlan()}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Retry
+            Check now
           </Button>
         </div>
       </div>

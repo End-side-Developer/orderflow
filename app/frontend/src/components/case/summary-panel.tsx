@@ -36,6 +36,7 @@ import {
   DocumentSummarySourceEvidence,
   PageSummaryRecord,
   generateCaseActionPlan,
+  generateCaseSummary,
   getCaseSummary,
   listPageSummaries,
 } from "@/lib/api/client";
@@ -57,6 +58,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
   const [pageSummaries, setPageSummaries] = useState<PageSummaryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingActionPlan, setIsGeneratingActionPlan] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -100,6 +102,52 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
     };
   }, [documentId]);
 
+  async function handleRegenerateSummary() {
+    setIsRegenerating(true);
+    setError(null);
+    setActionMessage(null);
+    setSummary(null);
+    try {
+      const response = await generateCaseSummary(documentId, { bypassCache: true });
+      if (response.ok) {
+        setActionMessage("Summary regeneration requested. It will appear automatically when ready.");
+      } else {
+        setError(response.error.message);
+      }
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not request regeneration.");
+    } finally {
+      setIsRegenerating(false);
+    }
+  }
+
+  // Poll for the full summary every 4 s while it hasn't arrived yet.
+  // Stops automatically once summary is set or the component unmounts.
+  useEffect(() => {
+    if (isLoading || summary) return;
+
+    let cancelled = false;
+    const interval = setInterval(() => {
+      void Promise.all([getCaseSummary(documentId), listPageSummaries(documentId)]).then(
+        ([summaryResponse, pageResponse]) => {
+          if (cancelled) return;
+          if (summaryResponse.ok) {
+            setSummary(summaryResponse.data);
+            setError(null);
+          }
+          if (pageResponse.ok) {
+            setPageSummaries(pageResponse.data.items);
+          }
+        },
+      );
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [documentId, isLoading, summary]);
+
   async function handleGenerateActionPlan() {
     setIsGeneratingActionPlan(true);
     setError(null);
@@ -136,11 +184,27 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
       <div className="flex flex-col gap-4 p-6">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Summary unavailable</AlertTitle>
+          <AlertTitle>Full summary generating…</AlertTitle>
           <AlertDescription>
-            {error ?? "The full judgment summary is not ready yet."}
+            {error ?? "The full judgment summary is not ready yet. Checking automatically every few seconds."}
           </AlertDescription>
         </Alert>
+
+        {/* Show already-extracted page summaries while the full summary is being generated */}
+        {pageSummaries.length > 0 && (
+          <CollapsibleSection
+            icon={<FileText className="h-4 w-4 text-muted-foreground" />}
+            title="Page-wise summary"
+            badge={
+              <Badge variant="secondary" className="ml-1">
+                {pageSummaries.length}
+              </Badge>
+            }
+            defaultOpen
+          >
+            <PageWiseSummaryList pages={pageSummaries} />
+          </CollapsibleSection>
+        )}
       </div>
     );
   }
@@ -285,6 +349,21 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
           <Button size="sm" type="button" variant="outline" onClick={() => window.location.reload()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh summary
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => void handleRegenerateSummary()}
+            disabled={isRegenerating}
+            title="Re-run AI extraction from scratch, bypassing the cached result"
+          >
+            {isRegenerating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Re-generate summary
           </Button>
           <Button
             size="sm"

@@ -199,6 +199,19 @@ def _to_document_summary(row) -> DocumentSummaryData:
     )
 
 
+def delete_document_summary(document_id: UUID) -> bool:
+    """Delete the cached document summary so the next generation starts fresh.
+
+    Returns True if a row was deleted, False if none existed.
+    """
+    statement = sa.delete(DOCUMENT_SUMMARIES_TABLE).where(
+        DOCUMENT_SUMMARIES_TABLE.c.document_id == document_id
+    )
+    with get_engine().begin() as connection:
+        result = connection.execute(statement)
+    return result.rowcount > 0
+
+
 def _coerce_flow_graph(
     document_id: UUID,
     payload: dict[str, Any] | None,

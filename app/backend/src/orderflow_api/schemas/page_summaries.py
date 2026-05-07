@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from orderflow_api.schemas.visual_evidence import CitationVisualRef
 
@@ -28,6 +28,15 @@ class HighlightItem(BaseModel):
         description="Why this extract matters for decision or obligations",
     )
     visual_refs: list[CitationVisualRef] = Field(default_factory=list)
+
+    @field_validator("significance", mode="before")
+    @classmethod
+    def coerce_significance(cls, v: object) -> object:
+        # LLMs occasionally emit values outside the enum (e.g. "notable", "key").
+        # Coerce to "contextual" so a stale DB row never crashes the endpoint.
+        if v not in {"critical", "important", "contextual"}:
+            return "contextual"
+        return v
 
 
 class ContextLink(BaseModel):
@@ -65,6 +74,22 @@ class PageDirection(BaseModel):
     directive_kind: Literal["mandatory", "advisory", "needs_review"] = "needs_review"
     compliance_required: Literal["yes", "no", "needs_review"] = "needs_review"
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("directive_kind", mode="before")
+    @classmethod
+    def coerce_directive_kind(cls, v: object) -> object:
+        # LLMs occasionally emit values outside the enum (e.g. "observation").
+        # Coerce to "needs_review" so a stale DB row never crashes the endpoint.
+        if v not in {"mandatory", "advisory", "needs_review"}:
+            return "needs_review"
+        return v
+
+    @field_validator("compliance_required", mode="before")
+    @classmethod
+    def coerce_compliance_required(cls, v: object) -> object:
+        if v not in {"yes", "no", "needs_review"}:
+            return "needs_review"
+        return v
 
 
 class PageDepartment(BaseModel):

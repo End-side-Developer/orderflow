@@ -838,9 +838,12 @@ async def activity_generate_full_summary(
         obligations=obligations,
     )
 
-    # Enrich overview and key_directives with AI if available.
-    backend_settings = getattr(backend, "settings", None)
-    api_key = _api_key_for_provider(backend_settings, context.ai_provider)
+    # Enrich case_basics, overview, and key_directives with AI if available.
+    # DocumentSummaryBackend is a pure function-pointer dataclass with no .settings
+    # attribute, so we load the config directly from the backend package instead.
+    _ensure_backend_src_on_path()
+    from orderflow_api.core.config import settings as _backend_settings  # noqa: PLC0415
+    api_key = _api_key_for_provider(_backend_settings, context.ai_provider)
     if api_key and context.ai_provider in {"gemini", "groq"}:
         try:
             enriched = _ai_enrich_document_summary(
@@ -1739,10 +1742,19 @@ def _ai_enrich_document_summary(
     api_key: str,
     page_summaries: list[Any],
 ) -> dict[str, Any] | None:
-    """Use AI to enrich the document summary overview and key_directives."""
+    """Use AI to enrich case_basics, overview, and key_directives.
+
+    Case basics (court name, parties, judge, etc.) are first extracted
+    deterministically via regex but regex often fails on non-standard layouts.
+    This call sends the raw first-page text to the AI so it can correct those
+    fields before they are persisted.
+    """
     _ensure_backend_src_on_path()
 
-    # Build a concise prompt from page summaries
+    # Raw text from first 2 pages — most reliable source for header fields.
+    case_header_text = _case_text_from_summaries(page_summaries, max_pages=2, max_chars=3000)
+
+    # Summaries from up to 10 pages for overview / directives.
     summaries_text = ""
     for ps in page_summaries[:10]:
         summary_text = (
@@ -1753,18 +1765,31 @@ def _ai_enrich_document_summary(
                 f"Page {getattr(ps, 'page_number', '?')}: {summary_text[:500]}\n"
             )
 
-    if not summaries_text.strip():
+    if not case_header_text.strip() and not summaries_text.strip():
         return None
 
     prompt = (
-        "You are a legal document analyst. Given these page summaries of a court judgment, "
-        "produce a concise but comprehensive overview and identify the key directives.\n\n"
-        f"Page summaries:\n{summaries_text[:6000]}\n\n"
-        "Return ONLY valid JSON with this structure:\n"
-        '{"overview": "2-4 sentence synthesis of the judgment", '
-        '"key_directives": [{"directive": "text of directive", '
-        '"source_page": null, "urgency": "high|medium|low"}]}\n'
-        "Keep key_directives to at most 8 items."
+        "You are a legal document analyst. Given raw text from the first pages of a court "
+        "judgment and page-level summaries, extract precise case metadata and produce a "
+        "comprehensive overview with key directives.\n\n"
+        f"FIRST PAGES (raw text for case basics):\n{case_header_text}\n\n"
+        f"PAGE SUMMARIES:\n{summaries_text[:4000]}\n\n"
+        "Return ONLY valid JSON with this exact structure:\n"
+        '{"case_basics": {'
+        '"court_name": "exact court name from the header, e.g. High Court of Delhi — or null", '
+        '"case_number": "case number string or null", '
+        '"case_type": "Writ Petition / Civil Appeal / etc. or null", '
+        '"order_date": "date as written in the document or null", '
+        '"petitioner": "petitioner party name only, not the full document text, or null", '
+        '"respondent": "respondent party name only, not the full document text, or null", '
+        '"judge_name": "presiding judge name or null", '
+        '"main_subject": "one sentence describing the core subject or null"'
+        "}, "
+        '"overview": "2-4 sentence synthesis of the judgment", '
+        '"key_directives": [{"directive": "directive text", "source_page": null, "urgency": "high|medium|low"}]}\n'
+        "Rules: (1) For petitioner/respondent return only the party name, never a block of case text. "
+        "(2) Keep key_directives to at most 8 items. "
+        "(3) If a field cannot be determined, use null."
     )
 
     try:
@@ -1804,6 +1829,21 @@ def _ai_enrich_document_summary(
             return None
 
         enriched = {**payload}
+
+        # Merge AI case_basics over the deterministic values — AI wins when it
+        # returns a non-empty string; deterministic value is kept as fallback.
+        if "case_basics" in parsed and isinstance(parsed["case_basics"], dict):
+            ai_basics = parsed["case_basics"]
+            merged = {**(enriched.get("case_basics") or {})}
+            for field in (
+                "court_name", "case_number", "case_type", "order_date",
+                "petitioner", "respondent", "judge_name", "main_subject",
+            ):
+                ai_val = ai_basics.get(field)
+                if isinstance(ai_val, str) and ai_val.strip():
+                    merged[field] = ai_val.strip()
+            enriched["case_basics"] = merged
+
         if (
             "overview" in parsed
             and isinstance(parsed["overview"], str)

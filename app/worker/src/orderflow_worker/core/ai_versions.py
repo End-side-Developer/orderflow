@@ -8,7 +8,7 @@ PAGE_EXTRACTION_MODEL: Final = "gemini-2.0-flash"
 PAGE_EXTRACTION_PROVIDER: Final = "gemini"
 
 # Document Summary
-DOCUMENT_SUMMARY_PROMPT_VERSION: Final = "doc_summary_generation_v1_0"
+DOCUMENT_SUMMARY_PROMPT_VERSION: Final = "doc_summary_generation_v1_1"
 DOCUMENT_SUMMARY_MODEL: Final = "gemini-2.0-flash"
 DOCUMENT_SUMMARY_PROVIDER: Final = "gemini"
 

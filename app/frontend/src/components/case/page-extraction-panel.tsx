@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ExtractionJobCurrentPageExcerpt,
   ExtractionJobStatusData,
@@ -26,12 +27,14 @@ type PageExtractionPanelProps = {
   documentId: string;
   progress: ExtractionJobStatusData | null;
   isPolling?: boolean;
+  isLoading?: boolean;
 };
 
 export function PageExtractionPanel({
   documentId,
   progress,
   isPolling = false,
+  isLoading = false,
 }: PageExtractionPanelProps) {
   const [isStarting, setIsStarting] = useState(false);
   const [isContinuing, setIsContinuing] = useState(false);
@@ -95,6 +98,55 @@ export function PageExtractionPanel({
   const aiModel = recordStringValue(progress?.current_page_excerpt, "ai_model");
   const canStart = !progress || stage === "pending";
   const canContinue = stage === "pages_done";
+
+  if (isLoading && !progress) {
+    return (
+      <div className="flex flex-col gap-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-52" />
+          </div>
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-5 w-24 rounded-full" />
+            <Skeleton className="h-5 w-28 rounded-full" />
+          </div>
+        </div>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 rounded-md border border-border p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-12" />
+              </div>
+              <Skeleton className="h-2.5 w-full rounded-full" />
+              <div className="grid grid-cols-3 gap-3">
+                <Skeleton className="h-14 rounded-md" />
+                <Skeleton className="h-14 rounded-md" />
+                <Skeleton className="h-14 rounded-md" />
+              </div>
+            </div>
+            <Skeleton className="h-24 rounded-md" />
+          </div>
+          <div className="flex min-h-[200px] flex-col gap-3 rounded-md border border-border p-4 shadow-sm lg:col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-4 w-16 rounded-full" />
+            </div>
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-4/6" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 border-t border-border pt-4">
+          <Skeleton className="h-8 w-32 rounded-md" />
+          <Skeleton className="ml-auto h-8 w-40 rounded-md" />
+        </div>
+      </div>
+    );
+  }
 
   async function handleStartIntake(bypassCache = false) {
     setIsStarting(true);
@@ -230,16 +282,29 @@ export function PageExtractionPanel({
               <FileText className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold text-foreground">Current page excerpt</h3>
             </div>
-            {cacheStatus ? (
+            {/* "miss_generated" is an internal cache status — suppress it to avoid confusing users */}
+            {cacheStatus && cacheStatus !== "miss_generated" ? (
               <Badge variant="muted" className="text-[10px]">
                 {cacheStatus}
               </Badge>
             ) : null}
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2">
-            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
-              {excerpt.text || "No excerpt available yet."}
-            </p>
+            {stage === "pages_extracting" && !excerpt.text ? (
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-4/6" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/5" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            ) : (
+              <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                {excerpt.text || "No excerpt available yet."}
+              </p>
+            )}
             {failureReason ? (
               <div className="mt-auto shrink-0 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
                 <div className="font-semibold">Why it failed</div>

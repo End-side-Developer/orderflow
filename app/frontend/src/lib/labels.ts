@@ -42,21 +42,22 @@ export const ROUTES: RouteDescriptor[] = [
     simpleLabel: "Add new case",
     helpText: "Upload a new judgment to start the workflow.",
     description: "Upload a new judgment to start the workflow.",
-    inWorkflow: true,
-    workflowIndex: 1,
+    inWorkflow: false,
+    workflowIndex: null,
     requiredRoles: ["judge", "government"],
   },
   {
     key: "departments",
     href: "/departments",
     label: "Departments",
-    simpleLabel: "Government offices",
+    simpleLabel: "Department Health",
     helpText: "Performance and load across government departments.",
     description: "Department health, ownership, and load.",
     inWorkflow: false,
     workflowIndex: null,
     requiredRoles: ["judge", "government"],
   },
+  /* hide for not fully implemented
   {
     key: "advocates",
     href: "/advocates",
@@ -93,6 +94,7 @@ export const ROUTES: RouteDescriptor[] = [
     workflowIndex: null,
     requiredRoles: ["judge", "government"],
   },
+  */
 ];
 
 export const ROUTE_BY_KEY: Record<RouteKey, RouteDescriptor> = ROUTES.reduce(

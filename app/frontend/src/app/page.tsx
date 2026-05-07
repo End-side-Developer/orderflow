@@ -171,6 +171,12 @@ export default function OverviewPage() {
               hint={`Obligation ledger items: ${overview.summary.total_obligations}`}
               tone="accent"
             />
+            <KpiTile
+              label="Active escalations"
+              value={overview.summary.open_escalations}
+              hint={`Critical: ${overview.summary.critical_escalations}`}
+              tone="destructive"
+            />
           </section>
 
           <Card>

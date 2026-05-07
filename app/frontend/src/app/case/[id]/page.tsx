@@ -92,7 +92,7 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  if (docLoading || progressLoading) {
+  if (docLoading) {
     return (
       <div className="flex flex-col h-full bg-muted">
         <div className="flex-1 flex items-center justify-center">
@@ -117,6 +117,7 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
               documentId={documentId}
               progress={progress}
               isPolling={isPolling}
+              isLoading={progressLoading}
             />
           )}
           {activeStage === "summary" && <SummaryPanel documentId={documentId} />}
