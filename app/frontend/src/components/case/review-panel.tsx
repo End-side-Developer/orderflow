@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CaseActionPlanData,
   CaseActionPlanReviewDecision,
+  CitationVisualRef,
   finalizeCase,
   ObligationRecord,
   getCaseActionPlan,
@@ -48,7 +49,7 @@ import {
 
 type ReviewPanelProps = {
   documentId: string;
-  onNavigateToPage?: (pageNumber: number) => void;
+  onNavigateToPage?: (pageNumber: number, visualRefs?: CitationVisualRef[]) => void;
   onProceedToDashboard?: () => void;
 };
 
@@ -505,7 +506,7 @@ function ReviewItemCard({
   onEditDescriptionChange: (value: string) => void;
   onEditOwnerChange: (value: string) => void;
   onRejectionReasonChange: (value: string) => void;
-  onNavigateToPage?: (pageNumber: number) => void;
+  onNavigateToPage?: (pageNumber: number, visualRefs?: CitationVisualRef[]) => void;
   onApprove: () => void;
   onStartForm: (kind: Exclude<ActiveReviewForm, null>["kind"]) => void;
   onCancelForm: () => void;
@@ -588,7 +589,7 @@ function ReviewItemCard({
               size="sm"
               variant="outline"
               disabled={!citedPage || !onNavigateToPage}
-              onClick={() => citedPage && onNavigateToPage?.(citedPage)}
+              onClick={() => citedPage && onNavigateToPage?.(citedPage, item.citation?.visual_refs)}
             >
               Open page {citedPage ?? "-"}
             </Button>

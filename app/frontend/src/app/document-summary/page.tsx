@@ -56,12 +56,9 @@ import {
   listAnnotations,
   refreshSummaryPlaces,
   reviewObligation,
-  updateAnnotationCoordinates,
-  type AnnotationBboxUpdate,
   type ExtractedObligation,
   type PageAnnotation,
 } from "@/lib/api/client";
-import type { PdfTextPosition } from "@/components/pdf-viewer";
 import type { ExtractedPlace } from "@/components/case-incidence-map";
 import { cn } from "@/lib/utils";
 
@@ -372,45 +369,6 @@ function DocumentSummaryContent() {
     [allPlaces],
   );
 
-  async function handleTextExtracted(positions: PdfTextPosition[]) {
-    if (!docId || annotations.length === 0) return;
-    const updates: AnnotationBboxUpdate[] = [];
-    for (const a of annotations) {
-      if (!a.text_content || a.bbox) continue;
-      const st = a.text_content.toLowerCase().trim();
-      const matches = positions.filter(
-        (p) =>
-          p.page === a.page_number &&
-          p.text.toLowerCase().includes(st.substring(0, Math.min(st.length, 30))),
-      );
-      if (matches.length > 0) {
-        let [x1, y1, x2, y2] = [
-          matches[0].bbox.x,
-          matches[0].bbox.y,
-          matches[0].bbox.x + matches[0].bbox.width,
-          matches[0].bbox.y + matches[0].bbox.height,
-        ];
-        matches.forEach((m) => {
-          x1 = Math.min(x1, m.bbox.x);
-          y1 = Math.min(y1, m.bbox.y);
-          x2 = Math.max(x2, m.bbox.x + m.bbox.width);
-          y2 = Math.max(y2, m.bbox.y + m.bbox.height);
-        });
-        updates.push({
-          annotation_id: a.id,
-          bbox: { x: x1, y: y1, width: x2 - x1, height: y2 - y1 },
-        });
-      }
-    }
-    if (updates.length > 0) {
-      const r = await updateAnnotationCoordinates(docId, updates);
-      if (r.ok) {
-        const rl = await listAnnotations(docId);
-        if (rl.ok) setAnnotations(rl.data.items);
-      }
-    }
-  }
-
   async function handleRefreshPlaces() {
     if (!docId) return;
     setMapRefreshing(true);
@@ -650,7 +608,6 @@ function DocumentSummaryContent() {
           onPageChange={setCurrentPage}
           initialPage={currentPage}
           annotations={annotations}
-          onTextExtracted={handleTextExtracted}
           places={allPlaces}
         />
       ) : (

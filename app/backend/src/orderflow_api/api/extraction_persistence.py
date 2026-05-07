@@ -14,6 +14,7 @@ from orderflow_api.api.extraction_engine import (
     ParsedObligation,
     build_clause_span_token,
 )
+from orderflow_api.api.document_text_box_persistence import resolve_citation_visual_refs
 from orderflow_api.core.db import get_engine
 from orderflow_api.schemas.extractions import ClauseRecord
 from orderflow_api.schemas.obligations import (
@@ -579,6 +580,13 @@ def _to_obligation_record(row: RowMapping) -> ObligationRecord:
         clause_index=citation_clause_index,
         span_start=citation_span_start,
         span_end=citation_span_end,
+        visual_refs=_resolve_visual_refs_for_row(
+            document_id=row["document_id"],
+            page_number=citation_page_number,
+            span_start=citation_span_start,
+            span_end=citation_span_end,
+            clause_text=row.get("text") or row.get("description"),
+        ),
     )
     confidence_annotations = _to_confidence_annotations(confidence_payload)
     escalation = _to_escalation_signal(escalation_payload)
@@ -629,6 +637,26 @@ def _to_float(value: Decimal | float | int | None) -> float | None:
     if isinstance(value, (float, int)):
         return float(value)
     return None
+
+
+def _resolve_visual_refs_for_row(
+    *,
+    document_id: UUID,
+    page_number: int | None,
+    span_start: int | None,
+    span_end: int | None,
+    clause_text: str | None,
+):
+    try:
+        return resolve_citation_visual_refs(
+            document_id=document_id,
+            page_number=page_number,
+            span_start=span_start,
+            span_end=span_end,
+            clause_text=clause_text,
+        )
+    except Exception:
+        return []
 
 
 def _to_int(value: object) -> int | None:

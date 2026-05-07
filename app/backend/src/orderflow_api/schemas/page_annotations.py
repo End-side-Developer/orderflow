@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from orderflow_api.schemas.visual_evidence import CitationVisualRef, NormalizedBBox
+
 AnnotationType = Literal["highlight", "note", "obligation"]
 
 
@@ -22,6 +24,8 @@ class PageAnnotationRecord(BaseModel):
     annotation_type: AnnotationType
     text_content: str | None = None
     bbox: dict | None = None  # {x, y, width, height}
+    boxes: list[NormalizedBBox] = Field(default_factory=list)
+    visual_refs: list[CitationVisualRef] = Field(default_factory=list)
     color: str | None = None
     tooltip_text: str | None = None
     ai_generated: bool = False

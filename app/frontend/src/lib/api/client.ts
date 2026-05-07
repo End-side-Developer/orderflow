@@ -110,6 +110,23 @@ export type ObligationCitation = {
   clause_index: number | null;
   span_start: number | null;
   span_end: number | null;
+  visual_refs: CitationVisualRef[];
+};
+
+export type NormalizedBBox = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export type CitationVisualRef = {
+  page_number: number;
+  bbox: NormalizedBBox;
+  text: string;
+  confidence: number | null;
+  source: "native_pdf" | "ocr" | "synthetic";
+  granularity: "char" | "word" | "line" | "clause";
 };
 
 export type ObligationConfidenceAnnotations = {
@@ -915,6 +932,8 @@ export type PageAnnotation = {
   annotation_type: "highlight" | "note" | "obligation";
   text_content: string | null;
   bbox: { x: number; y: number; width: number; height: number } | null;
+  boxes: NormalizedBBox[];
+  visual_refs: CitationVisualRef[];
   color: string | null;
   tooltip_text: string | null;
   ai_generated: boolean;
@@ -932,6 +951,7 @@ export type PageSummaryHighlight = {
   text: string;
   significance: "critical" | "important" | "contextual";
   relevance: string | null;
+  visual_refs: CitationVisualRef[];
 };
 
 export type PageSummaryContextLink = {

@@ -5,12 +5,20 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from orderflow_api.api.ai_extraction import maybe_extract_obligations_with_ai
 from orderflow_api.api.dependencies.auth import require_permission
 from orderflow_api.api.document_persistence import get_persisted_document
+from orderflow_api.api.document_text_box_persistence import replace_document_text_boxes
+from orderflow_api.api.document_text_geometry import (
+    build_native_pdf_text_boxes,
+    build_synthetic_clause_boxes,
+)
 from orderflow_api.api.extraction_engine import (
     decode_document_text,
     extract_obligations,
     segment_clauses,
 )
-from orderflow_api.api.extraction_persistence import replace_document_extraction
+from orderflow_api.api.extraction_persistence import (
+    list_persisted_obligations,
+    replace_document_extraction,
+)
 from orderflow_api.api.response import success
 from orderflow_api.core.auth.permissions import Permission
 from orderflow_api.core.config import settings
@@ -68,6 +76,10 @@ async def run_intake_extraction_route(
     )
 
     clauses = segment_clauses(raw_text=processing_text, document_id=payload.document_id)
+    text_boxes = build_native_pdf_text_boxes(document_id=payload.document_id, payload=file_payload)
+    if not text_boxes:
+        text_boxes = build_synthetic_clause_boxes(document_id=payload.document_id, clauses=clauses)
+
     ai_attempt = maybe_extract_obligations_with_ai(
         clauses=clauses,
         document_id=payload.document_id,
@@ -98,6 +110,13 @@ async def run_intake_extraction_route(
             clauses=clauses,
             obligations=obligations,
         )
+        try:
+            replace_document_text_boxes(payload.document_id, text_boxes)
+            persisted_obligations = list_persisted_obligations(payload.document_id)
+        except Exception:
+            # Visual evidence is an audit/display enhancement. Intake should
+            # still complete if a migration has not yet been applied.
+            pass
     except Exception as exc:
         raise HTTPException(
             status_code=502, detail=f"Extraction persistence failed: {exc}"

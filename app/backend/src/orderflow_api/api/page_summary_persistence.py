@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from orderflow_api.api.document_text_box_persistence import resolve_citation_visual_refs
 from orderflow_api.core.db import get_engine
 from orderflow_api.schemas.page_summaries import ExtractedPlace, PageSummaryRecord
 
@@ -436,11 +437,15 @@ def _to_page_summary(
         page_text=row["page_text"],
         summary=row["summary"],
         key_points=row["key_points"] or [],
-        important_highlights=row["important_highlights"] or [],
-        entities=row["entities"] or [],
-        dates=row["dates"] or [],
-        directions=row["directions"] or [],
-        departments=row["departments"] or [],
+        important_highlights=_hydrate_highlight_visual_refs(
+            document_id=row["document_id"],
+            page_number=row["page_number"],
+            highlights=row["important_highlights"] or [],
+        ),
+        entities=row.get("entities") or [],
+        dates=row.get("dates") or [],
+        directions=row.get("directions") or [],
+        departments=row.get("departments") or [],
         context_links=row["context_links"] or [],
         obligation_ids=row["obligation_ids"] or [],
         extracted_places=places,
@@ -479,6 +484,40 @@ def _sanitize_source_excerpt(source_excerpt: str | None) -> str | None:
 
     suffix = " [truncated]"
     return cleaned[: MAX_PAGE_SUMMARY_SOURCE_EXCERPT_CHARS - len(suffix)].rstrip() + suffix
+
+
+def _hydrate_highlight_visual_refs(
+    *,
+    document_id: UUID,
+    page_number: int,
+    highlights: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    hydrated: list[dict[str, Any]] = []
+    for highlight in highlights:
+        if not isinstance(highlight, dict):
+            continue
+        if highlight.get("visual_refs"):
+            hydrated.append(highlight)
+            continue
+        text = highlight.get("text")
+        refs = []
+        if isinstance(text, str) and text.strip():
+            try:
+                refs = [
+                    ref.model_dump(mode="json")
+                    for ref in resolve_citation_visual_refs(
+                        document_id=document_id,
+                        page_number=page_number,
+                        span_start=None,
+                        span_end=None,
+                        clause_text=text,
+                        max_refs=6,
+                    )
+                ]
+            except Exception:
+                refs = []
+        hydrated.append({**highlight, "visual_refs": refs})
+    return hydrated
 
 
 def _sanitize_ai_token_usage(

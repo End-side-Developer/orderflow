@@ -14,7 +14,7 @@ import { ActionPlanPanel } from "../../../components/case/action-plan-panel";
 import { ReviewPanel } from "../../../components/case/review-panel";
 import { DashboardPanel } from "../../../components/case/dashboard-panel";
 import { PdfViewer } from "../../../components/pdf-viewer";
-import { DocumentRecord, getDocument } from "../../../lib/api/client";
+import { CitationVisualRef, DocumentRecord, getDocument } from "../../../lib/api/client";
 
 export default function CaseWizardPage({
   params,
@@ -29,6 +29,7 @@ export default function CaseWizardPage({
   const [docLoading, setDocLoading] = useState(true);
   const [docError, setDocError] = useState<string | null>(null);
   const [pdfPage, setPdfPage] = useState(1);
+  const [activeVisualRefs, setActiveVisualRefs] = useState<CitationVisualRef[]>([]);
 
   const {
     data: progress,
@@ -47,6 +48,7 @@ export default function CaseWizardPage({
   useEffect(() => {
     // Fetch document details for the PDF viewer
     setPdfPage(1);
+    setActiveVisualRefs([]);
     setDocLoading(true);
     getDocument(documentId)
       .then((res) => {
@@ -133,7 +135,10 @@ export default function CaseWizardPage({
           {activeStage === "review" && (
             <ReviewPanel
               documentId={documentId}
-              onNavigateToPage={setPdfPage}
+              onNavigateToPage={(pageNumber, visualRefs = []) => {
+                setPdfPage(pageNumber);
+                setActiveVisualRefs(visualRefs);
+              }}
               onProceedToDashboard={() => setActiveStage("dashboard")}
             />
           )}
@@ -148,6 +153,7 @@ export default function CaseWizardPage({
               documentId={documentId}
               initialPage={pdfPage}
               onPageChange={setPdfPage}
+              activeVisualRefs={activeVisualRefs}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-400">

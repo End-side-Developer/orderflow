@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from orderflow_api.schemas.visual_evidence import CitationVisualRef
+
 
 ObligationStatus = Literal["draft", "active", "completed", "cancelled"]
 ObligationPriority = Literal["low", "medium", "high", "critical"]
@@ -47,6 +49,7 @@ class ObligationCitation(BaseModel):
     clause_index: int | None = Field(default=None, ge=1)
     span_start: int | None = Field(default=None, ge=0)
     span_end: int | None = Field(default=None, ge=0)
+    visual_refs: list[CitationVisualRef] = Field(default_factory=list)
 
 
 class ObligationConfidenceAnnotations(BaseModel):

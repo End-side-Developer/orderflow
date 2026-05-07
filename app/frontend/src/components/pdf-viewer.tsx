@@ -7,7 +7,16 @@ import { ChevronLeft, ChevronRight, Loader2, Minus, Plus } from "lucide-react";
 import { CachedPageExtractionSidebar } from "./cached-page-extraction-sidebar";
 import { PdfOverlayLayer } from "./pdf-overlay-layer";
 import { Button } from "@/components/ui/button";
-import { downloadDocument, listPageSummaries, type PageSummaryRecord } from "@/lib/api/client";
+import {
+  downloadDocument,
+  generateAnnotations,
+  listAnnotations,
+  listPageSummaries,
+  type CitationVisualRef,
+  type PageAnnotation,
+  type PageSummaryHighlight,
+  type PageSummaryRecord,
+} from "@/lib/api/client";
 import type { ExtractedPlace } from "./case-incidence-map";
 
 const CaseIncidenceMap = dynamic(
@@ -21,6 +30,111 @@ const CaseIncidenceMap = dynamic(
     ),
   },
 );
+
+function buildSummaryHighlightAnnotations(
+  summaries: PageSummaryRecord[],
+  positions: PdfTextPosition[],
+): Annotation[] {
+  const result: Annotation[] = [];
+  for (const summary of summaries) {
+    summary.important_highlights.forEach((highlight, index) => {
+      const boxes = normalizedBoxesForHighlight(summary.page_number, highlight, positions);
+      if (boxes.length === 0) return;
+      result.push({
+        id: `summary-highlight-${summary.id}-${index}`,
+        page_number: summary.page_number,
+        annotation_type: "highlight",
+        text_content: highlight.text,
+        bbox: null,
+        boxes,
+        color:
+          highlight.significance === "critical"
+            ? "red"
+            : highlight.significance === "important"
+              ? "orange"
+              : "yellow",
+        tooltip_text: highlight.relevance,
+      });
+    });
+  }
+  return result;
+}
+
+function normalizedBoxesForHighlight(
+  pageNumber: number,
+  highlight: PageSummaryHighlight,
+  positions: PdfTextPosition[],
+): { left: number; top: number; width: number; height: number }[] {
+  const serverBoxes = (highlight.visual_refs ?? [])
+    .filter((ref) => ref.page_number === pageNumber)
+    .map((ref) => ref.bbox);
+  if (serverBoxes.length > 0) return serverBoxes;
+
+  return matchTextPositionsToHighlight(
+    positions.filter((position) => position.page === pageNumber),
+    highlight.text,
+  );
+}
+
+function matchTextPositionsToHighlight(
+  pagePositions: PdfTextPosition[],
+  highlightText: string,
+): { left: number; top: number; width: number; height: number }[] {
+  const tokens = meaningfulTokens(highlightText);
+  if (tokens.length === 0 || pagePositions.length === 0) return [];
+
+  const required = new Set(tokens.slice(0, Math.min(tokens.length, 10)));
+  const matched = pagePositions.filter((position) => {
+    const haystack = normalizeText(position.text);
+    if (!haystack) return false;
+    for (const token of required) {
+      if (haystack.includes(token)) return true;
+    }
+    return false;
+  });
+  if (matched.length === 0) return [];
+
+  const byLine = new Map<number, PdfTextPosition[]>();
+  matched.forEach((position) => {
+    const lineKey = Math.round(position.bbox.y / 6);
+    byLine.set(lineKey, [...(byLine.get(lineKey) ?? []), position]);
+  });
+
+  return [...byLine.values()].slice(0, 8).map((linePositions) => {
+    const pageWidth = linePositions[0]?.pageWidth || 1;
+    const pageHeight = linePositions[0]?.pageHeight || 1;
+    const left = Math.min(...linePositions.map((position) => position.bbox.x));
+    const top = Math.min(...linePositions.map((position) => position.bbox.y));
+    const right = Math.max(
+      ...linePositions.map((position) => position.bbox.x + position.bbox.width),
+    );
+    const bottom = Math.max(
+      ...linePositions.map((position) => position.bbox.y + position.bbox.height),
+    );
+    return {
+      left: clampFraction(left / pageWidth),
+      top: clampFraction(top / pageHeight),
+      width: clampFraction((right - left) / pageWidth),
+      height: clampFraction((bottom - top) / pageHeight),
+    };
+  });
+}
+
+function meaningfulTokens(value: string): string[] {
+  const stopwords = new Set(["the", "and", "for", "that", "this", "with", "shall", "must"]);
+  return normalizeText(value)
+    .split(" ")
+    .filter((token) => token.length >= 4 && !stopwords.has(token));
+}
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/gi, " ").trim();
+}
+
+function clampFraction(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
 
 // Dynamic import of pdfjs-dist to avoid SSR issues
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
@@ -39,6 +153,7 @@ export interface Annotation {
   annotation_type: "highlight" | "note" | "obligation";
   text_content: string | null;
   bbox: { x: number; y: number; width: number; height: number } | null;
+  boxes?: { left: number; top: number; width: number; height: number }[];
   color: string | null;
   tooltip_text: string | null;
 }
@@ -57,6 +172,8 @@ export interface PdfTextPosition {
   text: string;
   bbox: { x: number; y: number; width: number; height: number };
   page: number;
+  pageWidth: number;
+  pageHeight: number;
 }
 
 interface PdfViewerProps {
@@ -64,6 +181,7 @@ interface PdfViewerProps {
   onPageChange?: (pageNumber: number) => void;
   initialPage?: number;
   annotations?: Annotation[];
+  activeVisualRefs?: CitationVisualRef[];
   onTextExtracted?: (positions: PdfTextPosition[]) => void;
   places?: ExtractedPlace[];
 }
@@ -73,6 +191,7 @@ export function PdfViewer({
   onPageChange,
   initialPage = 1,
   annotations = [],
+  activeVisualRefs = [],
   onTextExtracted,
   places = [],
 }: PdfViewerProps) {
@@ -86,6 +205,8 @@ export function PdfViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pageSummaries, setPageSummaries] = useState<PageSummaryRecord[]>([]);
+  const [loadedAnnotations, setLoadedAnnotations] = useState<PageAnnotation[]>([]);
+  const [textPositions, setTextPositions] = useState<PdfTextPosition[]>([]);
   const [summariesLoading, setSummariesLoading] = useState(true);
   const [summariesError, setSummariesError] = useState<string | null>(null);
 
@@ -96,6 +217,15 @@ export function PdfViewer({
   const currentPageSummary = useMemo(
     () => pageSummaries.find((summary) => summary.page_number === currentPage) ?? null,
     [currentPage, pageSummaries],
+  );
+  const effectiveAnnotations = annotations.length > 0 ? annotations : loadedAnnotations;
+  const summaryHighlightAnnotations = useMemo(
+    () => buildSummaryHighlightAnnotations(pageSummaries, textPositions),
+    [pageSummaries, textPositions],
+  );
+  const overlayAnnotations = useMemo(
+    () => [...summaryHighlightAnnotations, ...effectiveAnnotations],
+    [effectiveAnnotations, summaryHighlightAnnotations],
   );
 
   const loadCachedPageSummaries = useCallback(async () => {
@@ -122,6 +252,25 @@ export function PdfViewer({
     }
   }, [documentId]);
 
+  const loadDocumentAnnotations = useCallback(async () => {
+    try {
+      const response = await listAnnotations(documentId);
+      if (response.ok && response.data.items.length > 0) {
+        setLoadedAnnotations(response.data.items);
+        return;
+      }
+
+      const generated = await generateAnnotations(documentId);
+      if (generated.ok) {
+        setLoadedAnnotations(generated.data.items);
+        return;
+      }
+      setLoadedAnnotations([]);
+    } catch {
+      setLoadedAnnotations([]);
+    }
+  }, [documentId]);
+
   // Extract local text positions for deterministic highlight alignment only.
   async function extractAllTextPositions(pdfDoc: any) {
     const allPositions: PdfTextPosition[] = [];
@@ -136,22 +285,25 @@ export function PdfViewer({
         if (item.str && item.transform) {
           const transform = item.transform;
 
-          // Calculate bbox from transform matrix
-          // transform[4] = x, transform[5] = y
+          // PDF text transforms expose the text baseline. The overlay needs
+          // the top edge, otherwise highlights render one line-height too low.
           const x = transform[4];
-          const y = viewport.height - transform[5]; // Flip Y coordinate
           const width = item.width || 0;
           const height = item.height || 0;
+          const y = Math.max(0, viewport.height - transform[5] - height);
 
           allPositions.push({
             text: String(item.str).trim(),
             bbox: { x, y, width, height },
             page: pageNum,
+            pageWidth: viewport.width,
+            pageHeight: viewport.height,
           });
         }
       });
     }
 
+    setTextPositions(allPositions);
     onTextExtracted?.(allPositions);
     return allPositions;
   }
@@ -166,6 +318,7 @@ export function PdfViewer({
         const [downloadResult] = await Promise.all([
           downloadDocument(documentId),
           loadCachedPageSummaries(),
+          loadDocumentAnnotations(),
         ]);
 
         const arrayBuffer = await downloadResult.blob.arrayBuffer();
@@ -192,7 +345,7 @@ export function PdfViewer({
     // extractAllTextPositions is stable across renders for this component;
     // depending on documentId is the intended trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, loadCachedPageSummaries]);
+  }, [documentId, loadCachedPageSummaries, loadDocumentAnnotations]);
 
   // Render current page
   useEffect(() => {
@@ -353,9 +506,10 @@ export function PdfViewer({
           <div className="relative mx-auto inline-block rounded-md bg-white shadow-2xl">
             <canvas ref={canvasRef} className="rounded-md bg-white" />
           <PdfOverlayLayer
-            annotations={annotations}
+            annotations={overlayAnnotations}
             currentPage={currentPage}
             scale={scale}
+            activeRefs={activeVisualRefs}
           />
           </div>
         </div>

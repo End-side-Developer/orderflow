@@ -22,6 +22,7 @@ from orderflow_api.api.page_annotation_persistence import (
     delete_annotations,
     update_annotation_bbox,
 )
+from orderflow_api.api.document_text_box_persistence import resolve_citation_visual_refs
 from orderflow_api.api.page_summary_persistence import list_page_summaries
 from orderflow_api.schemas.page_annotations import (
     PageAnnotationsEnvelope,
@@ -52,7 +53,7 @@ async def list_annotations_route(
     """
     request_id = getattr(request.state, "request_id", None) if request else None
 
-    annotations = list_annotations(document_id, page_number)
+    annotations = _hydrate_annotation_visual_refs(list_annotations(document_id, page_number))
     return PageAnnotationsEnvelope(
         request_id=request_id,
         data=PageAnnotationsListData(
@@ -132,7 +133,7 @@ async def generate_annotations_route(
             )
 
     # Return the newly generated annotations
-    annotations = list_annotations(document_id)
+    annotations = _hydrate_annotation_visual_refs(list_annotations(document_id))
     return PageAnnotationsEnvelope(
         request_id=request_id,
         data=PageAnnotationsListData(
@@ -178,3 +179,30 @@ async def update_annotation_coordinates_route(
         request_id=request_id,
         data=AnnotationCoordinatesUpdateData(updated_count=updated_count),
     )
+
+
+def _hydrate_annotation_visual_refs(annotations: list[dict]) -> list[dict]:
+    hydrated: list[dict] = []
+    for annotation in annotations:
+        visual_refs = []
+        text = annotation.get("text_content")
+        page_number = annotation.get("page_number")
+        document_id = annotation.get("document_id")
+        if isinstance(text, str) and isinstance(page_number, int):
+            try:
+                visual_refs = [
+                    ref.model_dump(mode="json")
+                    for ref in resolve_citation_visual_refs(
+                        document_id=document_id,
+                        page_number=page_number,
+                        span_start=None,
+                        span_end=None,
+                        clause_text=text,
+                        max_refs=8,
+                    )
+                ]
+            except Exception:
+                visual_refs = []
+        boxes = [ref["bbox"] for ref in visual_refs if isinstance(ref, dict) and "bbox" in ref]
+        hydrated.append({**annotation, "visual_refs": visual_refs, "boxes": boxes})
+    return hydrated

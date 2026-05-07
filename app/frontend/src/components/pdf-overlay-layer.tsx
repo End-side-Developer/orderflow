@@ -1,6 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent, useRef, useState } from "react";
+
+interface NormalizedBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface VisualRef {
+  page_number: number;
+  bbox: NormalizedBox;
+  text: string;
+  source: "native_pdf" | "ocr" | "synthetic";
+  granularity: "char" | "word" | "line" | "clause";
+}
 
 interface Annotation {
   id: string;
@@ -8,6 +23,7 @@ interface Annotation {
   annotation_type: "highlight" | "note" | "obligation";
   text_content: string | null;
   bbox: { x: number; y: number; width: number; height: number } | null;
+  boxes?: NormalizedBox[];
   color: string | null;
   tooltip_text: string | null;
 }
@@ -16,31 +32,33 @@ interface PdfOverlayLayerProps {
   annotations: Annotation[];
   currentPage: number;
   scale: number;
+  activeRefs?: VisualRef[];
   onAnnotationClick?: (annotation: Annotation) => void;
 }
+
+type HoveredAnnotation = {
+  annotation: Annotation;
+  anchor: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  placement: "above" | "below";
+};
 
 export function PdfOverlayLayer({
   annotations,
   currentPage,
   scale,
+  activeRefs = [],
   onAnnotationClick,
 }: PdfOverlayLayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [hoveredAnnotation, setHoveredAnnotation] = useState<Annotation | null>(null);
+  const [hoveredAnnotation, setHoveredAnnotation] = useState<HoveredAnnotation | null>(null);
 
   const pageAnnotations = annotations.filter((a) => a.page_number === currentPage);
-
-  const handleMouseEnter = (annotation: Annotation) => {
-    setHoveredAnnotation(annotation);
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredAnnotation(null);
-  };
-
-  const handleClick = (annotation: Annotation) => {
-    onAnnotationClick?.(annotation);
-  };
+  const pageActiveRefs = activeRefs.filter((ref) => ref.page_number === currentPage);
 
   const getColorClass = (color: string | null) => {
     switch (color) {
@@ -57,56 +75,117 @@ export function PdfOverlayLayer({
     }
   };
 
+  const handleBoxMouseEnter = (
+    annotation: Annotation,
+    event: MouseEvent<HTMLDivElement>,
+  ) => {
+    const container = containerRef.current;
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const containerRect = container?.getBoundingClientRect();
+    const left = containerRect ? targetRect.left - containerRect.left : 0;
+    const top = containerRect ? targetRect.top - containerRect.top : 0;
+    const placement = top > 96 ? "above" : "below";
+
+    setHoveredAnnotation({
+      annotation,
+      anchor: {
+        left,
+        top,
+        width: targetRect.width,
+        height: targetRect.height,
+      },
+      placement,
+    });
+  };
+
+  const tooltipLeft = (left: number) => {
+    const containerWidth = containerRef.current?.clientWidth ?? 0;
+    if (!containerWidth) return Math.max(0, left);
+    return Math.max(0, Math.min(left, Math.max(0, containerWidth - 320)));
+  };
+
   return (
     <div ref={containerRef} className="pdf-overlay-layer absolute inset-0 pointer-events-none">
       {pageAnnotations.map((annotation) => {
-        if (!annotation.bbox) return null;
-
-        const { x, y, width, height } = annotation.bbox;
-        const scaledX = x * scale;
-        const scaledY = y * scale;
-        const scaledWidth = width * scale;
-        const scaledHeight = height * scale;
+        const boxes = annotation.boxes?.length
+          ? annotation.boxes.map((box) => ({ kind: "normalized" as const, box }))
+          : annotation.bbox
+            ? [{ kind: "legacy" as const, box: annotation.bbox }]
+            : [];
+        if (boxes.length === 0) return null;
 
         return (
-          <div
-            key={annotation.id}
-            className={`absolute border-2 cursor-pointer pointer-events-auto transition-opacity hover:opacity-80 ${getColorClass(annotation.color)}`}
-            style={{
-              left: `${scaledX}px`,
-              top: `${scaledY}px`,
-              width: `${scaledWidth}px`,
-              height: `${scaledHeight}px`,
-            }}
-            onMouseEnter={() => handleMouseEnter(annotation)}
-            onMouseLeave={handleMouseLeave}
-            onClick={() => handleClick(annotation)}
-          />
+          <div key={annotation.id}>
+            {boxes.map((entry, index) => {
+              const style =
+                entry.kind === "normalized"
+                  ? {
+                      left: `${entry.box.left * 100}%`,
+                      top: `${entry.box.top * 100}%`,
+                      width: `${entry.box.width * 100}%`,
+                      height: `${entry.box.height * 100}%`,
+                    }
+                  : {
+                      left: `${entry.box.x * scale}px`,
+                      top: `${entry.box.y * scale}px`,
+                      width: `${entry.box.width * scale}px`,
+                      height: `${entry.box.height * scale}px`,
+                    };
+              return (
+                <div
+                  key={`${annotation.id}-${index}`}
+                  className={`absolute cursor-pointer border-2 pointer-events-auto transition-opacity hover:opacity-80 ${getColorClass(annotation.color)}`}
+                  style={style}
+                  onMouseEnter={(event) => handleBoxMouseEnter(annotation, event)}
+                  onMouseLeave={() => setHoveredAnnotation(null)}
+                  onClick={() => onAnnotationClick?.(annotation)}
+                />
+              );
+            })}
+          </div>
         );
       })}
 
-      {/* Floating Tooltip */}
-      {hoveredAnnotation && (
+      {pageActiveRefs.map((ref, index) => (
         <div
-          className="absolute bg-gray-900 text-white text-sm p-2 rounded shadow-lg max-w-xs z-50 pointer-events-none"
+          key={`active-${index}-${ref.text}`}
+          className="absolute border-2 border-sky-600 bg-sky-400/25 shadow-[0_0_0_2px_rgba(2,132,199,0.2)]"
           style={{
-            left: `${(hoveredAnnotation.bbox?.x || 0) * scale}px`,
-            top: `${(hoveredAnnotation.bbox?.y || 0) * scale - 50}px`,
+            left: `${ref.bbox.left * 100}%`,
+            top: `${ref.bbox.top * 100}%`,
+            width: `${ref.bbox.width * 100}%`,
+            height: `${ref.bbox.height * 100}%`,
+          }}
+          title={`${ref.source} ${ref.granularity}: ${ref.text}`}
+        />
+      ))}
+
+      {hoveredAnnotation ? (
+        <div
+          className="absolute z-50 max-w-xs rounded bg-gray-900 p-2 text-sm text-white shadow-lg pointer-events-none"
+          style={{
+            left: `${tooltipLeft(hoveredAnnotation.anchor.left)}px`,
+            top:
+              hoveredAnnotation.placement === "above"
+                ? `${hoveredAnnotation.anchor.top - 8}px`
+                : `${hoveredAnnotation.anchor.top + hoveredAnnotation.anchor.height + 8}px`,
+            transform:
+              hoveredAnnotation.placement === "above" ? "translateY(-100%)" : undefined,
           }}
         >
-          <div className="font-semibold mb-1 capitalize">
-            {hoveredAnnotation.annotation_type}
+          <div className="mb-1 font-semibold capitalize">
+            {hoveredAnnotation.annotation.annotation_type}
           </div>
-          {hoveredAnnotation.tooltip_text && (
-            <div className="text-gray-300">{hoveredAnnotation.tooltip_text}</div>
-          )}
-          {hoveredAnnotation.text_content && (
-            <div className="text-gray-400 text-xs mt-1 italic">
-              &ldquo;{hoveredAnnotation.text_content.substring(0, 100)}…&rdquo;
+          {hoveredAnnotation.annotation.tooltip_text ? (
+            <div className="text-gray-300">{hoveredAnnotation.annotation.tooltip_text}</div>
+          ) : null}
+          {hoveredAnnotation.annotation.text_content ? (
+            <div className="mt-1 text-xs italic text-gray-400">
+              &ldquo;{hoveredAnnotation.annotation.text_content.substring(0, 100)}...&rdquo;
             </div>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

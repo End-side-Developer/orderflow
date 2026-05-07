@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from orderflow_api.schemas.visual_evidence import CitationVisualRef
+
 
 class HighlightItem(BaseModel):
     """A critical or important extract from the page."""
@@ -25,6 +27,7 @@ class HighlightItem(BaseModel):
         default=None,
         description="Why this extract matters for decision or obligations",
     )
+    visual_refs: list[CitationVisualRef] = Field(default_factory=list)
 
 
 class ContextLink(BaseModel):

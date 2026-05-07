@@ -24,6 +24,7 @@ class OcrPageResult:
     duration_ms: int
     error: str | None = None
     orientation_degrees: int = 0
+    boxes: tuple[dict[str, Any], ...] = ()
 
     @property
     def succeeded(self) -> bool:
@@ -237,7 +238,12 @@ def _run_paddleocr(
             raw = ocr.ocr(str(image_path), cls=True)
         except TypeError:
             raw = ocr.ocr(str(image_path))
-        lines, confidences = _flatten_paddle_result(raw)
+        image_width, image_height = _image_dimensions(image_path)
+        lines, confidences, boxes = _flatten_paddle_result(
+            raw,
+            image_width=image_width,
+            image_height=image_height,
+        )
         result = OcrPageResult(
             text="\n".join(lines).strip(),
             engine="paddleocr",
@@ -246,6 +252,7 @@ def _run_paddleocr(
             confidence=_mean_confidence(confidences),
             page_number=page_number,
             duration_ms=_duration_ms(started),
+            boxes=tuple(boxes),
         )
         if _better_ocr_result(result, best_result):
             best_result = result
@@ -334,19 +341,49 @@ def _paddle_text_recognition_model_name(language_hint: str) -> str:
     return "en_PP-OCRv5_mobile_rec"
 
 
-def _flatten_paddle_result(raw: object) -> tuple[list[str], list[float]]:
+def _flatten_paddle_result(
+    raw: object,
+    *,
+    image_width: float | None = None,
+    image_height: float | None = None,
+) -> tuple[list[str], list[float], list[dict[str, Any]]]:
     lines: list[str] = []
     confidences: list[float] = []
+    boxes: list[dict[str, Any]] = []
 
     def visit(value: object) -> None:
         if isinstance(value, dict):
             result_value = value.get("res") if isinstance(value.get("res"), dict) else value
             rec_texts = result_value.get("rec_texts")
             rec_scores = result_value.get("rec_scores")
+            rec_boxes = result_value.get("rec_boxes")
+            rec_polys = result_value.get("rec_polys")
+            if rec_polys is None:
+                rec_polys = result_value.get("dt_polys")
             if isinstance(rec_texts, list):
-                for text in rec_texts:
+                for idx, text in enumerate(rec_texts):
                     if isinstance(text, str) and text.strip():
-                        lines.append(text.strip())
+                        cleaned = text.strip()
+                        lines.append(cleaned)
+                        confidence = _sequence_number(rec_scores, idx)
+                        box = _box_from_paddle_sequences(
+                            rec_boxes=rec_boxes,
+                            rec_polys=rec_polys,
+                            index=idx,
+                            image_width=image_width,
+                            image_height=image_height,
+                        )
+                        if box is not None:
+                            boxes.append(
+                                {
+                                    "text": cleaned,
+                                    "bbox": box,
+                                    "polygon": _polygon_from_sequence(rec_polys, idx, image_width, image_height),
+                                    "confidence": confidence,
+                                    "granularity": "line",
+                                    "source": "ocr",
+                                }
+                            )
             if isinstance(rec_scores, list):
                 for confidence in rec_scores:
                     if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
@@ -359,10 +396,24 @@ def _flatten_paddle_result(raw: object) -> tuple[list[str], list[float]]:
         if not isinstance(value, (list, tuple)):
             return
         if len(value) >= 2 and isinstance(value[1], (list, tuple)) and value[1]:
+            candidate_box = value[0] if value else None
             text = value[1][0]
             confidence = value[1][1] if len(value[1]) > 1 else None
             if isinstance(text, str) and text.strip():
-                lines.append(text.strip())
+                cleaned = text.strip()
+                lines.append(cleaned)
+                box = _bbox_from_polygon(candidate_box, image_width, image_height)
+                if box is not None:
+                    boxes.append(
+                        {
+                            "text": cleaned,
+                            "bbox": box,
+                            "polygon": _normalize_polygon(candidate_box, image_width, image_height),
+                            "confidence": float(confidence) if isinstance(confidence, (int, float)) else None,
+                            "granularity": "line",
+                            "source": "ocr",
+                        }
+                    )
             if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
                 confidences.append(float(confidence))
             return
@@ -370,7 +421,159 @@ def _flatten_paddle_result(raw: object) -> tuple[list[str], list[float]]:
             visit(item)
 
     visit(raw)
-    return lines, confidences
+    return lines, confidences, boxes
+
+
+def _image_dimensions(image_path: Path) -> tuple[float | None, float | None]:
+    try:
+        from PIL import Image
+    except Exception:
+        return None, None
+    try:
+        with Image.open(image_path) as image:
+            width, height = image.size
+    except Exception:
+        return None, None
+    return float(width), float(height)
+
+
+def _sequence_number(value: object, index: int) -> float | None:
+    try:
+        item = value[index]  # type: ignore[index]
+    except Exception:
+        return None
+    if isinstance(item, (int, float)) and not isinstance(item, bool):
+        return float(item)
+    return None
+
+
+def _box_from_paddle_sequences(
+    *,
+    rec_boxes: object,
+    rec_polys: object,
+    index: int,
+    image_width: float | None,
+    image_height: float | None,
+) -> dict[str, float] | None:
+    try:
+        box_value = rec_boxes[index]  # type: ignore[index]
+    except Exception:
+        box_value = None
+
+    if box_value is not None:
+        values = _numeric_sequence(box_value)
+        if len(values) >= 4 and image_width and image_height:
+            left, top, right, bottom = values[:4]
+            return _normalize_rect(
+                left,
+                top,
+                max(0.0, right - left),
+                max(0.0, bottom - top),
+                image_width,
+                image_height,
+            )
+
+    try:
+        poly_value = rec_polys[index]  # type: ignore[index]
+    except Exception:
+        poly_value = None
+    return _bbox_from_polygon(poly_value, image_width, image_height)
+
+
+def _bbox_from_polygon(
+    value: object,
+    image_width: float | None,
+    image_height: float | None,
+) -> dict[str, float] | None:
+    polygon = _normalize_polygon(value, image_width, image_height)
+    if not polygon:
+        return None
+    xs = [point["x"] for point in polygon]
+    ys = [point["y"] for point in polygon]
+    left = min(xs)
+    top = min(ys)
+    right = max(xs)
+    bottom = max(ys)
+    return {
+        "left": round(left, 6),
+        "top": round(top, 6),
+        "width": round(max(0.0, right - left), 6),
+        "height": round(max(0.0, bottom - top), 6),
+    }
+
+
+def _normalize_polygon(
+    value: object,
+    image_width: float | None,
+    image_height: float | None,
+) -> list[dict[str, float]] | None:
+    if not image_width or not image_height:
+        return None
+    points: list[dict[str, float]] = []
+    if not isinstance(value, (list, tuple)):
+        return None
+    for item in value:
+        pair = _numeric_sequence(item)
+        if len(pair) < 2:
+            return None
+        points.append(
+            {
+                "x": _fraction(pair[0], image_width),
+                "y": _fraction(pair[1], image_height),
+            }
+        )
+    return points or None
+
+
+def _polygon_from_sequence(
+    value: object,
+    index: int,
+    image_width: float | None,
+    image_height: float | None,
+) -> list[dict[str, float]] | None:
+    try:
+        item = value[index]  # type: ignore[index]
+    except Exception:
+        return None
+    return _normalize_polygon(item, image_width, image_height)
+
+
+def _numeric_sequence(value: object) -> list[float]:
+    if not isinstance(value, (list, tuple)):
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            value = tolist()
+    if not isinstance(value, (list, tuple)):
+        return []
+    result: list[float] = []
+    for item in value:
+        if isinstance(item, (list, tuple)):
+            result.extend(_numeric_sequence(item))
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+            result.append(float(item))
+    return result
+
+
+def _normalize_rect(
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    image_width: float,
+    image_height: float,
+) -> dict[str, float]:
+    return {
+        "left": _fraction(left, image_width),
+        "top": _fraction(top, image_height),
+        "width": _fraction(width, image_width),
+        "height": _fraction(height, image_height),
+    }
+
+
+def _fraction(value: float, total: float) -> float:
+    if total <= 0:
+        return 0.0
+    return round(min(1.0, max(0.0, value / total)), 6)
 
 
 def _run_tesseract(
@@ -391,7 +594,7 @@ def _run_tesseract(
         text=True,
         timeout=60,
     )
-    confidence = _tesseract_confidence(executable, image_path, language_hint)
+    boxes, confidence = _tesseract_boxes_and_confidence(executable, image_path, language_hint)
     return OcrPageResult(
         text=completed.stdout.strip(),
         engine="tesseract",
@@ -400,10 +603,20 @@ def _run_tesseract(
         confidence=confidence,
         page_number=page_number,
         duration_ms=_duration_ms(started),
+        boxes=tuple(boxes),
     )
 
 
 def _tesseract_confidence(executable: str, image_path: Path, language_hint: str) -> float | None:
+    _, confidence = _tesseract_boxes_and_confidence(executable, image_path, language_hint)
+    return confidence
+
+
+def _tesseract_boxes_and_confidence(
+    executable: str,
+    image_path: Path,
+    language_hint: str,
+) -> tuple[list[dict[str, Any]], float | None]:
     try:
         completed = subprocess.run(
             [executable, str(image_path), "stdout", "-l", language_hint, "--psm", "6", "tsv"],
@@ -413,8 +626,10 @@ def _tesseract_confidence(executable: str, image_path: Path, language_hint: str)
             timeout=60,
         )
     except Exception:
-        return None
+        return [], None
+    image_width, image_height = _image_dimensions(image_path)
     values: list[float] = []
+    boxes: list[dict[str, Any]] = []
     for line in completed.stdout.splitlines()[1:]:
         parts = line.split("\t")
         if len(parts) < 11:
@@ -424,8 +639,28 @@ def _tesseract_confidence(executable: str, image_path: Path, language_hint: str)
         except ValueError:
             continue
         if confidence >= 0:
-            values.append(confidence / 100.0)
-    return _mean_confidence(values)
+            normalized_confidence = confidence / 100.0
+            values.append(normalized_confidence)
+            text = parts[11].strip() if len(parts) > 11 else ""
+            if text and image_width and image_height:
+                try:
+                    left = float(parts[6])
+                    top = float(parts[7])
+                    width = float(parts[8])
+                    height = float(parts[9])
+                except ValueError:
+                    continue
+                boxes.append(
+                    {
+                        "text": text,
+                        "bbox": _normalize_rect(left, top, width, height, image_width, image_height),
+                        "polygon": None,
+                        "confidence": normalized_confidence,
+                        "granularity": "word",
+                        "source": "ocr",
+                    }
+                )
+    return boxes, _mean_confidence(values)
 
 
 @lru_cache(maxsize=4)
