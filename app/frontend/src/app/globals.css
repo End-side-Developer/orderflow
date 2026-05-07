@@ -69,11 +69,11 @@
   --primary: 173 80% 36%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 215 25% 22%;
-  --secondary-foreground: 210 40% 96%;
+  --secondary: 222 25% 15%;
+  --secondary-foreground: 210 40% 98%;
 
-  --muted: 215 25% 17%;
-  --muted-foreground: 215 16% 65%;
+  --muted: 222 25% 12%;
+  --muted-foreground: 215 20% 65%;
 
   --accent: 199 89% 60%;
   --accent-foreground: 213 53% 7%;
@@ -125,6 +125,15 @@
 }
 
 @layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   .text-balance {
     text-wrap: balance;
   }

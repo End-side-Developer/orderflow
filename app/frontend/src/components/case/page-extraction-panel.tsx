@@ -108,7 +108,7 @@ export function PageExtractionPanel({
           <h2 className="text-lg font-semibold text-foreground">
             Page extraction
           </h2>
-          <p className="mt-1 text-sm text-foreground">
+          <p className="mt-1 text-sm text-slate-300">
             {statusMessage}
             {progress?.next_action && ` — Next: ${progress.next_action}`}
           </p>
@@ -192,7 +192,7 @@ export function PageExtractionPanel({
           </div>
           
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2">
-            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
               {excerpt.text || "No excerpt available yet."}
             </p>
             {failureReason ? (
@@ -219,19 +219,6 @@ export function PageExtractionPanel({
 
       {/* Footer Row: Actions */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-border pt-4">
-        <Button
-          size="sm"
-          type="button"
-          onClick={() => void handleStartIntake()}
-          disabled={!canStart || isStarting}
-        >
-          {isStarting ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="mr-2 h-4 w-4" />
-          )}
-          Start intake
-        </Button>
         <Button
           size="sm"
           type="button"
