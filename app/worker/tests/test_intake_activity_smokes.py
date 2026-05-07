@@ -32,6 +32,36 @@ def test_worker_activity_imports() -> None:
     assert callable(worker_main.run_worker)
 
 
+def test_corrupted_marathi_text_layer_triggers_ocr() -> None:
+    settings = SimpleNamespace(orderflow_ocr_enabled=True, orderflow_ocr_min_chars=120)
+    corrupted = (
+        "(2lEre Eelt (plizh lielnbjh enelt uekg) Has3a loa, ang aeulo, "
+        "anux GgR 3 (g4uo) Hi. 2R0/R024 : 9.; aIR 3eHd 3g aq qJ:39 a, "
+        "eq: eq 3 qJ:3 a, aaaqT 3 33"
+    )
+
+    assert intake._should_run_ocr(corrupted, settings, "mr")
+    assert intake._text_quality_is_low(corrupted, settings, "mr")
+
+
+def test_readable_marathi_legal_text_does_not_trigger_ocr() -> None:
+    settings = SimpleNamespace(orderflow_ocr_enabled=True, orderflow_ocr_min_chars=80)
+    readable = (
+        "\u092e\u0941\u0902\u092c\u0908 \u0909\u091a\u094d\u091a "
+        "\u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f, "
+        "\u0928\u093e\u0917\u092a\u0942\u0930 \u0916\u0902\u0921\u092a\u0940\u0920. "
+        "\u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 "
+        "\u0930\u093e\u091c\u094d\u092f \u0935\u093f\u0930\u0941\u0926\u094d\u0927 "
+        "\u092a\u094b\u0932\u0940\u0938 \u0938\u094d\u091f\u0947\u0936\u0928 "
+        "\u0932\u0915\u0921\u0917\u0902\u091c. "
+        "\u092b\u094c\u091c\u0926\u093e\u0930\u0940 \u0905\u0930\u094d\u091c "
+        "\u0915\u094d\u0930\u092e\u093e\u0902\u0915 \u0967\u0968\u0966\u0969."
+    )
+
+    assert not intake._should_run_ocr(readable, settings, "mr")
+    assert not intake._text_quality_is_low(readable, settings, "mr")
+
+
 def test_intake_workflow_payload_helpers_keep_gates_explicit() -> None:
     payload = {
         "document_id": str(uuid4()),
@@ -1307,6 +1337,208 @@ def test_page_activity_low_text_page_continues_without_ai(monkeypatch) -> None:
     assert result["extraction_mode"] == "deterministic"
     assert result["summary"].startswith("First page has limited readable text")
     assert backend.summaries[0].confidence == 0.2
+
+
+def test_page_activity_ocr_success_feeds_ai_and_cache_signature(monkeypatch) -> None:
+    document_id = uuid4()
+    provider_calls: list[dict[str, object]] = []
+
+    class CountingExtractor:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def _ai_extract_page(self, **kwargs):
+            provider_calls.append(kwargs)
+            return {
+                "summary": "OCR-backed summary",
+                "key_points": ["OCR text was usable"],
+                "highlights": [],
+                "places": [],
+                "confidence": 0.9,
+            }
+
+        def _find_context_links(self, **kwargs):
+            return []
+
+    class Backend:
+        PageSummaryExtractor = CountingExtractor
+
+        def __init__(self) -> None:
+            self.settings = SimpleNamespace(
+                orderflow_ai_groq_api_key="configured",
+                orderflow_ocr_enabled=True,
+                orderflow_ocr_min_chars=10,
+            )
+            self.summaries: list[Record] = []
+            self.progress_calls: list[tuple[object, dict[str, object]]] = []
+
+        def get_cached_page_summary(self, **kwargs):
+            return None
+
+        def calculate_page_content_hash(self, page_text):
+            return f"hash:{page_text}"
+
+        def list_page_summaries(self, document_id):
+            return list(self.summaries)
+
+        def list_persisted_clauses(self, **kwargs):
+            return []
+
+        def list_persisted_obligations(self, document_id):
+            return []
+
+        def build_extracted_places(self, places, *, page_number):
+            return []
+
+        def geocode_places(self, places):
+            return []
+
+        def upsert_page_summary(self, **kwargs):
+            summary = Record(id=uuid4(), **kwargs)
+            self.summaries.append(summary)
+            return summary
+
+        def update_extraction_job_progress(self, document_id, **values):
+            self.progress_calls.append((document_id, values))
+            return Record(stage="pages_extracting", **values)
+
+        def fail_extraction_job(self, document_id, **values):
+            return Record(stage="pages_extracting", error=values)
+
+    backend = Backend()
+    monkeypatch.setattr(intake, "_load_page_extraction_backend", lambda: backend)
+    monkeypatch.setattr(
+        intake,
+        "_extract_ocr_page",
+        lambda **kwargs: Record(
+            text="OCR extracted court order text sufficient for analysis.",
+            engine="paddleocr",
+            engine_version="3.1.0",
+            language_hint="devanagari",
+            confidence=0.91,
+            page_number=1,
+            duration_ms=25,
+            error=None,
+            succeeded=True,
+        ),
+    )
+
+    result = asyncio.run(
+        intake.activity_extract_page_cached(
+            {
+                "document_id": str(document_id),
+                "page_number": 1,
+                "page_text": "",
+                "total_pages": 2,
+                "ai_provider": "groq",
+                "ai_model": "llama-3.3-70b-versatile",
+            }
+        )
+    )
+
+    assert result["cache_status"] == "miss_generated"
+    assert result["text_source"] == "ocr"
+    assert result["ocr_engine"] == "paddleocr"
+    assert provider_calls[0]["page_text"].startswith("OCR extracted court order")
+    assert backend.summaries[0].content_hash.startswith("hash:ocr:paddleocr:3.1.0")
+    assert backend.progress_calls[0][1]["current_page_excerpt"]["ocr_status"] == "running"
+    assert backend.progress_calls[-1][1]["current_page_excerpt"]["ocr_status"] == "done"
+
+
+def test_page_activity_ocr_failure_persists_low_text_metadata(monkeypatch) -> None:
+    document_id = uuid4()
+    provider_calls: list[dict[str, object]] = []
+
+    class CountingExtractor:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def _ai_extract_page(self, **kwargs):
+            provider_calls.append(kwargs)
+            raise AssertionError("failed OCR fallback should not call AI")
+
+    class Backend:
+        PageSummaryExtractor = CountingExtractor
+
+        def __init__(self) -> None:
+            self.settings = SimpleNamespace(
+                orderflow_ai_groq_api_key="configured",
+                orderflow_ocr_enabled=True,
+                orderflow_ocr_min_chars=10,
+            )
+            self.summaries: list[Record] = []
+            self.progress_calls: list[tuple[object, dict[str, object]]] = []
+
+        def get_cached_page_summary(self, **kwargs):
+            return None
+
+        def calculate_page_content_hash(self, page_text):
+            return f"hash:{page_text}"
+
+        def list_page_summaries(self, document_id):
+            return list(self.summaries)
+
+        def list_persisted_clauses(self, **kwargs):
+            return []
+
+        def list_persisted_obligations(self, document_id):
+            return []
+
+        def build_extracted_places(self, places, *, page_number):
+            return []
+
+        def geocode_places(self, places):
+            return []
+
+        def upsert_page_summary(self, **kwargs):
+            summary = Record(id=uuid4(), **kwargs)
+            self.summaries.append(summary)
+            return summary
+
+        def update_extraction_job_progress(self, document_id, **values):
+            self.progress_calls.append((document_id, values))
+            return Record(stage="pages_extracting", **values)
+
+        def fail_extraction_job(self, document_id, **values):
+            return Record(stage="pages_extracting", error=values)
+
+    backend = Backend()
+    monkeypatch.setattr(intake, "_load_page_extraction_backend", lambda: backend)
+    monkeypatch.setattr(
+        intake,
+        "_extract_ocr_page",
+        lambda **kwargs: Record(
+            text="",
+            engine="paddleocr,tesseract",
+            engine_version=None,
+            language_hint="hi",
+            confidence=None,
+            page_number=1,
+            duration_ms=30,
+            error="no_ocr_engine_succeeded",
+            succeeded=False,
+        ),
+    )
+
+    result = asyncio.run(
+        intake.activity_extract_page_cached(
+            {
+                "document_id": str(document_id),
+                "page_number": 1,
+                "page_text": "",
+                "total_pages": 2,
+                "ai_provider": "groq",
+                "ai_model": "llama-3.3-70b-versatile",
+            }
+        )
+    )
+
+    assert provider_calls == []
+    assert result["cache_status"] == "miss_low_text_fallback"
+    assert result["text_source"] == "low_text_fallback"
+    assert result["ocr_error"] == "no_ocr_engine_succeeded"
+    assert backend.summaries[0].ocr_error == "no_ocr_engine_succeeded"
+    assert backend.progress_calls[-1][1]["current_page_excerpt"]["ocr_status"] == "failed"
 
 
 def test_page_activity_ai_failure_falls_back_to_deterministic(monkeypatch) -> None:

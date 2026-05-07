@@ -68,6 +68,42 @@ INTAKE_STAGE_VALUES = {
 }
 MAX_SOURCE_EXCERPT_CHARS = 800
 LOW_TEXT_PAGE_MIN_CHARS = 120
+COMMON_ENGLISH_TEXT_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "case",
+    "court",
+    "for",
+    "from",
+    "has",
+    "have",
+    "in",
+    "is",
+    "it",
+    "no",
+    "not",
+    "of",
+    "on",
+    "or",
+    "page",
+    "petition",
+    "police",
+    "respondent",
+    "state",
+    "that",
+    "the",
+    "this",
+    "to",
+    "was",
+    "were",
+    "with",
+}
 
 
 @activity.defn
@@ -140,13 +176,45 @@ async def _run_page_extraction_cached(
                 job_progress=job_progress,
             )
 
-    page_text = context.page_text or _load_page_text_from_clauses(
-        backend,
-        context,
+    page_text = (
+        context.page_text
+        if context.page_text is not None
+        else _load_page_text_from_clauses(
+            backend,
+            context,
+        )
     )
     page_text = page_text.strip()
+    text_source = "native_pdf"
+    ocr_metadata: dict[str, Any] = {}
+    ocr_attempted = False
 
-    hash_source = page_text or f"page-{context.page_number}:no-readable-text"
+    if _should_run_ocr(page_text, backend.settings, context.source_language):
+        ocr_attempted = True
+        _update_ocr_progress(
+            backend=backend,
+            context=context,
+            status="running",
+            page_text=page_text,
+        )
+        ocr_result = _extract_ocr_page(
+            backend=backend,
+            context=context,
+        )
+        ocr_metadata = _ocr_metadata(ocr_result)
+        if getattr(ocr_result, "succeeded", False):
+            page_text = _text_or_default(getattr(ocr_result, "text", None), "").strip()
+            context = context.with_page_text(page_text)
+            text_source = "ocr"
+        else:
+            text_source = "low_text_fallback"
+
+    hash_source = _page_hash_source(
+        page_text=page_text,
+        page_number=context.page_number,
+        text_source=text_source,
+        ocr_metadata=ocr_metadata,
+    )
     effective_content_hash = context.content_hash or backend.calculate_page_content_hash(hash_source)
     if not context.bypass_cache and not context.content_hash:
         cached = backend.get_cached_page_summary(
@@ -193,9 +261,22 @@ async def _run_page_extraction_cached(
     cache_status = "miss_generated"
     source_excerpt = _truncate_text(page_text, MAX_SOURCE_EXCERPT_CHARS)
 
-    low_text_fallback = (not page_text) or (
-        context.page_number == 1 and len(page_text) < LOW_TEXT_PAGE_MIN_CHARS
+    quality_low = _text_quality_is_low(
+        page_text,
+        backend.settings,
+        context.source_language,
     )
+    quality_gate_active = (
+        ocr_attempted
+        or context.page_number == 1
+        or bool(getattr(backend.settings, "orderflow_ocr_enabled", False))
+    )
+    low_text_fallback = (not page_text) or (quality_low and quality_gate_active) or (
+        len(page_text) < _low_text_min_chars(backend.settings)
+        and (ocr_attempted or context.page_number == 1)
+    )
+    if low_text_fallback and text_source != "ocr":
+        text_source = "low_text_fallback"
 
     if low_text_fallback:
         extraction = _low_text_page_extraction(
@@ -273,6 +354,12 @@ async def _run_page_extraction_cached(
         content_hash=effective_content_hash,
         prompt_version=context.prompt_version,
         source_excerpt=source_excerpt,
+        text_source=text_source,
+        ocr_engine=_string_value(ocr_metadata.get("ocr_engine")),
+        ocr_engine_version=_string_value(ocr_metadata.get("ocr_engine_version")),
+        ocr_confidence=_confidence_or_none(ocr_metadata.get("ocr_confidence")),
+        ocr_language=_string_value(ocr_metadata.get("ocr_language")),
+        ocr_error=_string_value(ocr_metadata.get("ocr_error")),
         ai_token_usage=_dict_or_none(extraction.get("ai_token_usage")),
     )
     completed_context = context.with_content_hash(effective_content_hash)
@@ -333,6 +420,222 @@ def _low_text_source_excerpt(page_number: int, page_text: str) -> str:
     if readable:
         return _truncate_text(readable, MAX_SOURCE_EXCERPT_CHARS)
     return f"Page {page_number}: no readable text layer was available for this page."
+
+
+def _should_run_ocr(page_text: str, settings: Any, source_language: str | None = None) -> bool:
+    if not getattr(settings, "orderflow_ocr_enabled", False):
+        return False
+    return _text_quality_is_low(page_text, settings, source_language)
+
+
+def _text_quality_is_low(
+    page_text: str,
+    settings: Any,
+    source_language: str | None = None,
+) -> bool:
+    text = page_text.strip()
+    if len(text) < _low_text_min_chars(settings):
+        return True
+    if _expected_script_ratio(text, source_language) < _min_expected_script_ratio(source_language):
+        return True
+    if _mojibake_token_ratio(text) >= 0.42 and _latin_readability_score(text) < 0.25:
+        return True
+    return False
+
+
+def _expected_script_ratio(text: str, source_language: str | None) -> float:
+    letters = [char for char in text if char.isalpha()]
+    if not letters:
+        return 0.0
+    language = (source_language or "").split("+", 1)[0].strip().lower()
+    if language in {"hi", "mr", "ne", "sa"}:
+        return _unicode_range_ratio(letters, 0x0900, 0x097F)
+    if language == "ta":
+        return _unicode_range_ratio(letters, 0x0B80, 0x0BFF)
+    if language == "te":
+        return _unicode_range_ratio(letters, 0x0C00, 0x0C7F)
+    if language in {"kn", "ka"}:
+        return _unicode_range_ratio(letters, 0x0C80, 0x0CFF)
+    if language == "ml":
+        return _unicode_range_ratio(letters, 0x0D00, 0x0D7F)
+    if language == "bn":
+        return _unicode_range_ratio(letters, 0x0980, 0x09FF)
+    if language == "gu":
+        return _unicode_range_ratio(letters, 0x0A80, 0x0AFF)
+    return 1.0
+
+
+def _min_expected_script_ratio(source_language: str | None) -> float:
+    language = (source_language or "").split("+", 1)[0].strip().lower()
+    if language in {"hi", "mr", "ne", "sa", "ta", "te", "kn", "ka", "ml", "bn", "gu"}:
+        return 0.35
+    return 0.0
+
+
+def _unicode_range_ratio(characters: list[str], start: int, end: int) -> float:
+    return sum(1 for char in characters if start <= ord(char) <= end) / len(characters)
+
+
+def _mojibake_token_ratio(text: str) -> float:
+    tokens = re.findall(r"[A-Za-z0-9]{2,}", text)
+    if not tokens:
+        return 0.0
+    bad = 0
+    for token in tokens:
+        digit_ratio = sum(1 for char in token if char.isdigit()) / len(token)
+        vowel_ratio = sum(1 for char in token.lower() if char in "aeiou") / len(token)
+        if digit_ratio >= 0.25 or vowel_ratio <= 0.12:
+            bad += 1
+    return bad / len(tokens)
+
+
+def _latin_readability_score(text: str) -> float:
+    tokens = [token.casefold() for token in re.findall(r"[A-Za-z]{2,}", text)]
+    if len(tokens) < 3:
+        return 0.0
+    common_hits = sum(1 for token in tokens if token in COMMON_ENGLISH_TEXT_WORDS)
+    vowel_tokens = sum(1 for token in tokens if any(char in "aeiou" for char in token))
+    repeated_tokens = len(tokens) - len(set(tokens))
+    common_score = min(1.0, common_hits / max(3, len(tokens) * 0.18))
+    vowel_score = vowel_tokens / len(tokens)
+    repetition_penalty = min(0.35, repeated_tokens / len(tokens))
+    return max(0.0, (common_score * 0.65) + (vowel_score * 0.35) - repetition_penalty)
+
+
+def _low_text_min_chars(settings: Any) -> int:
+    configured = getattr(settings, "orderflow_ocr_min_chars", LOW_TEXT_PAGE_MIN_CHARS)
+    try:
+        return max(1, int(configured))
+    except (TypeError, ValueError):
+        return LOW_TEXT_PAGE_MIN_CHARS
+
+
+def _update_ocr_progress(
+    *,
+    backend: PageExtractionBackend,
+    context: PageExtractionContext,
+    status: str,
+    page_text: str,
+) -> None:
+    completed_pages = _completed_page_numbers(backend, context, include_current=False)
+    try:
+        backend.update_extraction_job_progress(
+            context.document_uuid,
+            pages_total=max(context.total_pages, context.page_number),
+            pages_completed=len(completed_pages),
+            current_page=context.page_number,
+            current_page_excerpt={
+                "page_number": context.page_number,
+                "cache_status": "ocr_running",
+                "text_source": "ocr",
+                "ocr_status": status,
+                "ocr_engine": _ocr_engine_label(backend.settings),
+                "source_excerpt": _truncate_text(page_text, 240) if page_text else None,
+            },
+        )
+    except Exception:
+        pass
+
+
+def _extract_ocr_page(
+    *,
+    backend: PageExtractionBackend,
+    context: PageExtractionContext,
+) -> Any:
+    document = backend.get_persisted_document(context.document_uuid)
+    if document is None or not getattr(document, "object_key", None):
+        return _local_ocr_failure(context, "document_payload_unavailable")
+    try:
+        storage_client = backend.build_object_storage_client()
+        payload = backend.get_object_bytes(storage_client, document.object_key)
+        if not payload:
+            return _local_ocr_failure(context, "document_payload_empty")
+        result = backend.extract_pdf_page_with_ocr(
+            payload=payload,
+            page_number=context.page_number,
+            source_language=context.source_language,
+            settings=backend.settings,
+        )
+        _log_ocr_result(context=context, result=result)
+        return result
+    except Exception as exc:
+        return _local_ocr_failure(context, f"ocr_exception:{exc.__class__.__name__}")
+
+
+def _local_ocr_failure(context: PageExtractionContext, error: str) -> dict[str, Any]:
+    return {
+        "text": "",
+        "engine": None,
+        "engine_version": None,
+        "language_hint": context.source_language,
+        "confidence": None,
+        "page_number": context.page_number,
+        "duration_ms": 0,
+        "error": error,
+        "succeeded": False,
+    }
+
+
+def _ocr_metadata(result: Any) -> dict[str, Any]:
+    return {
+        "ocr_engine": _string_value(_attr_or_key(result, "engine")),
+        "ocr_engine_version": _string_value(_attr_or_key(result, "engine_version")),
+        "ocr_confidence": _confidence_or_none(_attr_or_key(result, "confidence")),
+        "ocr_language": _string_value(_attr_or_key(result, "language_hint")),
+        "ocr_error": _string_value(_attr_or_key(result, "error")),
+        "ocr_duration_ms": _positive_int(_attr_or_key(result, "duration_ms"), default=0),
+    }
+
+
+def _page_hash_source(
+    *,
+    page_text: str,
+    page_number: int,
+    text_source: str,
+    ocr_metadata: dict[str, Any],
+) -> str:
+    if text_source == "ocr":
+        engine = _string_value(ocr_metadata.get("ocr_engine")) or "unknown"
+        version = _string_value(ocr_metadata.get("ocr_engine_version")) or "unknown"
+        language = _string_value(ocr_metadata.get("ocr_language")) or "unknown"
+        return f"ocr:{engine}:{version}:{language}:{page_text}"
+    return page_text or f"page-{page_number}:no-readable-text"
+
+
+def _ocr_engine_label(settings: Any) -> str:
+    primary = getattr(settings, "orderflow_ocr_primary_engine", "paddleocr")
+    fallback = getattr(settings, "orderflow_ocr_fallback_engine", "tesseract")
+    return " -> ".join(
+        item
+        for item in [str(primary or "").strip(), str(fallback or "").strip()]
+        if item
+    )
+
+
+def _log_ocr_result(*, context: PageExtractionContext, result: Any) -> None:
+    logger.info(
+        "orderflow_worker_ocr_page",
+        extra={
+            "orderflow": {
+                "orderflow.document_id": context.document_id,
+                "orderflow.workflow.stage": "pages_extracting",
+                "orderflow.page_number": context.page_number,
+                "orderflow.ocr.engine": _attr_or_key(result, "engine"),
+                "orderflow.ocr.confidence": _attr_or_key(result, "confidence"),
+                "orderflow.ocr.text_length": len(
+                    _text_or_default(_attr_or_key(result, "text"), "")
+                ),
+                "orderflow.ocr.duration_ms": _attr_or_key(result, "duration_ms"),
+                "orderflow.ocr.error": _attr_or_key(result, "error"),
+            }
+        },
+    )
+
+
+def _attr_or_key(value: Any, key: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
 
 
 @activity.defn
@@ -728,7 +1031,7 @@ class PageExtractionContext:
     page_number: int
     content_hash: str
     prompt_version: str
-    page_text: str
+    page_text: str | None
     total_pages: int
     ai_provider: str
     ai_model: str
@@ -746,6 +1049,24 @@ class PageExtractionContext:
             content_hash=content_hash,
             prompt_version=self.prompt_version,
             page_text=self.page_text,
+            total_pages=self.total_pages,
+            ai_provider=self.ai_provider,
+            ai_model=self.ai_model,
+            temperature=self.temperature,
+            bypass_cache=self.bypass_cache,
+            source_language=self.source_language,
+            translation_status=self.translation_status,
+            translation_required=self.translation_required,
+        )
+
+    def with_page_text(self, page_text: str | None) -> "PageExtractionContext":
+        return PageExtractionContext(
+            document_id=self.document_id,
+            document_uuid=self.document_uuid,
+            page_number=self.page_number,
+            content_hash=self.content_hash,
+            prompt_version=self.prompt_version,
+            page_text=page_text,
             total_pages=self.total_pages,
             ai_provider=self.ai_provider,
             ai_model=self.ai_model,
@@ -829,13 +1150,17 @@ class PageExtractionBackend:
     PageSummaryExtractor: Any
     build_extracted_places: Any
     calculate_page_content_hash: Any
+    extract_pdf_page_with_ocr: Any
     fail_extraction_job: Any
+    get_object_bytes: Any
+    get_persisted_document: Any
     geocode_places: Any
     get_cached_page_summary: Any
     list_page_summaries: Any
     list_persisted_clauses: Any
     list_persisted_obligations: Any
     settings: Any
+    build_object_storage_client: Any
     update_extraction_job_progress: Any
     upsert_page_summary: Any
 
@@ -913,7 +1238,11 @@ def _normalize_page_extraction_context(
         page_number=normalized_page_number,
         content_hash=normalized_content_hash or "",
         prompt_version=normalized_prompt_version,
-        page_text=_string_value(payload.get("page_text")) or "",
+        page_text=(
+            (_string_value(payload.get("page_text")) or "")
+            if "page_text" in payload
+            else None
+        ),
         total_pages=_positive_int(
             payload.get("total_pages"),
             default=normalized_page_number,
@@ -1092,6 +1421,9 @@ def _load_page_extraction_backend() -> PageExtractionBackend:
         fail_extraction_job,
         update_extraction_job_progress,
     )
+    from orderflow_api.api.document_persistence import (  # noqa: PLC0415
+        get_persisted_document,
+    )
     from orderflow_api.api.extraction_persistence import (  # noqa: PLC0415
         list_persisted_clauses,
         list_persisted_obligations,
@@ -1108,22 +1440,31 @@ def _load_page_extraction_backend() -> PageExtractionBackend:
         list_page_summaries,
         upsert_page_summary,
     )
+    from orderflow_api.api.ocr_service import extract_pdf_page_with_ocr  # noqa: PLC0415
     from orderflow_api.core.config import settings  # noqa: PLC0415
     from orderflow_api.core.hash_utils import (  # noqa: PLC0415
         calculate_page_content_hash,
+    )
+    from orderflow_api.core.storage import (  # noqa: PLC0415
+        build_object_storage_client,
+        get_object_bytes,
     )
 
     return PageExtractionBackend(
         PageSummaryExtractor=PageSummaryExtractor,
         build_extracted_places=build_extracted_places,
         calculate_page_content_hash=calculate_page_content_hash,
+        extract_pdf_page_with_ocr=extract_pdf_page_with_ocr,
         fail_extraction_job=fail_extraction_job,
+        get_object_bytes=get_object_bytes,
+        get_persisted_document=get_persisted_document,
         geocode_places=geocode_places,
         get_cached_page_summary=get_cached_page_summary,
         list_page_summaries=list_page_summaries,
         list_persisted_clauses=list_persisted_clauses,
         list_persisted_obligations=list_persisted_obligations,
         settings=settings,
+        build_object_storage_client=build_object_storage_client,
         update_extraction_job_progress=update_extraction_job_progress,
         upsert_page_summary=upsert_page_summary,
     )
@@ -2540,16 +2881,33 @@ def _page_progress_excerpt(
 ) -> dict[str, Any]:
     payload = _record_payload(summary_record)
     summary_id = payload.get("id")
-    return {
+    excerpt = {
         "page_number": context.page_number,
         "cache_status": cache_status,
         "summary_id": str(summary_id) if summary_id is not None else None,
         "content_hash": context.content_hash or payload.get("content_hash"),
+        "text_source": payload.get("text_source") or "native_pdf",
+        "ocr_status": _ocr_status_from_payload(payload),
+        "ocr_engine": payload.get("ocr_engine"),
+        "ocr_engine_version": payload.get("ocr_engine_version"),
+        "ocr_confidence": payload.get("ocr_confidence"),
+        "ocr_language": payload.get("ocr_language"),
+        "ocr_error": payload.get("ocr_error"),
         "source_excerpt": _truncate_text(
             payload.get("source_excerpt") or payload.get("summary") or context.page_text,
             360,
         ),
     }
+    return {key: value for key, value in excerpt.items() if value is not None}
+
+
+def _ocr_status_from_payload(payload: dict[str, Any]) -> str | None:
+    text_source = payload.get("text_source")
+    if text_source == "ocr":
+        return "done"
+    if text_source == "low_text_fallback" and payload.get("ocr_error"):
+        return "failed"
+    return None
 
 
 def _filter_action_plan_items(obligations: list[Any]) -> list[Any]:
@@ -3009,6 +3367,12 @@ def _page_extraction_result(
         "summary": summary_payload.get("summary"),
         "confidence": summary_payload.get("confidence"),
         "extraction_mode": summary_payload.get("extraction_mode"),
+        "text_source": summary_payload.get("text_source"),
+        "ocr_engine": summary_payload.get("ocr_engine"),
+        "ocr_engine_version": summary_payload.get("ocr_engine_version"),
+        "ocr_confidence": summary_payload.get("ocr_confidence"),
+        "ocr_language": summary_payload.get("ocr_language"),
+        "ocr_error": summary_payload.get("ocr_error"),
         "ai_model": summary_payload.get("ai_model"),
         "ai_provider": summary_payload.get("ai_provider"),
         "summary_record": summary_payload,
@@ -3117,6 +3481,8 @@ def _completed_page_result(
         return None
     if content_hash is None:
         return None
+    if summary_payload.get("text_source") == "ocr" and not expected_hash:
+        return None
 
     if summary_payload.get("prompt_version") != context.prompt_version:
         return None
@@ -3140,6 +3506,12 @@ def _completed_page_result(
         "summary_id": summary_payload.get("id"),
         "summary": summary_payload.get("summary"),
         "confidence": summary_payload.get("confidence"),
+        "text_source": summary_payload.get("text_source"),
+        "ocr_engine": summary_payload.get("ocr_engine"),
+        "ocr_engine_version": summary_payload.get("ocr_engine_version"),
+        "ocr_confidence": summary_payload.get("ocr_confidence"),
+        "ocr_language": summary_payload.get("ocr_language"),
+        "ocr_error": summary_payload.get("ocr_error"),
         "ai_model": summary_payload.get("ai_model"),
         "ai_provider": summary_payload.get("ai_provider"),
         "summary_record": summary_payload,
