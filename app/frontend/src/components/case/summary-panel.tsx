@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   FileText,
   GitBranch,
   Loader2,
@@ -19,6 +20,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CaseFlowGraph } from "@/components/case-flow-graph";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -46,7 +48,7 @@ const CaseIncidenceMap = dynamic(
   () => import("@/components/case-incidence-map").then((mod) => mod.CaseIncidenceMap),
   {
     ssr: false,
-    loading: () => <div className="p-4 text-sm text-slate-500">Loading case map...</div>,
+    loading: () => <div className="p-4 text-sm text-muted-foreground">Loading case map...</div>,
   },
 );
 
@@ -120,8 +122,8 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+      <div className="flex min-h-[200px] items-center justify-center p-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading full summary
         </div>
@@ -131,7 +133,7 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
 
   if (!summary) {
     return (
-      <div className="flex min-h-full flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-6">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Summary unavailable</AlertTitle>
@@ -144,11 +146,12 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-5 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-col gap-0">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Full judgment summary</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="text-lg font-semibold text-foreground">Full judgment summary</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {summary.case_basics.case_number ?? summary.case_basics.case_type ?? "Case summary"}
           </p>
         </div>
@@ -157,136 +160,272 @@ export function SummaryPanel({ documentId }: SummaryPanelProps) {
           <Badge variant={confidencePercent >= 70 ? "good" : "warn"}>
             {confidencePercent}% confidence
           </Badge>
-          {needsHumanReview ? <Badge variant="warn">Needs human review.</Badge> : null}
+          {needsHumanReview ? <Badge variant="warn">Needs human review</Badge> : null}
         </div>
       </div>
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Request failed</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {actionMessage ? (
-        <Alert>
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertTitle>Action plan queued</AlertTitle>
-          <AlertDescription>{actionMessage}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <section className="rounded-md border border-slate-200 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Page-wise summary</h3>
-        </div>
-        <PageWiseSummaryList pages={pageSummaries} />
-      </section>
-
-      <section className="rounded-md border border-slate-200 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Scale className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Case basics</h3>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Fact label="Court" value={summary.case_basics.court_name} />
-          <Fact label="Case type" value={summary.case_basics.case_type} />
-          <Fact label="Order date" value={summary.case_basics.order_date} />
-          <Fact label="Judge" value={summary.case_basics.judge_name} />
-          <Fact label="Petitioner" value={summary.case_basics.petitioner} />
-          <Fact label="Respondent" value={summary.case_basics.respondent} />
-          <Fact label="Department" value={summary.case_basics.department_involved} />
-          <Fact label="Subject" value={summary.case_basics.main_subject} />
-        </div>
-      </section>
-
-      <section className="rounded-md border border-slate-200 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Overview</h3>
-        </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-          {summary.overview}
-        </p>
-        <div className="mt-4">
-          <Progress value={confidencePercent} className="h-2" />
-        </div>
-      </section>
-
-      <Tabs defaultValue="directives" className="w-full">
-        <TabsList className="h-auto flex-wrap">
-          <TabsTrigger value="directives">Directives</TabsTrigger>
-          <TabsTrigger value="dates">Dates</TabsTrigger>
-          <TabsTrigger value="entities">Entities</TabsTrigger>
-          <TabsTrigger value="departments">Departments</TabsTrigger>
-          <TabsTrigger value="flow">Flow</TabsTrigger>
-          {mapAvailable ? <TabsTrigger value="map">Map</TabsTrigger> : null}
-        </TabsList>
-
-        <TabsContent value="directives">
-          <DirectiveList directives={summary.key_directives} />
-        </TabsContent>
-
-        <TabsContent value="dates">
-          <DateList dates={summary.important_dates} />
-        </TabsContent>
-
-        <TabsContent value="entities">
-          <EntityList entities={summary.entities_involved} />
-        </TabsContent>
-
-        <TabsContent value="departments">
-          <DepartmentList departments={summary.responsible_departments} />
-        </TabsContent>
-
-        <TabsContent value="flow">
-          <FlowGraph graph={summary.flow_graph} visualData={summaryFlowData} />
-        </TabsContent>
-
-        {mapAvailable ? (
-          <TabsContent value="map">
-            <div className="flex flex-col gap-2">
-              <div className="overflow-hidden rounded-md border border-slate-200">
-                <CaseIncidenceMap places={summary.map_data?.places ?? []} mode="flow" />
-              </div>
-              {summary.map_data?.reason ? (
-                <p className="text-xs text-slate-500">{summary.map_data.reason}</p>
-              ) : null}
-            </div>
-          </TabsContent>
+      <div className="flex flex-col gap-4 p-6">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Request failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
-      </Tabs>
 
-      {!mapAvailable && summary.map_data?.reason ? (
-        <p className="text-xs text-slate-500">{summary.map_data.reason}</p>
-      ) : null}
+        {actionMessage ? (
+          <Alert>
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>Action plan queued</AlertTitle>
+            <AlertDescription>{actionMessage}</AlertDescription>
+          </Alert>
+        ) : null}
 
-      <div className="mt-auto flex flex-wrap gap-3 border-t border-slate-200 pt-5">
-        <Button type="button" variant="outline" onClick={() => window.location.reload()}>
-          <RefreshCw />
-          Refresh summary
-        </Button>
-        <Button
-          type="button"
-          onClick={() => void handleGenerateActionPlan()}
-          disabled={isGeneratingActionPlan}
+        {/* Page-wise summaries */}
+        <CollapsibleSection
+          icon={<FileText className="h-4 w-4 text-muted-foreground" />}
+          title="Page-wise summary"
+          badge={
+            <Badge variant="secondary" className="ml-1">
+              {pageSummaries.length}
+            </Badge>
+          }
+          defaultOpen
         >
-          {isGeneratingActionPlan ? <Loader2 className="animate-spin" /> : <ArrowRight />}
-          Generate Action Plan
-        </Button>
+          <PageWiseSummaryList pages={pageSummaries} />
+        </CollapsibleSection>
+
+        {/* Case basics */}
+        <CollapsibleSection
+          icon={<Scale className="h-4 w-4 text-muted-foreground" />}
+          title="Case basics"
+          defaultOpen
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Fact label="Court" value={summary.case_basics.court_name} />
+            <Fact label="Case type" value={summary.case_basics.case_type} />
+            <Fact label="Order date" value={summary.case_basics.order_date} />
+            <Fact label="Judge" value={summary.case_basics.judge_name} />
+            <Fact label="Petitioner" value={summary.case_basics.petitioner} />
+            <Fact label="Respondent" value={summary.case_basics.respondent} />
+            <Fact label="Department" value={summary.case_basics.department_involved} />
+            <Fact label="Subject" value={summary.case_basics.main_subject} />
+          </div>
+        </CollapsibleSection>
+
+        {/* Overview */}
+        <CollapsibleSection
+          icon={<FileText className="h-4 w-4 text-muted-foreground" />}
+          title="Overview"
+          defaultOpen={false}
+        >
+          <p className="whitespace-pre-wrap break-words text-sm leading-7 text-muted-foreground">
+            {summary.overview}
+          </p>
+          <div className="mt-4">
+            <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Summary confidence</span>
+              <span>{confidencePercent}%</span>
+            </div>
+            <Progress value={confidencePercent} className="h-2" />
+          </div>
+        </CollapsibleSection>
+
+        {/* Tabs */}
+        <Tabs defaultValue="directives" className="w-full">
+          <TabsList className="h-auto flex-wrap border border-border bg-muted">
+            <TabsTrigger value="directives">Directives</TabsTrigger>
+            <TabsTrigger value="dates">Dates</TabsTrigger>
+            <TabsTrigger value="entities">Entities</TabsTrigger>
+            <TabsTrigger value="departments">Departments</TabsTrigger>
+            <TabsTrigger value="flow">Flow</TabsTrigger>
+            {mapAvailable ? <TabsTrigger value="map">Map</TabsTrigger> : null}
+          </TabsList>
+
+          <TabsContent value="directives" className="mt-4">
+            <DirectiveList directives={summary.key_directives} />
+          </TabsContent>
+
+          <TabsContent value="dates" className="mt-4">
+            <DateList dates={summary.important_dates} />
+          </TabsContent>
+
+          <TabsContent value="entities" className="mt-4">
+            <EntityList entities={summary.entities_involved} />
+          </TabsContent>
+
+          <TabsContent value="departments" className="mt-4">
+            <DepartmentList departments={summary.responsible_departments} />
+          </TabsContent>
+
+          <TabsContent value="flow" className="mt-4">
+            <FlowGraph graph={summary.flow_graph} visualData={summaryFlowData} />
+          </TabsContent>
+
+          {mapAvailable ? (
+            <TabsContent value="map" className="mt-4">
+              <div className="flex flex-col gap-2">
+                <div className="overflow-hidden rounded-md border border-border">
+                  <CaseIncidenceMap places={summary.map_data?.places ?? []} mode="flow" />
+                </div>
+                {summary.map_data?.reason ? (
+                  <p className="text-xs text-muted-foreground">{summary.map_data.reason}</p>
+                ) : null}
+              </div>
+            </TabsContent>
+          ) : null}
+        </Tabs>
+
+        {!mapAvailable && summary.map_data?.reason ? (
+          <p className="text-xs text-muted-foreground">{summary.map_data.reason}</p>
+        ) : null}
+
+        {/* Footer */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+          <Button size="sm" type="button" variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh summary
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="good"
+            className="ml-auto"
+            onClick={() => void handleGenerateActionPlan()}
+            disabled={isGeneratingActionPlan}
+          >
+            {isGeneratingActionPlan ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="mr-2 h-4 w-4" />
+            )}
+            Generate Action Plan
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function Fact({ label, value }: { label: string; value: string | null }) {
+function CollapsibleSection({
+  icon,
+  title,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  badge?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 break-words text-sm font-semibold text-slate-950">{value || "-"}</div>
-    </div>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-md border border-border overflow-hidden"
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50">
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-sm font-semibold text-foreground">{title}</span>
+          {badge}
+        </div>
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-t border-border p-4">{children}</div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function PageSummaryCard({ page }: { page: PageSummaryRecord }) {
+  const [open, setOpen] = useState(false);
+  const confidence = page.confidence != null ? clampPercent(page.confidence * 100) : null;
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-md border border-border overflow-hidden"
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">Page {page.page_number}</Badge>
+          <Badge variant={page.extraction_mode === "ai" ? "accent" : "secondary"}>
+            {page.extraction_mode}
+          </Badge>
+          {confidence != null ? (
+            <Badge variant={confidence >= 70 ? "good" : "warn"}>{confidence}%</Badge>
+          ) : null}
+          <span className="hidden text-xs text-muted-foreground sm:block line-clamp-1 max-w-[280px]">
+            {page.summary?.slice(0, 80)}…
+          </span>
+        </div>
+        <ChevronDown
+          className={`ml-3 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-t border-border p-4 flex flex-col gap-4">
+          <p className="whitespace-pre-wrap break-words text-sm leading-7 text-muted-foreground">
+            {page.summary}
+          </p>
+          {page.key_points.length > 0 ? (
+            <ul className="flex flex-col gap-1.5 pl-4">
+              {page.key_points.slice(0, 4).map((point, index) => (
+                <li
+                  key={`${point}-${index}`}
+                  className="list-disc text-sm leading-6 text-muted-foreground"
+                >
+                  {point}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {page.important_highlights.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {page.important_highlights.slice(0, 3).map((highlight, index) => (
+                <div key={`${highlight.text}-${index}`} className="rounded-md bg-muted p-3">
+                  <div className="mb-1.5 flex flex-wrap gap-2">
+                    <Badge variant={highlight.significance === "critical" ? "warn" : "secondary"}>
+                      {highlight.significance}
+                    </Badge>
+                  </div>
+                  <p className="break-words text-xs leading-5 text-muted-foreground">
+                    {highlight.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {page.entities.length > 0 || page.dates.length > 0 || page.directions.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MiniList
+                title="Entities"
+                items={page.entities.map((e) => e.name)}
+                empty="No entities cached."
+              />
+              <MiniList
+                title="Dates"
+                items={page.dates.map((d) => d.date_text)}
+                empty="No dates cached."
+              />
+              <MiniList
+                title="Directions"
+                items={page.directions.map((d) => d.direction_text)}
+                empty="No directions cached."
+              />
+            </div>
+          ) : null}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -296,78 +435,11 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
   }
 
   return (
-    <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1">
+    <div className="flex flex-col gap-2">
       {[...pages]
         .sort((a, b) => a.page_number - b.page_number)
         .map((page) => (
-          <div key={page.id} className="rounded-md border border-slate-200 p-4">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">Page {page.page_number}</Badge>
-                <Badge variant={page.extraction_mode === "ai" ? "accent" : "secondary"}>
-                  {page.extraction_mode}
-                </Badge>
-              </div>
-              {page.confidence != null ? (
-                <Badge variant={page.confidence >= 0.7 ? "good" : "warn"}>
-                  {clampPercent(page.confidence * 100)}%
-                </Badge>
-              ) : null}
-            </div>
-            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
-              {page.summary}
-            </p>
-            {page.key_points.length > 0 ? (
-              <ul className="mt-3 flex flex-col gap-2">
-                {page.key_points.slice(0, 4).map((point, index) => (
-                  <li key={`${point}-${index}`} className="text-sm leading-6 text-slate-700">
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {page.important_highlights.length > 0 ? (
-              <div className="mt-3 flex flex-col gap-2">
-                {page.important_highlights.slice(0, 2).map((highlight, index) => (
-                  <div key={`${highlight.text}-${index}`} className="rounded-md bg-slate-50 p-3">
-                    <div className="mb-1 flex flex-wrap gap-2">
-                      <Badge variant={highlight.significance === "critical" ? "warn" : "muted"}>
-                        {highlight.significance}
-                      </Badge>
-                    </div>
-                    <p className="line-clamp-3 break-words text-xs leading-5 text-slate-600">
-                      {highlight.text}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="muted">{page.entities.length} entities</Badge>
-              <Badge variant="muted">{page.dates.length} dates</Badge>
-              <Badge variant="muted">{page.directions.length} directions</Badge>
-              <Badge variant="muted">{page.departments.length} departments</Badge>
-            </div>
-            {page.entities.length > 0 || page.dates.length > 0 || page.directions.length > 0 ? (
-              <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                <MiniList
-                  title="Entities"
-                  items={page.entities.map((entity) => entity.name)}
-                  empty="No entities cached."
-                />
-                <MiniList
-                  title="Dates"
-                  items={page.dates.map((date) => date.date_text)}
-                  empty="No dates cached."
-                />
-                <MiniList
-                  title="Directions"
-                  items={page.directions.map((direction) => direction.direction_text)}
-                  empty="No directions cached."
-                />
-              </div>
-            ) : null}
-          </div>
+          <PageSummaryCard key={page.id} page={page} />
         ))}
     </div>
   );
@@ -376,18 +448,20 @@ function PageWiseSummaryList({ pages }: { pages: PageSummaryRecord[] }) {
 function MiniList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
   const visibleItems = items.filter(Boolean).slice(0, 3);
   return (
-    <div className="rounded-md bg-slate-50 p-3">
-      <p className="mb-2 text-xs font-semibold uppercase text-slate-500">{title}</p>
+    <div className="rounded-md bg-muted p-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
       {visibleItems.length > 0 ? (
         <ul className="flex flex-col gap-1">
           {visibleItems.map((item, index) => (
-            <li key={`${item}-${index}`} className="line-clamp-2 text-xs leading-5 text-slate-600">
+            <li key={`${item}-${index}`} className="line-clamp-2 text-xs leading-5 text-foreground">
               {item}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-slate-500">{empty}</p>
+        <p className="text-xs text-muted-foreground">{empty}</p>
       )}
     </div>
   );
@@ -396,11 +470,11 @@ function MiniList({ title, items, empty }: { title: string; items: string[]; emp
 function DirectiveList({ directives }: { directives: DocumentSummaryDirective[] }) {
   if (directives.length === 0) return <EmptyPanel label="No directives found." />;
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {directives.map((directive, index) => (
         <div
           key={`${directive.direction_text}-${index}`}
-          className="rounded-md border border-slate-200 p-4"
+          className="rounded-md border border-border p-4"
         >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant={directive.directive_kind === "mandatory" ? "warn" : "secondary"}>
@@ -413,7 +487,9 @@ function DirectiveList({ directives }: { directives: DocumentSummaryDirective[] 
               <Badge variant="outline">Page {directive.source_page_number}</Badge>
             ) : null}
           </div>
-          <p className="break-words text-sm leading-6 text-slate-800">{directive.direction_text}</p>
+          <p className="break-words text-sm leading-6 text-foreground">
+            {directive.direction_text}
+          </p>
           <EvidenceList evidence={directive.source_evidence} />
         </div>
       ))}
@@ -424,17 +500,19 @@ function DirectiveList({ directives }: { directives: DocumentSummaryDirective[] 
 function DateList({ dates }: { dates: DocumentSummaryImportantDate[] }) {
   if (dates.length === 0) return <EmptyPanel label="No dates found." />;
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {dates.map((date, index) => (
-        <div key={`${date.label}-${index}`} className="rounded-md border border-slate-200 p-4">
+        <div key={`${date.label}-${index}`} className="rounded-md border border-border p-4">
           <div className="flex items-start gap-3">
-            <CalendarDays className="mt-0.5 h-4 w-4 text-slate-500" />
+            <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="break-words text-sm font-semibold text-slate-950">{date.label}</p>
+                <p className="break-words text-sm font-semibold text-foreground">{date.label}</p>
                 {date.is_inferred ? <Badge variant="warn">inferred</Badge> : null}
               </div>
-              <p className="mt-1 text-sm text-slate-700">{date.date_text ?? date.source ?? "-"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {date.date_text ?? date.source ?? "-"}
+              </p>
               <EvidenceList evidence={date.source_evidence} />
             </div>
           </div>
@@ -449,10 +527,10 @@ function EntityList({ entities }: { entities: DocumentSummaryEntity[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {entities.map((entity, index) => (
-        <div key={`${entity.name}-${index}`} className="rounded-md border border-slate-200 p-4">
+        <div key={`${entity.name}-${index}`} className="rounded-md border border-border p-4">
           <div className="mb-2 flex items-center gap-2">
-            <Users className="h-4 w-4 text-slate-500" />
-            <p className="break-words text-sm font-semibold text-slate-950">{entity.name}</p>
+            <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="break-words text-sm font-semibold text-foreground">{entity.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {entity.entity_type ? <Badge variant="secondary">{entity.entity_type}</Badge> : null}
@@ -472,20 +550,22 @@ function DepartmentList({ departments }: { departments: DocumentSummaryResponsib
     return <EmptyPanel label="No departments found." />;
   }
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {departments.map((department, index) => (
         <div
           key={`${department.primary_department ?? "department"}-${index}`}
-          className="rounded-md border border-slate-200 p-4"
+          className="rounded-md border border-border p-4"
         >
           <div className="mb-2 flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-slate-500" />
-            <p className="break-words text-sm font-semibold text-slate-950">
+            <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="break-words text-sm font-semibold text-foreground">
               {department.primary_department ?? "Unassigned"}
             </p>
           </div>
           {department.reason ? (
-            <p className="mb-3 break-words text-sm leading-6 text-slate-700">{department.reason}</p>
+            <p className="mb-3 break-words text-sm leading-6 text-muted-foreground">
+              {department.reason}
+            </p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {department.legal_department_role ? (
@@ -517,43 +597,93 @@ function FlowGraph({
   return (
     <div className="flex flex-col gap-4">
       <CaseFlowGraph data={visualData} compact />
-      <div className="flex flex-col gap-2">
-        {graph.narrative_steps.map((step, index) => (
-          <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-slate-50 p-3">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-              {index + 1}
+      {graph.narrative_steps.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {graph.narrative_steps.map((step, index) => (
+            <div key={`${step}-${index}`} className="flex gap-3 rounded-md bg-muted p-3">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                {index + 1}
+              </div>
+              <p className="break-words text-sm leading-6 text-foreground">{step}</p>
             </div>
-            <p className="break-words text-sm leading-6 text-slate-700">{step}</p>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         {graph.nodes.map((node) => (
-          <div key={node.id} className="rounded-md border border-slate-200 p-4">
+          <div key={node.id} className="rounded-md border border-border p-4">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <GitBranch className="h-4 w-4 text-slate-500" />
+              <GitBranch className="h-4 w-4 text-muted-foreground" />
               <Badge variant="secondary">{node.node_type}</Badge>
               {node.page_ref ? <Badge variant="outline">Page {node.page_ref}</Badge> : null}
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950">{node.label}</p>
+            <p className="break-words text-sm font-semibold text-foreground">{node.label}</p>
             {node.detail ? (
-              <p className="mt-2 break-words text-sm leading-6 text-slate-700">{node.detail}</p>
+              <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">
+                {node.detail}
+              </p>
             ) : null}
           </div>
         ))}
       </div>
       {graph.edges.length > 0 ? (
-        <div className="rounded-md border border-slate-200 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Flow links</p>
+        <div className="rounded-md border border-border p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Flow links
+          </p>
           <div className="flex flex-wrap gap-2">
             {graph.edges.map((edge) => (
               <Badge key={edge.id} variant="outline">
-                {edge.source} to {edge.target}: {edge.relation}
+                {edge.source} → {edge.target}: {edge.relation}
               </Badge>
             ))}
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="rounded-md bg-muted px-3 py-2.5">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 break-words text-sm font-semibold text-foreground">{value || "-"}</div>
+    </div>
+  );
+}
+
+function EvidenceList({ evidence }: { evidence: DocumentSummarySourceEvidence[] }) {
+  const visibleEvidence = evidence.filter((item) => item.page_number || item.source_excerpt);
+  if (visibleEvidence.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {visibleEvidence.slice(0, 2).map((item, index) => (
+        <div
+          key={`${item.page_number ?? "source"}-${index}`}
+          className="rounded-md bg-muted p-3"
+        >
+          <div className="mb-1.5 flex flex-wrap gap-2">
+            {item.page_number ? <Badge variant="outline">Page {item.page_number}</Badge> : null}
+            {item.confidence != null ? (
+              <Badge variant="muted">{clampPercent(item.confidence * 100)}%</Badge>
+            ) : null}
+          </div>
+          {item.source_excerpt ? (
+            <p className="line-clamp-3 break-words text-xs leading-5 text-muted-foreground">
+              {item.source_excerpt}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyPanel({ label }: { label: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+      {label}
     </div>
   );
 }
@@ -586,41 +716,6 @@ function coerceFlowNodeType(nodeType: string): DocumentSummaryFlowNodeType {
     return nodeType;
   }
   return "obligation";
-}
-
-function EvidenceList({ evidence }: { evidence: DocumentSummarySourceEvidence[] }) {
-  const visibleEvidence = evidence.filter((item) => item.page_number || item.source_excerpt);
-  if (visibleEvidence.length === 0) return null;
-  return (
-    <div className="mt-3 space-y-2">
-      {visibleEvidence.slice(0, 2).map((item, index) => (
-        <div
-          key={`${item.page_number ?? "source"}-${index}`}
-          className="rounded-md bg-slate-50 p-3"
-        >
-          <div className="mb-1 flex flex-wrap gap-2">
-            {item.page_number ? <Badge variant="outline">Page {item.page_number}</Badge> : null}
-            {item.confidence != null ? (
-              <Badge variant="muted">{clampPercent(item.confidence * 100)}%</Badge>
-            ) : null}
-          </div>
-          {item.source_excerpt ? (
-            <p className="line-clamp-3 break-words text-xs leading-5 text-slate-600">
-              {item.source_excerpt}
-            </p>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EmptyPanel({ label }: { label: string }) {
-  return (
-    <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-      {label}
-    </div>
-  );
 }
 
 function clampPercent(value: number) {
