@@ -131,7 +131,9 @@ def update_workflow_run_status(
         return None
 
     if metadata_patch is not None:
-        existing_metadata = current_record.metadata if isinstance(current_record.metadata, dict) else {}
+        existing_metadata = (
+            current_record.metadata if isinstance(current_record.metadata, dict) else {}
+        )
         values["metadata"] = {**existing_metadata, **metadata_patch}
 
     statement = (

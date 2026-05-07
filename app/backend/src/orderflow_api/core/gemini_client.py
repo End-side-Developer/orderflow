@@ -148,9 +148,7 @@ class _GeminiQuotaGuard:
         if tokens <= 0:
             tokens = 1
 
-        deadline = time.monotonic() + max(
-            settings.orderflow_ai_gemini_max_wait_seconds, 0
-        )
+        deadline = time.monotonic() + max(settings.orderflow_ai_gemini_max_wait_seconds, 0)
 
         while True:
             with self._lock:
@@ -200,9 +198,7 @@ class _GeminiQuotaGuard:
 
             time.sleep(min(max(wait_seconds, 0.05), 5.0))
 
-    def commit(
-        self, reservation: _ReservationEntry, *, actual_tokens: int | None
-    ) -> None:
+    def commit(self, reservation: _ReservationEntry, *, actual_tokens: int | None) -> None:
         if not settings.orderflow_ai_gemini_rate_limit_enabled:
             return
 
@@ -470,9 +466,7 @@ def call_gemini_json(
         ) from exc
     except Exception as exc:  # noqa: BLE001 - genuine catch-all for unknown urllib failures
         _GEMINI_QUOTA_GUARD.release(reservation)
-        raise GeminiError(
-            f"Gemini request failed unexpectedly for {request_label}: {exc}"
-        ) from exc
+        raise GeminiError(f"Gemini request failed unexpectedly for {request_label}: {exc}") from exc
 
     try:
         parsed = json.loads(raw)
@@ -492,5 +486,3 @@ def call_gemini_json(
         actual_tokens=extract_gemini_total_tokens(parsed),
     )
     return parsed
-
-

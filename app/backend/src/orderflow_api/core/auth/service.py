@@ -181,9 +181,7 @@ def rotate_refresh(
     if user is None or user.status not in ("active", "pending_verification"):
         raise InvalidCredentials("user no longer eligible")
 
-    new_access, new_access_claims = issue_access_token(
-        user_id=user.id, role=user.role
-    )
+    new_access, new_access_claims = issue_access_token(user_id=user.id, role=user.role)
     new_refresh, new_refresh_claims = issue_refresh_token(user_id=user.id)
 
     user_persistence.insert_refresh_token(

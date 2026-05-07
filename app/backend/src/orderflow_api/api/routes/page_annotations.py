@@ -14,7 +14,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from orderflow_api.api.dependencies.auth import require_permission
-from orderflow_api.api.response import success
 from orderflow_api.core.auth.permissions import Permission
 from orderflow_api.api.page_annotation_persistence import (
     create_annotation,
@@ -60,7 +59,7 @@ async def list_annotations_route(
             document_id=document_id,
             total_annotations=len(annotations),
             items=annotations,
-        )
+        ),
     )
 
 
@@ -89,7 +88,7 @@ async def generate_annotations_route(
     if not summaries:
         raise HTTPException(
             status_code=404,
-            detail="No summaries found for this document. Generate summaries first."
+            detail="No summaries found for this document. Generate summaries first.",
         )
 
     # Generate annotations from summaries
@@ -105,7 +104,7 @@ async def generate_annotations_route(
                 significance = getattr(highlight, "significance", "contextual")
                 text = getattr(highlight, "text", "")
                 relevance = getattr(highlight, "relevance", None)
-            
+
             color = "red" if significance == "critical" else "orange"
             if significance == "contextual":
                 color = "yellow"
@@ -140,11 +139,13 @@ async def generate_annotations_route(
             document_id=document_id,
             total_annotations=len(annotations),
             items=annotations,
-        )
+        ),
     )
 
 
-@router.post("/annotations/{document_id}/coordinates", response_model=AnnotationCoordinatesUpdateEnvelope)
+@router.post(
+    "/annotations/{document_id}/coordinates", response_model=AnnotationCoordinatesUpdateEnvelope
+)
 async def update_annotation_coordinates_route(
     document_id: UUID,
     request_data: AnnotationCoordinatesUpdateRequest,
@@ -170,7 +171,7 @@ async def update_annotation_coordinates_route(
                 "y": update.bbox.y,
                 "width": update.bbox.width,
                 "height": update.bbox.height,
-            }
+            },
         )
         if success:
             updated_count += 1

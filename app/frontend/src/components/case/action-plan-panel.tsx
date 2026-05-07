@@ -17,19 +17,9 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import {
-  CaseActionPlanData,
-  ObligationRecord,
-  getCaseActionPlan,
-} from "@/lib/api/client";
+import { CaseActionPlanData, ObligationRecord, getCaseActionPlan } from "@/lib/api/client";
 
 type ActionPlanPanelProps = {
   documentId: string;
@@ -38,10 +28,7 @@ type ActionPlanPanelProps = {
 
 const EMPTY_ACTION_ITEMS: ObligationRecord[] = [];
 
-export function ActionPlanPanel({
-  documentId,
-  onContinueToReview,
-}: ActionPlanPanelProps) {
+export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPanelProps) {
   const [actionPlan, setActionPlan] = useState<CaseActionPlanData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -143,9 +130,7 @@ export function ActionPlanPanel({
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">
-            Generated action plan
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-950">Generated action plan</h2>
           <p className="mt-1 text-sm text-slate-600">
             {actionPlan.total} item{actionPlan.total === 1 ? "" : "s"} extracted for review
           </p>
@@ -169,9 +154,7 @@ export function ActionPlanPanel({
       <section className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
-            Plan readiness
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900">Plan readiness</h3>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <Metric label="Total items" value={String(actionPlan.total)} />
@@ -185,7 +168,8 @@ export function ActionPlanPanel({
           <CheckCircle2 className="h-4 w-4" />
           <AlertTitle>No action items returned</AlertTitle>
           <AlertDescription>
-            Refresh after generation completes, or return to the summary stage and request the action plan again.
+            Refresh after generation completes, or return to the summary stage and request the
+            action plan again.
           </AlertDescription>
         </Alert>
       ) : (
@@ -201,11 +185,7 @@ export function ActionPlanPanel({
           <RefreshCw data-icon="inline-start" />
           Refresh action plan
         </Button>
-        <Button
-          type="button"
-          onClick={onContinueToReview}
-          disabled={!canContinue}
-        >
+        <Button type="button" onClick={onContinueToReview} disabled={!canContinue}>
           Continue to Review
           <ArrowRight data-icon="inline-end" />
         </Button>
@@ -214,17 +194,9 @@ export function ActionPlanPanel({
   );
 }
 
-function ActionPlanItemCard({
-  item,
-  index,
-}: {
-  item: ObligationRecord;
-  index: number;
-}) {
-  const confidencePercent =
-    item.confidence == null ? null : clampPercent(item.confidence * 100);
-  const needsHumanReview =
-    confidencePercent != null && confidencePercent < 70;
+function ActionPlanItemCard({ item, index }: { item: ObligationRecord; index: number }) {
+  const confidencePercent = item.confidence == null ? null : clampPercent(item.confidence * 100);
+  const needsHumanReview = confidencePercent != null && confidencePercent < 70;
 
   return (
     <Card className="shadow-none">
@@ -287,13 +259,38 @@ function ActionPlanItemCard({
             <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-slate-600">
               <span>Extraction confidence</span>
               <span className="flex flex-wrap items-center justify-end gap-2">
-                {needsHumanReview ? (
-                  <Badge variant="warn">Needs human review.</Badge>
-                ) : null}
+                {needsHumanReview ? <Badge variant="warn">Needs human review.</Badge> : null}
                 {confidencePercent}%
               </span>
             </div>
             <Progress value={confidencePercent} className="h-2" />
+            {item.confidence_annotations?.components &&
+            Object.keys(item.confidence_annotations.components).length > 0 ? (
+              <div className="mt-2 space-y-1">
+                {Object.entries(item.confidence_annotations.components).map(([key, val]) => (
+                  <div key={key} className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="w-32 shrink-0 capitalize">{key.replace(/_/g, " ")}</span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className={`h-full rounded-full ${val < 0.5 ? "bg-amber-400" : "bg-emerald-400"}`}
+                        style={{ width: `${Math.round(val * 100)}%` }}
+                      />
+                    </div>
+                    <span className="w-8 text-right tabular-nums">{Math.round(val * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {needsHumanReview && item.confidence_annotations?.rationale?.length ? (
+              <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+                {item.confidence_annotations.rationale.map((r, i) => (
+                  <li key={i} className="flex gap-1">
+                    <span className="shrink-0">•</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 
@@ -303,11 +300,7 @@ function ActionPlanItemCard({
   );
 }
 
-function SourceEvidence({
-  citation,
-}: {
-  citation: ObligationRecord["citation"];
-}) {
+function SourceEvidence({ citation }: { citation: ObligationRecord["citation"] }) {
   if (!citation) {
     return (
       <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-slate-500">
@@ -320,9 +313,7 @@ function SourceEvidence({
     <div className="rounded-md border border-slate-200 p-3">
       <div className="mb-2 flex items-center gap-2">
         <FileText className="h-4 w-4 text-slate-500" />
-        <p className="text-xs font-semibold uppercase text-slate-500">
-          Source evidence
-        </p>
+        <p className="text-xs font-semibold uppercase text-slate-500">Source evidence</p>
       </div>
       <div className="mb-2 flex flex-wrap gap-2">
         <Badge variant="outline">
@@ -363,9 +354,7 @@ function Detail({
         {icon}
         {label}
       </div>
-      <div className="break-words text-sm font-semibold text-slate-950">
-        {children}
-      </div>
+      <div className="break-words text-sm font-semibold text-slate-950">{children}</div>
     </div>
   );
 }

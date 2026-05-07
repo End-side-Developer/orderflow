@@ -56,9 +56,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def needs_rehash(hashed: str) -> bool:
     core_hash = (
-        hashed[len(_BCRYPT_SHA256_PREFIX) :]
-        if hashed.startswith(_BCRYPT_SHA256_PREFIX)
-        else hashed
+        hashed[len(_BCRYPT_SHA256_PREFIX) :] if hashed.startswith(_BCRYPT_SHA256_PREFIX) else hashed
     )
     rounds = _extract_bcrypt_rounds(core_hash)
     if rounds is None:

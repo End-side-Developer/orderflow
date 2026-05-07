@@ -220,7 +220,9 @@ def list_all_persisted_documents() -> list[DocumentRecord]:
 
 
 def find_document_by_checksum(checksum_sha256: str) -> DocumentRecord | None:
-    statement = sa.select(DOCUMENTS_TABLE).where(DOCUMENTS_TABLE.c.checksum_sha256 == checksum_sha256)
+    statement = sa.select(DOCUMENTS_TABLE).where(
+        DOCUMENTS_TABLE.c.checksum_sha256 == checksum_sha256
+    )
     with get_engine().connect() as connection:
         row = connection.execute(statement).mappings().first()
 

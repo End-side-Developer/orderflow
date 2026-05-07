@@ -11,4 +11,3 @@ declare module "react-leaflet" {
   export const TileLayer: any;
   export function useMap(): any;
 }
-

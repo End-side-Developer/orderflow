@@ -152,12 +152,14 @@ def _check_date_validity(payload: ProofPayload) -> CheckResult:
         reason="Proof timestamp falls within the compliance window.",
         details={
             "proof_timestamp": proof_dt.isoformat(),
-            "issued_date": payload.obligation_issued_date.isoformat()
-            if payload.obligation_issued_date
-            else None,
-            "due_date": payload.obligation_due_date.isoformat()
-            if payload.obligation_due_date
-            else None,
+            "issued_date": (
+                payload.obligation_issued_date.isoformat()
+                if payload.obligation_issued_date
+                else None
+            ),
+            "due_date": (
+                payload.obligation_due_date.isoformat() if payload.obligation_due_date else None
+            ),
         },
     )
 

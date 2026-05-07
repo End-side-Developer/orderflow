@@ -55,6 +55,7 @@ class PageAnnotationsEnvelope(BaseModel):
 
 class BboxSchema(BaseModel):
     """Bounding box schema."""
+
     x: float
     y: float
     width: float
@@ -63,22 +64,26 @@ class BboxSchema(BaseModel):
 
 class AnnotationCoordinateUpdate(BaseModel):
     """Request to update annotation coordinates."""
+
     annotation_id: UUID
     bbox: BboxSchema
 
 
 class AnnotationCoordinatesUpdateRequest(BaseModel):
     """Request body for updating multiple annotation coordinates."""
+
     updates: list[AnnotationCoordinateUpdate]
 
 
 class AnnotationCoordinatesUpdateData(BaseModel):
     """Response data for coordinate updates."""
+
     updated_count: int
 
 
 class AnnotationCoordinatesUpdateEnvelope(BaseModel):
     """Response envelope for coordinate updates."""
+
     ok: Literal[True] = True
     message: str = "ok"
     request_id: str | None = None

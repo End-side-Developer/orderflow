@@ -41,10 +41,10 @@ class DepartmentHealthRecord:
     open_escalations: int
     critical_escalations: int
     avg_risk_score: float
-    compliance_rate: float          # completed / total
-    breach_rate: float              # overdue / total
-    health_score: int               # 0..100
-    band: str                       # excellent / healthy / watch / at_risk
+    compliance_rate: float  # completed / total
+    breach_rate: float  # overdue / total
+    health_score: int  # 0..100
+    band: str  # excellent / healthy / watch / at_risk
     rationale: list[str]
 
 
@@ -179,15 +179,11 @@ def compute_department_health(
         completed = sum(1 for o in obligations if o.status == "completed")
         overdue = sum(1 for o in obligations if _is_overdue(o))
         pending_review = sum(1 for o in obligations if o.review_state == "pending_review")
-        open_escalations = sum(
-            1 for o in obligations if bool(o.escalation and o.escalation.open)
-        )
+        open_escalations = sum(1 for o in obligations if bool(o.escalation and o.escalation.open))
         critical_escalations = sum(
             1
             for o in obligations
-            if bool(
-                o.escalation and o.escalation.open and o.escalation.level == "critical"
-            )
+            if bool(o.escalation and o.escalation.open and o.escalation.level == "critical")
         )
 
         risk_values = [
@@ -217,17 +213,11 @@ def compute_department_health(
                 f"{35 * breach_rate:.1f} pts."
             )
         if avg_risk > 0:
-            rationale.append(
-                f"Average contempt-risk {avg_risk:.0f}/100 across open items."
-            )
+            rationale.append(f"Average contempt-risk {avg_risk:.0f}/100 across open items.")
         if critical_rate > 0:
-            rationale.append(
-                f"Critical escalations {critical_rate * 100:.0f}% of portfolio."
-            )
+            rationale.append(f"Critical escalations {critical_rate * 100:.0f}% of portfolio.")
         if review_rate > 0:
-            rationale.append(
-                f"Pending-review backlog {review_rate * 100:.0f}% of portfolio."
-            )
+            rationale.append(f"Pending-review backlog {review_rate * 100:.0f}% of portfolio.")
         if not rationale:
             rationale.append("Department is in good standing — no negative signals.")
 

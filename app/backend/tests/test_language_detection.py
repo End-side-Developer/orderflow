@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from orderflow_api.core.language_service import (
     detect_language,
     get_language_name,

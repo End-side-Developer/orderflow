@@ -2,6 +2,7 @@
 
 All persistence and service calls are monkeypatched so no real DB is needed.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -112,9 +113,7 @@ def test_register_duplicate_bar_council_id_returns_409(
     monkeypatch.setattr(
         auth_service,
         "register_citizen_or_advocate",
-        MagicMock(
-            side_effect=user_persistence.BarCouncilIdAlreadyRegistered("taken")
-        ),
+        MagicMock(side_effect=user_persistence.BarCouncilIdAlreadyRegistered("taken")),
     )
     resp = _client.post(
         f"{_BASE}/register",

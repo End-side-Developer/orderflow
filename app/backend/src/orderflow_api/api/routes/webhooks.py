@@ -38,9 +38,7 @@ async def ccms_webhook_route(
                 reference_id=event.reference_id,
                 identifier=event.identifier,
                 document_type=event.document_type,
-                delivery_timestamp=(
-                    event.delivery_timestamp or datetime.now(timezone.utc)
-                ),
+                delivery_timestamp=(event.delivery_timestamp or datetime.now(timezone.utc)),
                 source_gateway=event.source_gateway,
             )
         )

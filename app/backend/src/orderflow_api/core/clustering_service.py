@@ -33,8 +33,8 @@ class SimilarObligation:
     obligation_id: UUID
     document_id: UUID
     title: str
-    distance: float           # cosine distance (smaller = more similar)
-    similarity: float         # 1 - distance
+    distance: float  # cosine distance (smaller = more similar)
+    similarity: float  # 1 - distance
 
 
 def _vector_literal(vec: list[float]) -> str:
@@ -54,16 +54,13 @@ def embed_obligation_text(title: str, description: str | None) -> list[float]:
     return embedding_service.embed_text(text)
 
 
-def write_obligation_embedding(
-    obligation_id: UUID, embedding: list[float]
-) -> bool:
+def write_obligation_embedding(obligation_id: UUID, embedding: list[float]) -> bool:
     """Write the embedding for a single obligation. Returns success."""
     try:
         with get_engine().begin() as connection:
             connection.execute(
                 sa.text(
-                    "UPDATE obligations SET embedding = CAST(:vec AS vector) "
-                    "WHERE id = :oid"
+                    "UPDATE obligations SET embedding = CAST(:vec AS vector) " "WHERE id = :oid"
                 ),
                 {"vec": _vector_literal(embedding), "oid": str(obligation_id)},
             )
@@ -84,14 +81,18 @@ def backfill_missing_embeddings(limit: int = 500) -> int:
     """
     try:
         with get_engine().connect() as connection:
-            rows = connection.execute(
-                sa.text(
-                    "SELECT id, title, description FROM obligations "
-                    "WHERE embedding IS NULL "
-                    "LIMIT :lim"
-                ),
-                {"lim": limit},
-            ).mappings().fetchall()
+            rows = (
+                connection.execute(
+                    sa.text(
+                        "SELECT id, title, description FROM obligations "
+                        "WHERE embedding IS NULL "
+                        "LIMIT :lim"
+                    ),
+                    {"lim": limit},
+                )
+                .mappings()
+                .fetchall()
+            )
     except Exception as exc:
         logger.warning("Backfill scan failed: %s", exc)
         return 0
@@ -107,18 +108,17 @@ def backfill_missing_embeddings(limit: int = 500) -> int:
     return updated
 
 
-def find_similar_obligations(
-    obligation_id: UUID, k: int = 5
-) -> list[SimilarObligation]:
+def find_similar_obligations(obligation_id: UUID, k: int = 5) -> list[SimilarObligation]:
     """Cosine-NN search for obligations similar to the target.
 
     Excludes the target itself. Returns up to k results.
     """
     try:
         with get_engine().connect() as connection:
-            rows = connection.execute(
-                sa.text(
-                    """
+            rows = (
+                connection.execute(
+                    sa.text(
+                        """
                     SELECT
                         o.id AS obligation_id,
                         o.document_id,
@@ -134,9 +134,12 @@ def find_similar_obligations(
                     ORDER BY distance ASC
                     LIMIT :k
                     """
-                ),
-                {"oid": str(obligation_id), "k": k},
-            ).mappings().fetchall()
+                    ),
+                    {"oid": str(obligation_id), "k": k},
+                )
+                .mappings()
+                .fetchall()
+            )
     except Exception as exc:
         logger.warning("Similar-obligation search failed: %s", exc)
         return []
@@ -160,9 +163,10 @@ def find_similar_to_text(text: str, k: int = 5) -> list[SimilarObligation]:
     embedding = embedding_service.embed_text(text)
     try:
         with get_engine().connect() as connection:
-            rows = connection.execute(
-                sa.text(
-                    """
+            rows = (
+                connection.execute(
+                    sa.text(
+                        """
                     SELECT
                         id AS obligation_id,
                         document_id,
@@ -173,9 +177,12 @@ def find_similar_to_text(text: str, k: int = 5) -> list[SimilarObligation]:
                     ORDER BY distance ASC
                     LIMIT :k
                     """
-                ),
-                {"vec": _vector_literal(embedding), "k": k},
-            ).mappings().fetchall()
+                    ),
+                    {"vec": _vector_literal(embedding), "k": k},
+                )
+                .mappings()
+                .fetchall()
+            )
     except Exception as exc:
         logger.warning("Text-similarity search failed: %s", exc)
         return []
@@ -192,9 +199,7 @@ def find_similar_to_text(text: str, k: int = 5) -> list[SimilarObligation]:
     ]
 
 
-def write_embeddings_for_new_obligations(
-    items: Iterable
-) -> int:
+def write_embeddings_for_new_obligations(items: Iterable) -> int:
     """Convenience helper called after a batch insert to populate embeddings."""
     count = 0
     for o in items:

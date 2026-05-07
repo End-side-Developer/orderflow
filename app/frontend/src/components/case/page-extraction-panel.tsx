@@ -50,23 +50,26 @@ export function PageExtractionPanel({
   const cacheStatus = progress?.current_page_cache_status ?? excerpt.cacheStatus;
   const ocrStatus = buildOcrStatus(progress?.current_page_excerpt ?? null);
   const isPaused = Boolean(progress?.is_paused ?? progress?.paused_until);
-  
-  // Automatically calculate target time for countdown
+
+  const pausedUntil = progress?.paused_until ?? null;
+  const updatedAt = progress?.updated_at ?? null;
+  const retryAfterSeconds = progress?.retry_after_seconds ?? null;
+
   const targetDate = useMemo(() => {
-    if (progress?.paused_until) {
-      return new Date(progress.paused_until);
+    if (pausedUntil) {
+      return new Date(pausedUntil);
     }
-    if (progress?.updated_at && progress?.retry_after_seconds) {
-      return new Date(new Date(progress.updated_at).getTime() + progress.retry_after_seconds * 1000);
+    if (updatedAt && retryAfterSeconds) {
+      return new Date(new Date(updatedAt).getTime() + retryAfterSeconds * 1000);
     }
     return null;
-  }, [progress?.paused_until, progress?.updated_at, progress?.retry_after_seconds]);
+  }, [pausedUntil, updatedAt, retryAfterSeconds]);
 
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(progress?.retry_after_seconds ?? null);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(retryAfterSeconds);
 
   useEffect(() => {
     if (!targetDate) {
-      setRemainingSeconds(progress?.retry_after_seconds ?? null);
+      setRemainingSeconds(retryAfterSeconds);
       return;
     }
     const updateTimer = () => {
@@ -76,21 +79,18 @@ export function PageExtractionPanel({
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [targetDate?.getTime(), progress?.retry_after_seconds]);
+  }, [targetDate, retryAfterSeconds]);
 
-  const retryMessage = remainingSeconds !== null 
-    ? `Retrying in ${remainingSeconds}s.` 
-    : (progress?.paused_until ? `Paused until ${formatDate(progress?.paused_until)}.` : null);
+  const retryMessage =
+    remainingSeconds !== null
+      ? `Retrying in ${remainingSeconds}s.`
+      : progress?.paused_until
+        ? `Paused until ${formatDate(progress?.paused_until)}.`
+        : null;
 
-  const failureReason = recordStringValue(
-    progress?.current_page_excerpt,
-    "error_message",
-  );
+  const failureReason = recordStringValue(progress?.current_page_excerpt, "error_message");
   const failureCode = recordStringValue(progress?.current_page_excerpt, "error_code");
-  const technicalError = recordStringValue(
-    progress?.current_page_excerpt,
-    "technical_error_type",
-  );
+  const technicalError = recordStringValue(progress?.current_page_excerpt, "technical_error_type");
   const aiProvider = recordStringValue(progress?.current_page_excerpt, "ai_provider");
   const aiModel = recordStringValue(progress?.current_page_excerpt, "ai_model");
   const canStart = !progress || stage === "pending";
@@ -107,9 +107,7 @@ export function PageExtractionPanel({
         setActionError(response.error.message);
       }
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "Could not start intake.",
-      );
+      setActionError(error instanceof Error ? error.message : "Could not start intake.");
     } finally {
       setIsStarting(false);
     }
@@ -124,9 +122,7 @@ export function PageExtractionPanel({
         setActionError(response.error.message);
       }
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "Could not continue.",
-      );
+      setActionError(error instanceof Error ? error.message : "Could not continue.");
     } finally {
       setIsContinuing(false);
     }
@@ -136,21 +132,13 @@ export function PageExtractionPanel({
     <div className="flex min-h-full flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">
-            Page extraction
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            {statusMessage}
-          </p>
+          <h2 className="text-lg font-semibold text-slate-950">Page extraction</h2>
+          <p className="mt-1 text-sm text-slate-600">{statusMessage}</p>
           {progress?.next_action ? (
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              Next: {progress.next_action}
-            </p>
+            <p className="mt-1 text-xs font-medium text-slate-500">Next: {progress.next_action}</p>
           ) : null}
         </div>
-        <Badge variant={canContinue ? "good" : "secondary"}>
-          {stage.replaceAll("_", " ")}
-        </Badge>
+        <Badge variant={canContinue ? "good" : "secondary"}>{stage.replaceAll("_", " ")}</Badge>
         <Badge variant={isPolling ? "muted" : "good"}>
           {isPolling ? "Polling fallback" : "Live updates"}
         </Badge>
@@ -184,9 +172,7 @@ export function PageExtractionPanel({
 
       <div className="space-y-3 rounded-md border border-slate-200 p-4">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-slate-700">
-            Pages completed
-          </span>
+          <span className="text-sm font-medium text-slate-700">Pages completed</span>
           <span className="text-sm font-semibold tabular-nums text-slate-950">
             {pagesCompleted} / {pagesTotal || "-"}
           </span>
@@ -202,9 +188,7 @@ export function PageExtractionPanel({
       <div className="rounded-md border border-slate-200 p-4">
         <div className="mb-3 flex items-center gap-2">
           <FileText className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">
-            Current page excerpt
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900">Current page excerpt</h3>
         </div>
         <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
           {excerpt.text || "No excerpt available yet."}
@@ -225,7 +209,7 @@ export function PageExtractionPanel({
               </Button>
             </div>
 
-            {(failureCode || technicalError) ? (
+            {failureCode || technicalError ? (
               <div className="mt-2 text-rose-700">
                 {failureCode ? <div>Code: {failureCode}</div> : null}
                 {technicalError ? <div>Type: {technicalError}</div> : null}
@@ -288,11 +272,7 @@ export function PageExtractionPanel({
           onClick={() => void handleContinueToSummary()}
           disabled={!canContinue || isContinuing}
         >
-          {isContinuing ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <ArrowRight />
-          )}
+          {isContinuing ? <Loader2 className="animate-spin" /> : <ArrowRight />}
           Continue to Summary
         </Button>
       </div>
@@ -304,9 +284,7 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2">
       <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 font-semibold tabular-nums text-slate-950">
-        {value}
-      </div>
+      <div className="mt-1 font-semibold tabular-nums text-slate-950">{value}</div>
     </div>
   );
 }
@@ -344,7 +322,10 @@ function buildOcrStatus(excerpt: ExtractionJobCurrentPageExcerpt | null) {
   if (textSource === "ocr" || ocrStatus === "done") {
     return {
       label: `OCR complete${engine ? `: ${engine}` : ""}`,
-      detail: [confidence ? `Confidence ${confidence}` : null, language ? `Language ${language}` : null]
+      detail: [
+        confidence ? `Confidence ${confidence}` : null,
+        language ? `Language ${language}` : null,
+      ]
         .filter(Boolean)
         .join(" · "),
       error: null,

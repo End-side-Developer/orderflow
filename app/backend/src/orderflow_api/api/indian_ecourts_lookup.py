@@ -43,7 +43,9 @@ def lookup_indian_ecourts_prefill(identifier: str) -> IndianECourtsLookupRecord:
     if not cis_case_id and "/" in normalized_identifier:
         cis_case_id = normalized_identifier
 
-    order_date = _extract_order_date_from_text(pdf_text) or _extract_order_date_from_token(source_url)
+    order_date = _extract_order_date_from_text(pdf_text) or _extract_order_date_from_token(
+        source_url
+    )
     judge_names = _extract_judge_names(pdf_text)
     petitioners, respondents = _extract_parties(pdf_text)
     case_type = _derive_case_type_from_case_id(cis_case_id)
@@ -143,9 +145,7 @@ def _resolve_source_url(identifier: str) -> str:
                 return _normalize_dhc_judgment_url(link)
 
         sample_ids = sorted(_load_local_case_sample_map().keys())
-        sample_hint = (
-            ", ".join(sample_ids[:3]) if sample_ids else "no local samples loaded"
-        )
+        sample_hint = ", ".join(sample_ids[:3]) if sample_ids else "no local samples loaded"
         scrape_note = (
             "DHC latest-judgments fetch failed."
             if scrape_failed
@@ -486,8 +486,12 @@ def _extract_parties(text: str) -> tuple[list[str], list[str]]:
         flags=re.IGNORECASE | re.MULTILINE,
     )
 
-    petitioners = _unique_clean_party_names([match.group(1) for match in petitioner_pattern.finditer(text)])
-    respondents = _unique_clean_party_names([match.group(1) for match in respondent_pattern.finditer(text)])
+    petitioners = _unique_clean_party_names(
+        [match.group(1) for match in petitioner_pattern.finditer(text)]
+    )
+    respondents = _unique_clean_party_names(
+        [match.group(1) for match in respondent_pattern.finditer(text)]
+    )
 
     if petitioners or respondents:
         return petitioners, respondents
@@ -568,9 +572,7 @@ def _load_local_case_sample_map() -> dict[str, str]:
             continue
 
         cis_case_id = (
-            payload.get("cis", {}).get("case_id")
-            if isinstance(payload.get("cis"), dict)
-            else None
+            payload.get("cis", {}).get("case_id") if isinstance(payload.get("cis"), dict) else None
         )
         ccms_source_url = (
             payload.get("ccms", {}).get("source_url")

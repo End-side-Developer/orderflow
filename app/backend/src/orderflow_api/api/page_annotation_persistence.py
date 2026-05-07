@@ -62,12 +62,12 @@ def list_annotations(document_id: UUID, page_number: int | None = None) -> list[
     statement = sa.select(PAGE_ANNOTATIONS_TABLE).where(
         PAGE_ANNOTATIONS_TABLE.c.document_id == document_id
     )
-    
+
     if page_number is not None:
         statement = statement.where(PAGE_ANNOTATIONS_TABLE.c.page_number == page_number)
-    
+
     statement = statement.order_by(PAGE_ANNOTATIONS_TABLE.c.page_number)
-    
+
     with get_engine().connect() as connection:
         rows = connection.execute(statement).mappings().fetchall()
 

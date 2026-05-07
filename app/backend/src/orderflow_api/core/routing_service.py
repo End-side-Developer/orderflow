@@ -31,7 +31,7 @@ _OFFICER_FILE = _DATA_DIR / "officer_directory.json"
 class DepartmentMatch:
     code: str
     name: str
-    confidence: float           # 0..1
+    confidence: float  # 0..1
     matched_aliases: list[str]
 
 
@@ -50,7 +50,7 @@ class RoutingDecision:
     primary: DepartmentMatch | None
     candidates: list[DepartmentMatch]
     suggested_officers: list[OfficerSuggestion]
-    multi_department: bool   # true when 2+ departments scored above threshold
+    multi_department: bool  # true when 2+ departments scored above threshold
     rationale: str
 
 
@@ -60,9 +60,7 @@ def _load_departments() -> list[dict]:
         logger.warning("canonical_departments.json missing at %s", _DEPARTMENT_FILE)
         return []
     try:
-        return json.loads(_DEPARTMENT_FILE.read_text(encoding="utf-8")).get(
-            "departments", []
-        )
+        return json.loads(_DEPARTMENT_FILE.read_text(encoding="utf-8")).get("departments", [])
     except Exception as exc:
         logger.error("Failed to read canonical departments: %s", exc)
         return []
@@ -74,9 +72,7 @@ def _load_officers() -> list[dict]:
         logger.warning("officer_directory.json missing at %s", _OFFICER_FILE)
         return []
     try:
-        return json.loads(_OFFICER_FILE.read_text(encoding="utf-8")).get(
-            "officers", []
-        )
+        return json.loads(_OFFICER_FILE.read_text(encoding="utf-8")).get("officers", [])
     except Exception as exc:
         logger.error("Failed to read officer directory: %s", exc)
         return []

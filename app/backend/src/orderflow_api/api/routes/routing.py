@@ -46,14 +46,16 @@ async def route_route(
     )
 
     data = RouteDirectiveData(
-        primary=DepartmentMatchSchema(
-            code=decision.primary.code,
-            name=decision.primary.name,
-            confidence=decision.primary.confidence,
-            matched_aliases=decision.primary.matched_aliases,
-        )
-        if decision.primary is not None
-        else None,
+        primary=(
+            DepartmentMatchSchema(
+                code=decision.primary.code,
+                name=decision.primary.name,
+                confidence=decision.primary.confidence,
+                matched_aliases=decision.primary.matched_aliases,
+            )
+            if decision.primary is not None
+            else None
+        ),
         candidates=[
             DepartmentMatchSchema(
                 code=c.code,

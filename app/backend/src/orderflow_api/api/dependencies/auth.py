@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Iterable
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -94,13 +93,21 @@ def get_current_user(request: Request) -> UserRecord:
 
 def require_role(*roles: str | Role):
     """Dependency factory that allows only the given roles."""
-    allowed = {Role(r).value if isinstance(r, str) else r.value for r in roles}
+    allowed = {Role(r) if isinstance(r, str) else r for r in roles}
 
     def dependency(
         request: Request,
         user: UserRecord = Depends(get_current_user),
     ) -> UserRecord:
-        # All users can do all things without error
+        try:
+            user_role = Role(user.role)
+        except ValueError:
+            user_role = None
+        if user_role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "role_denied", "message": f"role {user.role!r} not allowed"},
+            )
         return user
 
     return dependency
@@ -113,7 +120,14 @@ def require_permission(permission: Permission | str):
         request: Request,
         user: UserRecord = Depends(get_current_user),
     ) -> UserRecord:
-        # All users can do all things without error
+        if not has_permission(user.role, perm):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "permission_denied",
+                    "message": f"missing permission: {perm}",
+                },
+            )
         return user
 
     return dependency
@@ -124,7 +138,6 @@ def require_self_or_role(path_param: str, *roles: str | Role):
     For paths like `/users/{user_id}` — allow if the caller is the same user,
     or if their role is in the allow-list.
     """
-    allowed = {Role(r).value if isinstance(r, str) else r.value for r in roles}
 
     def dependency(
         request: Request,

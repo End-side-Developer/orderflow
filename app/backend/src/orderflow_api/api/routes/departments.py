@@ -67,9 +67,7 @@ async def list_department_health_route(
         for r in records
     ]
 
-    avg = (
-        sum(item.health_score for item in items) / len(items) if items else 0.0
-    )
+    avg = sum(item.health_score for item in items) / len(items) if items else 0.0
 
     data = DepartmentHealthData(
         total_departments=len(items),

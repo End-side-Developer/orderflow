@@ -153,7 +153,7 @@ async def stream_case_intake_events_route(
     _user=Depends(require_permission(Permission.CASE_READ)),
 ) -> StreamingResponse:
     try:
-        job = get_job_status(document_id)
+        get_job_status(document_id)
     except IntakeOrchestratorError as exc:
         raise to_http_exception(exc) from exc
 
@@ -763,9 +763,11 @@ def _matches_metadata_filter(item: object, key: str, expected: str | None) -> bo
         return False
     candidates = [
         metadata.get(key),
-        (metadata.get("case_basics") or {}).get(key)
-        if isinstance(metadata.get("case_basics"), dict)
-        else None,
+        (
+            (metadata.get("case_basics") or {}).get(key)
+            if isinstance(metadata.get("case_basics"), dict)
+            else None
+        ),
     ]
     return any(_matches_text_filter(candidate, expected) for candidate in candidates)
 

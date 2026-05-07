@@ -257,9 +257,7 @@ def update_user_fields(
 
     with get_engine().begin() as connection:
         connection.execute(
-            sa.update(USERS_TABLE)
-            .where(USERS_TABLE.c.id == user_id)
-            .values(**values)
+            sa.update(USERS_TABLE).where(USERS_TABLE.c.id == user_id).values(**values)
         )
 
     return get_user_by_id(user_id)
@@ -293,9 +291,7 @@ def insert_refresh_token(
 
 
 def get_active_refresh_token(token_id: UUID) -> RowMapping | None:
-    statement = sa.select(REFRESH_TOKENS_TABLE).where(
-        REFRESH_TOKENS_TABLE.c.id == token_id
-    )
+    statement = sa.select(REFRESH_TOKENS_TABLE).where(REFRESH_TOKENS_TABLE.c.id == token_id)
     with get_engine().connect() as connection:
         return connection.execute(statement).mappings().first()
 
@@ -321,8 +317,9 @@ def revoke_refresh_chain(token_id: UUID) -> None:
         while cursor is not None and cursor not in visited:
             visited.add(cursor)
             row = connection.execute(
-                sa.select(REFRESH_TOKENS_TABLE.c.replaced_by)
-                .where(REFRESH_TOKENS_TABLE.c.id == cursor)
+                sa.select(REFRESH_TOKENS_TABLE.c.replaced_by).where(
+                    REFRESH_TOKENS_TABLE.c.id == cursor
+                )
             ).first()
             connection.execute(
                 sa.update(REFRESH_TOKENS_TABLE)
@@ -516,10 +513,14 @@ def get_advocate_profile(user_id: UUID) -> AdvocateProfileRecord | None:
     join = ADVOCATE_PROFILES_TABLE.join(
         USERS_TABLE, USERS_TABLE.c.id == ADVOCATE_PROFILES_TABLE.c.user_id
     )
-    statement = sa.select(
-        ADVOCATE_PROFILES_TABLE,
-        USERS_TABLE.c.full_name.label("full_name"),
-    ).select_from(join).where(ADVOCATE_PROFILES_TABLE.c.user_id == user_id)
+    statement = (
+        sa.select(
+            ADVOCATE_PROFILES_TABLE,
+            USERS_TABLE.c.full_name.label("full_name"),
+        )
+        .select_from(join)
+        .where(ADVOCATE_PROFILES_TABLE.c.user_id == user_id)
+    )
     with get_engine().connect() as connection:
         row = connection.execute(statement).mappings().first()
     return _to_advocate_record(row) if row is not None else None
@@ -546,13 +547,9 @@ def list_advocates(
 
     where_clauses: list[sa.sql.ColumnElement[bool]] = []
     if pending_only:
-        where_clauses.append(
-            ADVOCATE_PROFILES_TABLE.c.verification_status == "pending"
-        )
+        where_clauses.append(ADVOCATE_PROFILES_TABLE.c.verification_status == "pending")
     elif only_verified:
-        where_clauses.append(
-            ADVOCATE_PROFILES_TABLE.c.verification_status == "verified"
-        )
+        where_clauses.append(ADVOCATE_PROFILES_TABLE.c.verification_status == "verified")
     if specialization:
         where_clauses.append(
             ADVOCATE_PROFILES_TABLE.c.specializations.op("&&")(
@@ -578,9 +575,7 @@ def list_advocates(
             )
         )
     if min_experience is not None:
-        where_clauses.append(
-            ADVOCATE_PROFILES_TABLE.c.years_of_experience >= min_experience
-        )
+        where_clauses.append(ADVOCATE_PROFILES_TABLE.c.years_of_experience >= min_experience)
     if max_fee is not None:
         where_clauses.append(
             sa.or_(
@@ -673,25 +668,31 @@ def list_advocate_cases(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[int, list[AdvocateCaseLinkRecord]]:
-    join = CASE_ADVOCATES_TABLE.join(
-        DOCUMENTS_TABLE,
-        DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
-    ).outerjoin(
-        USERS_TABLE,
-        USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
-    ).outerjoin(
-        ADVOCATE_PROFILES_TABLE,
-        ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    join = (
+        CASE_ADVOCATES_TABLE.join(
+            DOCUMENTS_TABLE,
+            DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
+        )
+        .outerjoin(
+            USERS_TABLE,
+            USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+        )
+        .outerjoin(
+            ADVOCATE_PROFILES_TABLE,
+            ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+        )
     )
 
-    statement = sa.select(
-        CASE_ADVOCATES_TABLE,
-        DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
-        DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
-        USERS_TABLE.c.full_name.label("advocate_full_name"),
-        ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
-    ).select_from(join).where(
-        CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id
+    statement = (
+        sa.select(
+            CASE_ADVOCATES_TABLE,
+            DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
+            DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
+            USERS_TABLE.c.full_name.label("advocate_full_name"),
+            ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
+        )
+        .select_from(join)
+        .where(CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id)
     )
     if status is not None:
         statement = statement.where(CASE_ADVOCATES_TABLE.c.status == status)
@@ -718,25 +719,31 @@ def list_document_advocates(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[int, list[AdvocateCaseLinkRecord]]:
-    join = CASE_ADVOCATES_TABLE.join(
-        DOCUMENTS_TABLE,
-        DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
-    ).outerjoin(
-        USERS_TABLE,
-        USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
-    ).outerjoin(
-        ADVOCATE_PROFILES_TABLE,
-        ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    join = (
+        CASE_ADVOCATES_TABLE.join(
+            DOCUMENTS_TABLE,
+            DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
+        )
+        .outerjoin(
+            USERS_TABLE,
+            USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+        )
+        .outerjoin(
+            ADVOCATE_PROFILES_TABLE,
+            ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+        )
     )
 
-    statement = sa.select(
-        CASE_ADVOCATES_TABLE,
-        DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
-        DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
-        USERS_TABLE.c.full_name.label("advocate_full_name"),
-        ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
-    ).select_from(join).where(
-        CASE_ADVOCATES_TABLE.c.document_id == document_id
+    statement = (
+        sa.select(
+            CASE_ADVOCATES_TABLE,
+            DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
+            DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
+            USERS_TABLE.c.full_name.label("advocate_full_name"),
+            ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
+        )
+        .select_from(join)
+        .where(CASE_ADVOCATES_TABLE.c.document_id == document_id)
     )
     if status is not None:
         statement = statement.where(CASE_ADVOCATES_TABLE.c.status == status)
@@ -831,25 +838,33 @@ def get_advocate_case_link(
     advocate_user_id: UUID,
     document_id: UUID,
 ) -> AdvocateCaseLinkRecord | None:
-    join = CASE_ADVOCATES_TABLE.join(
-        DOCUMENTS_TABLE,
-        DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
-    ).outerjoin(
-        USERS_TABLE,
-        USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
-    ).outerjoin(
-        ADVOCATE_PROFILES_TABLE,
-        ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+    join = (
+        CASE_ADVOCATES_TABLE.join(
+            DOCUMENTS_TABLE,
+            DOCUMENTS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.document_id,
+        )
+        .outerjoin(
+            USERS_TABLE,
+            USERS_TABLE.c.id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+        )
+        .outerjoin(
+            ADVOCATE_PROFILES_TABLE,
+            ADVOCATE_PROFILES_TABLE.c.user_id == CASE_ADVOCATES_TABLE.c.advocate_user_id,
+        )
     )
-    statement = sa.select(
-        CASE_ADVOCATES_TABLE,
-        DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
-        DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
-        USERS_TABLE.c.full_name.label("advocate_full_name"),
-        ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
-    ).select_from(join).where(
-        CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id,
-        CASE_ADVOCATES_TABLE.c.document_id == document_id,
+    statement = (
+        sa.select(
+            CASE_ADVOCATES_TABLE,
+            DOCUMENTS_TABLE.c.source_file_name.label("document_title"),
+            DOCUMENTS_TABLE.c.metadata.label("document_metadata"),
+            USERS_TABLE.c.full_name.label("advocate_full_name"),
+            ADVOCATE_PROFILES_TABLE.c.photo_url.label("advocate_photo_url"),
+        )
+        .select_from(join)
+        .where(
+            CASE_ADVOCATES_TABLE.c.advocate_user_id == advocate_user_id,
+            CASE_ADVOCATES_TABLE.c.document_id == document_id,
+        )
     )
     with get_engine().connect() as connection:
         row = connection.execute(statement).mappings().first()
@@ -868,9 +883,15 @@ def _to_user_record(row: RowMapping | dict[str, Any]) -> UserRecord:
         full_name=row["full_name"],
         phone=row.get("phone") if isinstance(row, dict) else row["phone"],
         preferred_language=row["preferred_language"],
-        email_verified_at=row.get("email_verified_at") if isinstance(row, dict) else row["email_verified_at"],
+        email_verified_at=(
+            row.get("email_verified_at") if isinstance(row, dict) else row["email_verified_at"]
+        ),
         last_login_at=row.get("last_login_at") if isinstance(row, dict) else row["last_login_at"],
-        profile_metadata=dict(row.get("profile_metadata") or {}) if isinstance(row, dict) else dict(row["profile_metadata"] or {}),
+        profile_metadata=(
+            dict(row.get("profile_metadata") or {})
+            if isinstance(row, dict)
+            else dict(row["profile_metadata"] or {})
+        ),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

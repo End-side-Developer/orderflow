@@ -167,8 +167,12 @@ def _row_from_box(
         "id": payload.get("id") or uuid4(),
         "document_id": document_id,
         "page_number": max(1, int(payload.get("page_number") or 1)),
-        "source": _safe_choice(payload.get("source"), {"native_pdf", "ocr", "synthetic"}, "synthetic"),
-        "granularity": _safe_choice(payload.get("granularity"), {"char", "word", "line", "clause"}, "line"),
+        "source": _safe_choice(
+            payload.get("source"), {"native_pdf", "ocr", "synthetic"}, "synthetic"
+        ),
+        "granularity": _safe_choice(
+            payload.get("granularity"), {"char", "word", "line", "clause"}, "line"
+        ),
         "text": text,
         "normalized_text": _sanitize_text(payload.get("normalized_text")) or _normalize_text(text),
         "text_start": _safe_int(payload.get("text_start")),

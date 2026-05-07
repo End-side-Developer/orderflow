@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { getCaseIntakeEventsUrl, getCaseIntakeStatus, ExtractionJobStatusData } from "../api/client";
+import {
+  getCaseIntakeEventsUrl,
+  getCaseIntakeStatus,
+  ExtractionJobStatusData,
+} from "../api/client";
 
 export type UseIntakeProgressResult = {
   data: ExtractionJobStatusData | null;
@@ -64,10 +68,10 @@ export function useIntakeProgress(documentId: string | null): UseIntakeProgressR
 
     function startPolling() {
       if (pollIntervalRef.current) return;
-      
+
       fallbackPollingRef.current = true;
       setIsPolling(true);
-      
+
       pollIntervalRef.current = setInterval(async () => {
         try {
           const res = await getCaseIntakeStatus(documentId!);
@@ -115,7 +119,10 @@ export function useIntakeProgress(documentId: string | null): UseIntakeProgressR
         startPolling();
       };
     } catch (e) {
-      console.error("EventSource not supported or failed to initialize, falling back to polling", e);
+      console.error(
+        "EventSource not supported or failed to initialize, falling back to polling",
+        e,
+      );
       startPolling();
     }
 
@@ -140,9 +147,7 @@ function parseStatusEventData(rawData: string): ExtractionJobStatusData | null {
 
 function isExtractionJobStatusData(value: unknown): value is ExtractionJobStatusData {
   return (
-    isRecord(value) &&
-    typeof value.document_id === "string" &&
-    typeof value.stage === "string"
+    isRecord(value) && typeof value.document_id === "string" && typeof value.stage === "string"
   );
 }
 

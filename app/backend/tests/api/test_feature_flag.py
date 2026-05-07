@@ -8,6 +8,7 @@ Verifies:
   4. Flag ON, advocate token: routes requiring CASE_READ return 200.
   5. Flag ON, judge token: routes requiring OBLIGATION_WRITE return 200.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -40,7 +41,9 @@ def _stub_workbench_overview(monkeypatch: pytest.MonkeyPatch) -> None:
         documents=[],
         recent_activity=[],
     )
-    monkeypatch.setattr(workbench_service, "build_workbench_overview", MagicMock(return_value=empty))
+    monkeypatch.setattr(
+        workbench_service, "build_workbench_overview", MagicMock(return_value=empty)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,9 +64,8 @@ def test_flag_off_anonymous_audit_actor_is_system(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When no token is present and flag is off, actor_type must be 'system'."""
-    # We capture what actor info reaches the workbench service via request.state.
-    captured: dict = {}
 
+    # We capture what actor info reaches the workbench service via request.state.
     def fake_build_overview() -> WorkbenchOverviewData:
         # We cannot access request here directly, but we can verify via a route
         # that uses audit_actor_from_request. Instead test the dependency layer:
@@ -145,8 +147,6 @@ def test_flag_on_citizen_cannot_write_obligations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Citizen lacks OBLIGATION_WRITE → 403 on PATCH /obligations/{id}."""
-    import orderflow_api.api.extraction_persistence as ep
-
     citizen = make_user(role="citizen")
     monkeypatch.setattr(settings, "orderflow_auth_required", True)
     monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=citizen))

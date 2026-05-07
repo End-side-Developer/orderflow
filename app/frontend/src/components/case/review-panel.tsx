@@ -18,13 +18,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -96,9 +90,7 @@ export function ReviewPanel({
     } catch (requestError) {
       setActionPlan(null);
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not load review items.",
+        requestError instanceof Error ? requestError.message : "Could not load review items.",
       );
     } finally {
       setIsLoading(false);
@@ -125,9 +117,7 @@ export function ReviewPanel({
         if (cancelled) return;
         setActionPlan(null);
         setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Could not load review items.",
+          requestError instanceof Error ? requestError.message : "Could not load review items.",
         );
       })
       .finally(() => {
@@ -198,9 +188,7 @@ export function ReviewPanel({
               },
             }
           : {}),
-        ...(decision === "reject"
-          ? { rejection_reason: rejectionReason.trim() }
-          : {}),
+        ...(decision === "reject" ? { rejection_reason: rejectionReason.trim() } : {}),
       });
 
       if (response.ok) {
@@ -212,9 +200,7 @@ export function ReviewPanel({
       }
     } catch (requestError) {
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not submit review decision.",
+        requestError instanceof Error ? requestError.message : "Could not submit review decision.",
       );
     } finally {
       setPendingItemId(null);
@@ -247,9 +233,7 @@ export function ReviewPanel({
       }
     } catch (requestError) {
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not regenerate this item.",
+        requestError instanceof Error ? requestError.message : "Could not regenerate this item.",
       );
     } finally {
       setPendingItemId(null);
@@ -278,9 +262,7 @@ export function ReviewPanel({
       }
     } catch (requestError) {
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not finalize the case.",
+        requestError instanceof Error ? requestError.message : "Could not finalize the case.",
       );
     } finally {
       setIsFinalizing(false);
@@ -408,9 +390,7 @@ export function ReviewPanel({
         <Alert>
           <CheckCircle2 className="h-4 w-4" />
           <AlertTitle>No items need review</AlertTitle>
-          <AlertDescription>
-            Refresh after action-plan generation completes.
-          </AlertDescription>
+          <AlertDescription>Refresh after action-plan generation completes.</AlertDescription>
         </Alert>
       ) : (
         <div className="flex flex-col gap-3">
@@ -516,10 +496,8 @@ function ReviewItemCard({
 }) {
   const activeKind = activeForm?.itemId === item.id ? activeForm.kind : null;
   const citedPage = item.citation?.page_number ?? null;
-  const confidencePercent =
-    item.confidence == null ? null : clampPercent(item.confidence * 100);
-  const needsHumanReview =
-    confidencePercent != null && confidencePercent < 70;
+  const confidencePercent = item.confidence == null ? null : clampPercent(item.confidence * 100);
+  const needsHumanReview = confidencePercent != null && confidencePercent < 70;
 
   return (
     <Card className="shadow-none">
@@ -530,7 +508,8 @@ function ReviewItemCard({
               {index + 1}. {item.title}
             </CardTitle>
             <CardDescription className="mt-1 break-words">
-              {item.owner_hint || "Unassigned owner"} - {formatMachineLabel(item.nature_of_action ?? "other")}
+              {item.owner_hint || "Unassigned owner"} -{" "}
+              {formatMachineLabel(item.nature_of_action ?? "other")}
             </CardDescription>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -566,13 +545,38 @@ function ReviewItemCard({
             <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-slate-600">
               <span>Extraction confidence</span>
               <span className="flex flex-wrap items-center justify-end gap-2">
-                {needsHumanReview ? (
-                  <Badge variant="warn">Needs human review.</Badge>
-                ) : null}
+                {needsHumanReview ? <Badge variant="warn">Needs human review.</Badge> : null}
                 {confidencePercent}%
               </span>
             </div>
             <Progress value={confidencePercent} className="h-2" />
+            {item.confidence_annotations?.components &&
+            Object.keys(item.confidence_annotations.components).length > 0 ? (
+              <div className="mt-2 space-y-1">
+                {Object.entries(item.confidence_annotations.components).map(([key, val]) => (
+                  <div key={key} className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="w-32 shrink-0 capitalize">{key.replace(/_/g, " ")}</span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className={`h-full rounded-full ${val < 0.5 ? "bg-amber-400" : "bg-emerald-400"}`}
+                        style={{ width: `${Math.round(val * 100)}%` }}
+                      />
+                    </div>
+                    <span className="w-8 text-right tabular-nums">{Math.round(val * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {needsHumanReview && item.confidence_annotations?.rationale?.length ? (
+              <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+                {item.confidence_annotations.rationale.map((r, i) => (
+                  <li key={i} className="flex gap-1">
+                    <span className="shrink-0">•</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 
@@ -580,9 +584,7 @@ function ReviewItemCard({
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
-              <p className="text-xs font-semibold uppercase text-slate-500">
-                Cited source
-              </p>
+              <p className="text-xs font-semibold uppercase text-slate-500">Cited source</p>
             </div>
             <Button
               type="button"
@@ -650,13 +652,7 @@ function ReviewItemCard({
 
         {!activeKind ? (
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="good"
-              disabled={pending}
-              onClick={onApprove}
-            >
+            <Button type="button" size="sm" variant="good" disabled={pending} onClick={onApprove}>
               {pending ? <Loader2 className="animate-spin" /> : <Check data-icon="inline-start" />}
               Approve
             </Button>
@@ -730,17 +726,13 @@ function RegenerationFeedbackDialog({
         <div className="flex flex-col gap-4">
           <div className="rounded-md border border-slate-200 p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">
-                {item.obligation_code ?? item.id}
-              </Badge>
+              <Badge variant="secondary">{item.obligation_code ?? item.id}</Badge>
               <Badge variant="outline">Page {citedPage ?? "-"}</Badge>
               <Badge variant="muted">
                 Regenerated {item.regen_count} time{item.regen_count === 1 ? "" : "s"}
               </Badge>
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950">
-              {item.title}
-            </p>
+            <p className="break-words text-sm font-semibold text-slate-950">{item.title}</p>
             {item.description ? (
               <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-slate-600">
                 {item.description}
@@ -777,7 +769,11 @@ function RegenerationFeedbackDialog({
             Cancel
           </Button>
           <Button type="button" disabled={!canSubmit} onClick={onSubmit}>
-            {pending ? <Loader2 className="animate-spin" /> : <RotateCcw data-icon="inline-start" />}
+            {pending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <RotateCcw data-icon="inline-start" />
+            )}
             Regenerate item
           </Button>
         </DialogFooter>
@@ -818,13 +814,7 @@ function InlineForm({
           {pending ? <Loader2 className="animate-spin" /> : null}
           {submitLabel}
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={onCancel}
-        >
+        <Button type="button" size="sm" variant="outline" disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
       </div>

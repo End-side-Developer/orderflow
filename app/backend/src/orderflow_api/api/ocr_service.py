@@ -378,7 +378,9 @@ def _flatten_paddle_result(
                                 {
                                     "text": cleaned,
                                     "bbox": box,
-                                    "polygon": _polygon_from_sequence(rec_polys, idx, image_width, image_height),
+                                    "polygon": _polygon_from_sequence(
+                                        rec_polys, idx, image_width, image_height
+                                    ),
                                     "confidence": confidence,
                                     "granularity": "line",
                                     "source": "ocr",
@@ -409,7 +411,9 @@ def _flatten_paddle_result(
                             "text": cleaned,
                             "bbox": box,
                             "polygon": _normalize_polygon(candidate_box, image_width, image_height),
-                            "confidence": float(confidence) if isinstance(confidence, (int, float)) else None,
+                            "confidence": (
+                                float(confidence) if isinstance(confidence, (int, float)) else None
+                            ),
                             "granularity": "line",
                             "source": "ocr",
                         }
@@ -653,7 +657,9 @@ def _tesseract_boxes_and_confidence(
                 boxes.append(
                     {
                         "text": text,
-                        "bbox": _normalize_rect(left, top, width, height, image_width, image_height),
+                        "bbox": _normalize_rect(
+                            left, top, width, height, image_width, image_height
+                        ),
                         "polygon": None,
                         "confidence": normalized_confidence,
                         "granularity": "word",
@@ -701,7 +707,9 @@ def _ocr_result_is_usable(result: OcrPageResult, settings: Any) -> bool:
         return False
     if result.confidence is not None and result.confidence < min_confidence:
         return False
-    if _script_match_score(text, result.language_hint) < _min_script_match_score(result.language_hint):
+    if _script_match_score(text, result.language_hint) < _min_script_match_score(
+        result.language_hint
+    ):
         return False
     if _garbage_character_ratio(text) >= 0.18:
         return False

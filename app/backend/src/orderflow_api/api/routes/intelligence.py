@@ -19,7 +19,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from orderflow_api.api.dependencies.auth import require_permission
-from orderflow_api.api.response import success
 from orderflow_api.core.auth.permissions import Permission
 from orderflow_api.core.config import settings
 
@@ -45,15 +44,18 @@ class KeyEntity(BaseModel):
 # 3. Whether to file an appeal
 # 4. Understanding the limitation period for appeals
 
+
 class DirectiveItem(BaseModel):
     text: str
     page: int | None = None
     urgency: str = "standard"
 
+
 class ComplianceDecision(BaseModel):
     recommendation: str  # "comply" | "appeal" | "partial_comply" | "legal_review_required"
     rationale: str
     directives: list[DirectiveItem] = []
+
 
 class AppealAnalysis(BaseModel):
     should_appeal: bool
@@ -63,11 +65,13 @@ class AppealAnalysis(BaseModel):
     filing_deadline: str | None = None
     risk_if_not_appealed: str | None = None
 
+
 class ResponsibleAuthority(BaseModel):
     authority: str
     department: str
     role: str
     action_required: str
+
 
 class CriticalAction(BaseModel):
     action: str
@@ -75,6 +79,7 @@ class CriticalAction(BaseModel):
     owner: str
     priority: str  # "critical" | "high" | "medium"
     consequence_if_missed: str | None = None
+
 
 class CaseSummary(BaseModel):
     case_type: str | None = None
@@ -86,6 +91,7 @@ class CaseSummary(BaseModel):
 
 class ActionPlanItem(BaseModel):
     """Structured action plan item — the key differentiator for Theme 11."""
+
     action_id: str  # e.g. "AP-001"
     title: str
     description: str
@@ -107,6 +113,7 @@ class ActionPlanItem(BaseModel):
 
 class ActionPlanSummary(BaseModel):
     """High-level action plan summary with all items."""
+
     total_actions: int = 0
     critical_count: int = 0
     compliance_actions: int = 0
@@ -120,6 +127,7 @@ class JudgmentDecisionRequest(BaseModel):
     document_id: UUID
     full_text: str
     page_count: int = Field(default=1, ge=1)
+
 
 class JudgmentDecisionResponse(BaseModel):
     document_id: str
@@ -245,9 +253,8 @@ def _get_mock_judgment_decisions(text: str) -> dict:
     detected case attributes.
     """
     lowered = text.lower()
-    is_ssc_cgle_judgment = (
-        ("staff selection commission" in lowered or "ssc" in lowered)
-        and ("cgle" in lowered or "combined graduate level" in lowered or "8524/2025" in lowered)
+    is_ssc_cgle_judgment = ("staff selection commission" in lowered or "ssc" in lowered) and (
+        "cgle" in lowered or "combined graduate level" in lowered or "8524/2025" in lowered
     )
 
     if is_ssc_cgle_judgment:
@@ -360,7 +367,7 @@ def _ssc_cgle_2024_decision_payload() -> dict:
                 "authority": "Chairman, Staff Selection Commission",
                 "department": "Staff Selection Commission (SSC), New Delhi",
                 "role": "Apex authority responsible for the conduct, integrity and post-result "
-                        "communication of CGLE 2024.",
+                "communication of CGLE 2024.",
                 "action_required": (
                     "Place the judgment before the Commission, record acceptance of the Court's "
                     "observations on administrative stewardship, and approve a remediation roadmap "
@@ -371,7 +378,7 @@ def _ssc_cgle_2024_decision_payload() -> dict:
                 "authority": "Director (Examinations), SSC",
                 "department": "Examination Wing, SSC HQ",
                 "role": "Operational head of the CGLE pipeline, including answer-key publication "
-                        "and grace-marks moderation.",
+                "and grace-marks moderation.",
                 "action_required": (
                     "Issue an internal SOP that sequences Final Answer Key publication BEFORE "
                     "declaration of final result, and codify the conditions under which uniform "
@@ -412,7 +419,7 @@ def _ssc_cgle_2024_decision_payload() -> dict:
                 "authority": "Registrar, Central Administrative Tribunal (Principal Bench)",
                 "department": "Central Administrative Tribunal",
                 "role": "Custodian of the underlying records in O.A. Nos. 1102/2025, 1750/2025, "
-                        "1405/2025, 1408/2025, 1606/2025, 1814/2025 and 1943/2025.",
+                "1405/2025, 1408/2025, 1606/2025, 1814/2025 and 1943/2025.",
                 "action_required": (
                     "Place a certified copy of the High Court judgment on each of the seven "
                     "connected OA files and close the matters as upheld."
@@ -953,9 +960,7 @@ def _generic_decision_payload(text: str) -> dict:
                         "Non-compliance may result in penalties or contempt proceedings."
                     ),
                     "dependencies": ["AP-001"],
-                    "verification_method": (
-                        "Court registry acknowledgement of compliance report"
-                    ),
+                    "verification_method": ("Court registry acknowledgement of compliance report"),
                     "source_page": None,
                     "source_quote": None,
                 },
@@ -994,7 +999,9 @@ def _build_response_from_mock(
         document_id=document_id,
         compliance_decision=ComplianceDecision(**mock["compliance_decision"]),
         appeal_analysis=AppealAnalysis(**mock["appeal_analysis"]),
-        responsible_authorities=[ResponsibleAuthority(**ra) for ra in mock["responsible_authorities"]],
+        responsible_authorities=[
+            ResponsibleAuthority(**ra) for ra in mock["responsible_authorities"]
+        ],
         critical_actions=[CriticalAction(**ca) for ca in mock["critical_actions"]],
         action_plan=action_plan,
         case_summary=CaseSummary(**mock["case_summary"]),
@@ -1082,17 +1089,26 @@ async def get_judgment_decisions(
             # Parse action plan items safely
             ap_items_raw = ap.get("items", []) if isinstance(ap, dict) else []
             ap_items = [
-                ActionPlanItem(**item) for item in ap_items_raw
+                ActionPlanItem(**item)
+                for item in ap_items_raw
                 if isinstance(item, dict) and "action_id" in item and "title" in item
             ]
 
             action_plan = ActionPlanSummary(
-                total_actions=int(ap.get("total_actions", len(ap_items))) if isinstance(ap, dict) else len(ap_items),
+                total_actions=(
+                    int(ap.get("total_actions", len(ap_items)))
+                    if isinstance(ap, dict)
+                    else len(ap_items)
+                ),
                 critical_count=int(ap.get("critical_count", 0)) if isinstance(ap, dict) else 0,
-                compliance_actions=int(ap.get("compliance_actions", 0)) if isinstance(ap, dict) else 0,
+                compliance_actions=(
+                    int(ap.get("compliance_actions", 0)) if isinstance(ap, dict) else 0
+                ),
                 appeal_actions=int(ap.get("appeal_actions", 0)) if isinstance(ap, dict) else 0,
                 earliest_deadline=ap.get("earliest_deadline") if isinstance(ap, dict) else None,
-                departments_involved=ap.get("departments_involved", []) if isinstance(ap, dict) else [],
+                departments_involved=(
+                    ap.get("departments_involved", []) if isinstance(ap, dict) else []
+                ),
                 items=ap_items,
             )
 
@@ -1102,7 +1118,8 @@ async def get_judgment_decisions(
                     recommendation=cd.get("recommendation", "legal_review_required"),
                     rationale=cd.get("rationale", "AI analysis completed."),
                     directives=[
-                        DirectiveItem(**d) for d in cd.get("directives", [])
+                        DirectiveItem(**d)
+                        for d in cd.get("directives", [])
                         if isinstance(d, dict) and "text" in d
                     ],
                 ),
@@ -1115,12 +1132,12 @@ async def get_judgment_decisions(
                     risk_if_not_appealed=aa.get("risk_if_not_appealed"),
                 ),
                 responsible_authorities=[
-                    ResponsibleAuthority(**ra) for ra in ras
+                    ResponsibleAuthority(**ra)
+                    for ra in ras
                     if isinstance(ra, dict) and "authority" in ra
                 ],
                 critical_actions=[
-                    CriticalAction(**ca) for ca in cas
-                    if isinstance(ca, dict) and "action" in ca
+                    CriticalAction(**ca) for ca in cas if isinstance(ca, dict) and "action" in ca
                 ],
                 action_plan=action_plan,
                 case_summary=CaseSummary(
@@ -1173,7 +1190,9 @@ class PageInsightResponse(BaseModel):
     complexity_score: int | None = None  # 1-10
 
 
-def _post_json_insight(url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
+def _post_json_insight(
+    url: str, headers: dict[str, str], payload: dict[str, Any]
+) -> dict[str, Any]:
     base_headers = {
         "content-type": "application/json",
         "accept": "application/json",
@@ -1212,9 +1231,8 @@ def get_mock_insight(text: str, page_number: int) -> dict:
     aligns with the page in question. Otherwise, a generic envelope is used.
     """
     lowered = text.lower()
-    is_ssc_cgle_judgment = (
-        ("staff selection commission" in lowered or "ssc" in lowered)
-        and ("cgle" in lowered or "combined graduate level" in lowered or "8524/2025" in lowered)
+    is_ssc_cgle_judgment = ("staff selection commission" in lowered or "ssc" in lowered) and (
+        "cgle" in lowered or "combined graduate level" in lowered or "8524/2025" in lowered
     )
 
     if is_ssc_cgle_judgment:
@@ -1237,16 +1255,23 @@ def get_mock_insight(text: str, page_number: int) -> dict:
             {"name": "Court Registry", "role": "Administrative Body"},
         ],
         "important_dates": [
-            {"date": "As referenced in text", "description": "Filing date of the original petition"},
+            {
+                "date": "As referenced in text",
+                "description": "Filing date of the original petition",
+            },
             {"date": "Next hearing", "description": "Scheduled follow-up or compliance check"},
         ],
         "statistics": [
             {"label": "Word Count", "value": str(len(text.split()))},
-            {"label": "Clauses Found", "value": str(max(1, text.count('.') // 3))},
+            {"label": "Clauses Found", "value": str(max(1, text.count(".") // 3))},
             {"label": "Page", "value": str(page_number)},
         ],
         "procedural_flow": [
-            {"step": 1, "title": "Filing", "detail": "Petition or application filed before the court"},
+            {
+                "step": 1,
+                "title": "Filing",
+                "detail": "Petition or application filed before the court",
+            },
             {"step": 2, "title": "Notice", "detail": "Notice issued to respondent parties"},
             {"step": 3, "title": "Hearing", "detail": "Arguments heard from both sides"},
         ],
@@ -1294,9 +1319,21 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Page", "value": str(page_number)},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Lead petition filed", "detail": "W.P.(C) 8524/2025 filed by Devyanshu Suryavanshi & Ors."},
-                {"step": 2, "title": "Connected petitions", "detail": "Six other writ petitions raising identical questions tagged together."},
-                {"step": 3, "title": "Common hearing", "detail": "All matters heard together by the Division Bench."},
+                {
+                    "step": 1,
+                    "title": "Lead petition filed",
+                    "detail": "W.P.(C) 8524/2025 filed by Devyanshu Suryavanshi & Ors.",
+                },
+                {
+                    "step": 2,
+                    "title": "Connected petitions",
+                    "detail": "Six other writ petitions raising identical questions tagged together.",
+                },
+                {
+                    "step": 3,
+                    "title": "Common hearing",
+                    "detail": "All matters heard together by the Division Bench.",
+                },
             ],
             "page_category": "Procedural",
             "complexity_score": 3,
@@ -1320,13 +1357,25 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
             "key_entities": [
                 {"name": "Hon'ble Mr. Justice Anil Kshetarpal", "role": "Judge (authoring)"},
                 {"name": "Hon'ble Mr. Justice Amit Mahajan", "role": "Judge"},
-                {"name": "Mr. Gauhar Mirza", "role": "Counsel for petitioners (W.P.(C) 8524/2025 & 8525/2025)"},
-                {"name": "Ms. Arunima Dwivedi, CGSC", "role": "Counsel for SSC / Union (lead counsel)"},
+                {
+                    "name": "Mr. Gauhar Mirza",
+                    "role": "Counsel for petitioners (W.P.(C) 8524/2025 & 8525/2025)",
+                },
+                {
+                    "name": "Ms. Arunima Dwivedi, CGSC",
+                    "role": "Counsel for SSC / Union (lead counsel)",
+                },
                 {"name": "Mr. Jagdish Chandra, CGSC", "role": "Counsel for Union of India"},
-                {"name": "Central Administrative Tribunal, Principal Bench", "role": "Subordinate forum"},
+                {
+                    "name": "Central Administrative Tribunal, Principal Bench",
+                    "role": "Subordinate forum",
+                },
             ],
             "important_dates": [
-                {"date": "30.05.2025", "description": "Tribunal order dismissing OAs 1102, 1750, 1405, 1408 and 1814 of 2025"},
+                {
+                    "date": "30.05.2025",
+                    "description": "Tribunal order dismissing OAs 1102, 1750, 1405, 1408 and 1814 of 2025",
+                },
                 {"date": "17.07.2025", "description": "Tribunal order in O.A. 1606/2025"},
                 {"date": "11.08.2025", "description": "Tribunal order in O.A. 1943/2025"},
             ],
@@ -1336,9 +1385,21 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Page", "value": str(page_number)},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Tribunal hearing", "detail": "OAs heard and dismissed by CAT, Principal Bench."},
-                {"step": 2, "title": "Writ filing", "detail": "Petitioners moved the Delhi High Court under Articles 226/227."},
-                {"step": 3, "title": "Constitution of Bench", "detail": "Division Bench of Kshetarpal and Mahajan, JJ. constituted."},
+                {
+                    "step": 1,
+                    "title": "Tribunal hearing",
+                    "detail": "OAs heard and dismissed by CAT, Principal Bench.",
+                },
+                {
+                    "step": 2,
+                    "title": "Writ filing",
+                    "detail": "Petitioners moved the Delhi High Court under Articles 226/227.",
+                },
+                {
+                    "step": 3,
+                    "title": "Constitution of Bench",
+                    "detail": "Division Bench of Kshetarpal and Mahajan, JJ. constituted.",
+                },
             ],
             "page_category": "Procedural",
             "complexity_score": 4,
@@ -1363,15 +1424,30 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
             ),
             "key_entities": [
                 {"name": "Staff Selection Commission", "role": "Examining authority"},
-                {"name": "Subject Matter Experts (SME) Committee", "role": "Evaluation expert body"},
+                {
+                    "name": "Subject Matter Experts (SME) Committee",
+                    "role": "Evaluation expert body",
+                },
                 {"name": "CGLE 2024 candidates", "role": "Affected aspirants"},
             ],
             "important_dates": [
-                {"date": "24.06.2024", "description": "CGLE 2024 advertisement notifying ~17,727 vacancies"},
-                {"date": "September 2024", "description": "Tier-I Computer-Based Examination conducted"},
+                {
+                    "date": "24.06.2024",
+                    "description": "CGLE 2024 advertisement notifying ~17,727 vacancies",
+                },
+                {
+                    "date": "September 2024",
+                    "description": "Tier-I Computer-Based Examination conducted",
+                },
                 {"date": "05.12.2024", "description": "Tier-I results declared"},
-                {"date": "18.01.2025 & 20.01.2025", "description": "Tier-II Paper-I and Paper-II conducted"},
-                {"date": "31.01.2025", "description": "Data Entry Speed Test (Session-II) rescheduled after technical glitch"},
+                {
+                    "date": "18.01.2025 & 20.01.2025",
+                    "description": "Tier-II Paper-I and Paper-II conducted",
+                },
+                {
+                    "date": "31.01.2025",
+                    "description": "Data Entry Speed Test (Session-II) rescheduled after technical glitch",
+                },
                 {"date": "07.02.2019", "description": "SSC normalisation methodology notice"},
             ],
             "statistics": [
@@ -1380,9 +1456,21 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Page", "value": str(page_number)},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Notification", "detail": "CGLE 2024 advertised on 24.06.2024."},
-                {"step": 2, "title": "Tier-I CBT", "detail": "Conducted in September 2024; results 05.12.2024."},
-                {"step": 3, "title": "Tier-II", "detail": "Paper-I (18.01.2025), Paper-II (20.01.2025), DEST rescheduled to 31.01.2025."},
+                {
+                    "step": 1,
+                    "title": "Notification",
+                    "detail": "CGLE 2024 advertised on 24.06.2024.",
+                },
+                {
+                    "step": 2,
+                    "title": "Tier-I CBT",
+                    "detail": "Conducted in September 2024; results 05.12.2024.",
+                },
+                {
+                    "step": 3,
+                    "title": "Tier-II",
+                    "detail": "Paper-I (18.01.2025), Paper-II (20.01.2025), DEST rescheduled to 31.01.2025.",
+                },
             ],
             "page_category": "Factual",
             "complexity_score": 5,
@@ -1407,13 +1495,22 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "questions are recorded in the moderation log."
             ),
             "key_entities": [
-                {"name": "Subject Matter Experts (SMEs)", "role": "Final arbiters of the answer key"},
+                {
+                    "name": "Subject Matter Experts (SMEs)",
+                    "role": "Final arbiters of the answer key",
+                },
                 {"name": "Tribunal (CAT, Principal Bench)", "role": "First-instance forum"},
             ],
             "important_dates": [
                 {"date": "21.01.2025", "description": "Tentative Answer Key for Paper-I published"},
-                {"date": "12.03.2025", "description": "Final result declared for posts other than JSO/SI"},
-                {"date": "18.03.2025", "description": "Final Answer Key and final scores released; JSO/SI shortlist published"},
+                {
+                    "date": "12.03.2025",
+                    "description": "Final result declared for posts other than JSO/SI",
+                },
+                {
+                    "date": "18.03.2025",
+                    "description": "Final Answer Key and final scores released; JSO/SI shortlist published",
+                },
             ],
             "statistics": [
                 {"label": "Invalidated questions (18.01.2025)", "value": "9"},
@@ -1421,9 +1518,21 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Grace-marks questions", "value": "22"},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Tentative key", "detail": "Tentative Answer Key published 21.01.2025; objections invited."},
-                {"step": 2, "title": "Result first", "detail": "Final result declared 12.03.2025 (non-JSO/SI)."},
-                {"step": 3, "title": "Key after result", "detail": "Final Answer Key released 18.03.2025 — after final result declaration."},
+                {
+                    "step": 1,
+                    "title": "Tentative key",
+                    "detail": "Tentative Answer Key published 21.01.2025; objections invited.",
+                },
+                {
+                    "step": 2,
+                    "title": "Result first",
+                    "detail": "Final result declared 12.03.2025 (non-JSO/SI).",
+                },
+                {
+                    "step": 3,
+                    "title": "Key after result",
+                    "detail": "Final Answer Key released 18.03.2025 — after final result declaration.",
+                },
             ],
             "page_category": "Factual",
             "complexity_score": 6,
@@ -1445,10 +1554,22 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "distinguishes CLAT-line cases (law) from CGLE (multi-disciplinary)."
             ),
             "key_entities": [
-                {"name": "SSC v. Shubham Pal", "role": "Cited precedent (2025 SCC OnLine Del 7145)"},
-                {"name": "Shivraj Sharma v. Consortium of NLUs", "role": "Cited precedent (2025:DHC:2838-DB)"},
-                {"name": "Siddhi Sandeep Ladda v. Consortium of NLUs", "role": "Cited precedent (2025 INSC 714)"},
-                {"name": "Salil Maheshwari v. High Court of Delhi", "role": "Cited precedent (2014 SCC OnLine Del 4563)"},
+                {
+                    "name": "SSC v. Shubham Pal",
+                    "role": "Cited precedent (2025 SCC OnLine Del 7145)",
+                },
+                {
+                    "name": "Shivraj Sharma v. Consortium of NLUs",
+                    "role": "Cited precedent (2025:DHC:2838-DB)",
+                },
+                {
+                    "name": "Siddhi Sandeep Ladda v. Consortium of NLUs",
+                    "role": "Cited precedent (2025 INSC 714)",
+                },
+                {
+                    "name": "Salil Maheshwari v. High Court of Delhi",
+                    "role": "Cited precedent (2014 SCC OnLine Del 4563)",
+                },
             ],
             "important_dates": [],
             "statistics": [
@@ -1456,8 +1577,16 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Page", "value": str(page_number)},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Petitioners' framework", "detail": "Judicial review applies to academic evaluation in defined situations."},
-                {"step": 2, "title": "Authorities cited", "detail": "Reliance on CLAT-line cases and Salil Maheshwari."},
+                {
+                    "step": 1,
+                    "title": "Petitioners' framework",
+                    "detail": "Judicial review applies to academic evaluation in defined situations.",
+                },
+                {
+                    "step": 2,
+                    "title": "Authorities cited",
+                    "detail": "Reliance on CLAT-line cases and Salil Maheshwari.",
+                },
             ],
             "page_category": "Argument",
             "complexity_score": 6,
@@ -1482,22 +1611,46 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
             ),
             "key_entities": [
                 {"name": "SSC notice dated 07.02.2019", "role": "Normalisation methodology"},
-                {"name": "Guru Nanak Dev University v. Saumil Garg", "role": "Petitioners' authority for limiting benefit to attempters"},
-                {"name": "Mahesh Kumar v. SSC", "role": "Respondents' authority for judicial restraint"},
-                {"name": "Ran Vijay Singh v. State of UP", "role": "Respondents' authority — Supreme Court (2018) 2 SCC 357"},
+                {
+                    "name": "Guru Nanak Dev University v. Saumil Garg",
+                    "role": "Petitioners' authority for limiting benefit to attempters",
+                },
+                {
+                    "name": "Mahesh Kumar v. SSC",
+                    "role": "Respondents' authority for judicial restraint",
+                },
+                {
+                    "name": "Ran Vijay Singh v. State of UP",
+                    "role": "Respondents' authority — Supreme Court (2018) 2 SCC 357",
+                },
                 {"name": "Ashish Singh v. UOI", "role": "Respondents' authority (2023:DHC:000778)"},
             ],
             "important_dates": [
                 {"date": "07.02.2019", "description": "SSC normalisation methodology notice"},
             ],
             "statistics": [
-                {"label": "Question IDs specifically pleaded", "value": "2 (Maths Q.630680674736; English Q.630680522658)"},
+                {
+                    "label": "Question IDs specifically pleaded",
+                    "value": "2 (Maths Q.630680674736; English Q.630680522658)",
+                },
                 {"label": "Respondent authorities", "value": "4"},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Normalisation challenge", "detail": "Alleged deviation from the 07.02.2019 methodology."},
-                {"step": 2, "title": "Equity challenge", "detail": "Marks awarded to non-attempters violate level playing field."},
-                {"step": 3, "title": "Specific instances", "detail": "Two question IDs flagged with typographical errors."},
+                {
+                    "step": 1,
+                    "title": "Normalisation challenge",
+                    "detail": "Alleged deviation from the 07.02.2019 methodology.",
+                },
+                {
+                    "step": 2,
+                    "title": "Equity challenge",
+                    "detail": "Marks awarded to non-attempters violate level playing field.",
+                },
+                {
+                    "step": 3,
+                    "title": "Specific instances",
+                    "detail": "Two question IDs flagged with typographical errors.",
+                },
             ],
             "page_category": "Argument",
             "complexity_score": 7,
@@ -1518,8 +1671,14 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "convert the Court into an appellate evaluator."
             ),
             "key_entities": [
-                {"name": "Freya Kothari v. Union of India", "role": "Respondents' authority (W.P.(C) 13668/2022)"},
-                {"name": "Articles 226 and 227", "role": "Constitutional source of writ jurisdiction"},
+                {
+                    "name": "Freya Kothari v. Union of India",
+                    "role": "Respondents' authority (W.P.(C) 13668/2022)",
+                },
+                {
+                    "name": "Articles 226 and 227",
+                    "role": "Constitutional source of writ jurisdiction",
+                },
             ],
             "important_dates": [],
             "statistics": [
@@ -1527,8 +1686,16 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Page", "value": str(page_number)},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Issue framed", "detail": "Whether Tribunal's restraint was correct."},
-                {"step": 2, "title": "Standard articulated", "detail": "Patent illegality / arbitrariness threshold."},
+                {
+                    "step": 1,
+                    "title": "Issue framed",
+                    "detail": "Whether Tribunal's restraint was correct.",
+                },
+                {
+                    "step": 2,
+                    "title": "Standard articulated",
+                    "detail": "Patent illegality / arbitrariness threshold.",
+                },
             ],
             "page_category": "Legal Analysis",
             "complexity_score": 7,
@@ -1550,16 +1717,34 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
             ),
             "key_entities": [
                 {"name": "SLP(C) 1951/2022", "role": "Supreme Court affirmation of Mahesh Kumar"},
-                {"name": "Freya Kothari, Salil Maheshwari, Ashish Singh", "role": "Concurring lines of authority"},
+                {
+                    "name": "Freya Kothari, Salil Maheshwari, Ashish Singh",
+                    "role": "Concurring lines of authority",
+                },
             ],
             "important_dates": [],
             "statistics": [
-                {"label": "Concurring authorities", "value": "4 (Mahesh Kumar, Freya Kothari, Salil Maheshwari, Ashish Singh)"},
+                {
+                    "label": "Concurring authorities",
+                    "value": "4 (Mahesh Kumar, Freya Kothari, Salil Maheshwari, Ashish Singh)",
+                },
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Presumption of correctness", "detail": "Attaches to expert evaluation."},
-                {"step": 2, "title": "Benefit of doubt", "detail": "Goes to the examining authority."},
-                {"step": 3, "title": "Sympathy not a basis", "detail": "Compassion cannot guide intervention."},
+                {
+                    "step": 1,
+                    "title": "Presumption of correctness",
+                    "detail": "Attaches to expert evaluation.",
+                },
+                {
+                    "step": 2,
+                    "title": "Benefit of doubt",
+                    "detail": "Goes to the examining authority.",
+                },
+                {
+                    "step": 3,
+                    "title": "Sympathy not a basis",
+                    "detail": "Compassion cannot guide intervention.",
+                },
             ],
             "page_category": "Legal Analysis",
             "complexity_score": 7,
@@ -1582,16 +1767,31 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
             ),
             "key_entities": [
                 {"name": "Common Law Admission Test (CLAT)", "role": "Distinguishing context"},
-                {"name": "CGLE 2024 disciplines", "role": "Mathematics, English, History, Logical Reasoning, Chemistry, General Science"},
+                {
+                    "name": "CGLE 2024 disciplines",
+                    "role": "Mathematics, English, History, Logical Reasoning, Chemistry, General Science",
+                },
             ],
             "important_dates": [],
             "statistics": [
                 {"label": "Disciplines covered by CGLE", "value": "6+"},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Distinguish CLAT", "detail": "Law is within judicial expertise; multi-disciplinary exams are not."},
-                {"step": 2, "title": "Negative marking logic", "detail": "Discerning candidates may skip ambiguous questions to avoid penalty."},
-                {"step": 3, "title": "Policy must remain exception", "detail": "Cannot mask systemic deficiencies in question-setting."},
+                {
+                    "step": 1,
+                    "title": "Distinguish CLAT",
+                    "detail": "Law is within judicial expertise; multi-disciplinary exams are not.",
+                },
+                {
+                    "step": 2,
+                    "title": "Negative marking logic",
+                    "detail": "Discerning candidates may skip ambiguous questions to avoid penalty.",
+                },
+                {
+                    "step": 3,
+                    "title": "Policy must remain exception",
+                    "detail": "Cannot mask systemic deficiencies in question-setting.",
+                },
             ],
             "page_category": "Legal Analysis",
             "complexity_score": 8,
@@ -1613,18 +1813,39 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "next CGLE cycle as exemplars of avoidable typographical errors."
             ),
             "key_entities": [
-                {"name": "Guru Nanak Dev University v. Saumil Garg", "role": "Distinguished precedent (2005) 13 SCC 749"},
-                {"name": "Question ID 630680674736", "role": "Mathematics — flagged with typographical error"},
-                {"name": "Question ID 630680522658", "role": "English — flagged with typographical error"},
+                {
+                    "name": "Guru Nanak Dev University v. Saumil Garg",
+                    "role": "Distinguished precedent (2005) 13 SCC 749",
+                },
+                {
+                    "name": "Question ID 630680674736",
+                    "role": "Mathematics — flagged with typographical error",
+                },
+                {
+                    "name": "Question ID 630680522658",
+                    "role": "English — flagged with typographical error",
+                },
             ],
             "important_dates": [],
             "statistics": [
                 {"label": "Specific defects acknowledged", "value": "2"},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Distinguish Saumil Garg", "detail": "No negative marking; small-scale exam."},
-                {"step": 2, "title": "Acknowledge defects", "detail": "Two question IDs noted for typographical error."},
-                {"step": 3, "title": "Defer to SMEs", "detail": "Court cannot substitute its assessment for SMEs once treated as ambiguous."},
+                {
+                    "step": 1,
+                    "title": "Distinguish Saumil Garg",
+                    "detail": "No negative marking; small-scale exam.",
+                },
+                {
+                    "step": 2,
+                    "title": "Acknowledge defects",
+                    "detail": "Two question IDs noted for typographical error.",
+                },
+                {
+                    "step": 3,
+                    "title": "Defer to SMEs",
+                    "detail": "Court cannot substitute its assessment for SMEs once treated as ambiguous.",
+                },
             ],
             "page_category": "Legal Analysis",
             "complexity_score": 8,
@@ -1647,8 +1868,14 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "in SSC's reform roadmap."
             ),
             "key_entities": [
-                {"name": "Subject Matter Experts (SMEs)", "role": "Evaluation experts whose performance was criticised"},
-                {"name": "Translation Cell, SSC", "role": "Implicated by the 'translation parity' observation"},
+                {
+                    "name": "Subject Matter Experts (SMEs)",
+                    "role": "Evaluation experts whose performance was criticised",
+                },
+                {
+                    "name": "Translation Cell, SSC",
+                    "role": "Implicated by the 'translation parity' observation",
+                },
             ],
             "important_dates": [],
             "statistics": [
@@ -1656,9 +1883,21 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"label": "Page", "value": str(page_number)},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Bench's own examination", "detail": "Independent review of questions and SME reasoning."},
-                {"step": 2, "title": "Administrative stewardship", "detail": "Strong critique of SSC's casualness."},
-                {"step": 3, "title": "Sequence problem", "detail": "Result before Final Answer Key insulated decision-making."},
+                {
+                    "step": 1,
+                    "title": "Bench's own examination",
+                    "detail": "Independent review of questions and SME reasoning.",
+                },
+                {
+                    "step": 2,
+                    "title": "Administrative stewardship",
+                    "detail": "Strong critique of SSC's casualness.",
+                },
+                {
+                    "step": 3,
+                    "title": "Sequence problem",
+                    "detail": "Result before Final Answer Key insulated decision-making.",
+                },
             ],
             "page_category": "Legal Analysis",
             "complexity_score": 8,
@@ -1680,17 +1919,35 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "(SOP, codified objection-handling, translation parity audit)."
             ),
             "key_entities": [
-                {"name": "SSC Director (Examinations)", "role": "Owner of the SOP recommended by the Court"},
+                {
+                    "name": "SSC Director (Examinations)",
+                    "role": "Owner of the SOP recommended by the Court",
+                },
                 {"name": "SSC Translation Cell", "role": "Owner of the translation parity audit"},
             ],
             "important_dates": [],
             "statistics": [
-                {"label": "Paragraphs containing institutional expectations", "value": "5 (paras 27–31)"},
+                {
+                    "label": "Paragraphs containing institutional expectations",
+                    "value": "5 (paras 27–31)",
+                },
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Anomaly identified", "detail": "Translation defect penalises attempters; benefits non-attempters."},
-                {"step": 2, "title": "Reform expected", "detail": "Circumspect and systematic approach in the next CGLE."},
-                {"step": 3, "title": "Policy codification", "detail": "Transparent ambiguity / objection-handling SOP required."},
+                {
+                    "step": 1,
+                    "title": "Anomaly identified",
+                    "detail": "Translation defect penalises attempters; benefits non-attempters.",
+                },
+                {
+                    "step": 2,
+                    "title": "Reform expected",
+                    "detail": "Circumspect and systematic approach in the next CGLE.",
+                },
+                {
+                    "step": 3,
+                    "title": "Policy codification",
+                    "detail": "Transparent ambiguity / objection-handling SOP required.",
+                },
             ],
             "page_category": "Order/Direction",
             "complexity_score": 8,
@@ -1710,16 +1967,34 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 "of the underlying decision while acknowledging the institutional critique."
             ),
             "key_entities": [
-                {"name": "Central Administrative Tribunal", "role": "Forum whose restraint was upheld"},
+                {
+                    "name": "Central Administrative Tribunal",
+                    "role": "Forum whose restraint was upheld",
+                },
             ],
             "important_dates": [],
             "statistics": [
-                {"label": "Standard for interference", "value": "Patent illegality / arbitrariness / procedural impropriety"},
+                {
+                    "label": "Standard for interference",
+                    "value": "Patent illegality / arbitrariness / procedural impropriety",
+                },
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Critique", "detail": "Strong disapproval of administrative stewardship."},
-                {"step": 2, "title": "Endorsement", "detail": "Corrective measures grounded in expert opinion."},
-                {"step": 3, "title": "Tribunal upheld", "detail": "Restraint is consistent with settled principles."},
+                {
+                    "step": 1,
+                    "title": "Critique",
+                    "detail": "Strong disapproval of administrative stewardship.",
+                },
+                {
+                    "step": 2,
+                    "title": "Endorsement",
+                    "detail": "Corrective measures grounded in expert opinion.",
+                },
+                {
+                    "step": 3,
+                    "title": "Tribunal upheld",
+                    "detail": "Restraint is consistent with settled principles.",
+                },
             ],
             "page_category": "Legal Analysis",
             "complexity_score": 7,
@@ -1744,16 +2019,34 @@ def _ssc_cgle_2024_page_insight(text: str, page_number: int) -> dict:
                 {"name": "Amit Mahajan, J.", "role": "Concurring Judge"},
             ],
             "important_dates": [
-                {"date": "05.02.2026", "description": "Operative date — Impugned Orders upheld; writ petitions dismissed"},
-                {"date": "2026-05-06", "description": "Outer limit (90 days) for filing an SLP under Article 136"},
+                {
+                    "date": "05.02.2026",
+                    "description": "Operative date — Impugned Orders upheld; writ petitions dismissed",
+                },
+                {
+                    "date": "2026-05-06",
+                    "description": "Outer limit (90 days) for filing an SLP under Article 136",
+                },
             ],
             "statistics": [
                 {"label": "Operative paragraphs", "value": "2 (paras 34 and 35)"},
             ],
             "procedural_flow": [
-                {"step": 1, "title": "Tribunal Orders upheld", "detail": "Para 34 — restraint affirmed."},
-                {"step": 2, "title": "Writ petitions dismissed", "detail": "Para 35 — pending applications disposed of."},
-                {"step": 3, "title": "Limitation runs", "detail": "SLP window opens; caveat strategy must be activated."},
+                {
+                    "step": 1,
+                    "title": "Tribunal Orders upheld",
+                    "detail": "Para 34 — restraint affirmed.",
+                },
+                {
+                    "step": 2,
+                    "title": "Writ petitions dismissed",
+                    "detail": "Para 35 — pending applications disposed of.",
+                },
+                {
+                    "step": 3,
+                    "title": "Limitation runs",
+                    "detail": "SLP window opens; caveat strategy must be activated.",
+                },
             ],
             "page_category": "Order/Direction",
             "complexity_score": 6,
@@ -1868,7 +2161,7 @@ async def get_page_insight(
         return PageInsightResponse(
             brief="No readable text found on this page.",
             risks=[],
-            suggested_action="Ensure the document is properly scanned/OCR'd."
+            suggested_action="Ensure the document is properly scanned/OCR'd.",
         )
 
     prompt = _GEMINI_PROMPT_TEMPLATE.format(
@@ -1906,7 +2199,9 @@ async def get_page_insight(
             return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
 
     if provider != "gemini":
-        logger.warning("Provider %s is not supported for page insight; returning mock insight.", provider)
+        logger.warning(
+            "Provider %s is not supported for page insight; returning mock insight.", provider
+        )
         return PageInsightResponse(**get_mock_insight(request.text, request.page_number))
 
     gemini_key = settings.orderflow_ai_gemini_api_key
@@ -1959,6 +2254,7 @@ async def get_page_insight(
 
 
 # ──── Page-Level Obligation Extraction via LangGraph ────
+
 
 class SourceHighlightPayload(BaseModel):
     text: str
@@ -2051,27 +2347,31 @@ async def extract_obligations_route(
         for reviewed in result.get("reviewed_obligations", []):
             obl = reviewed["obligation"]
             cc = obl.get("confidence_components", {})
-            obligations_out.append(ExtractedObligationPayload(
-                obligation_code=obl.get("obligation_code", ""),
-                title=obl.get("title", ""),
-                description=obl.get("description", ""),
-                confidence=obl.get("confidence", 0.0),
-                confidence_components=ConfidenceComponentPayload(
-                    directive_signal=cc.get("directive_signal", 0.0),
-                    entity_presence=cc.get("entity_presence", 0.0),
-                    temporal_signal=cc.get("temporal_signal", 0.0),
-                    overall=cc.get("overall", 0.0),
-                ),
-                source_highlights=[
-                    SourceHighlightPayload(text=h.get("text", ""), start=h.get("start", 0), end=h.get("end", 0))
-                    for h in obl.get("source_highlights", [])
-                ],
-                page_number=obl.get("page_number", request.page_number),
-                owner_hint=obl.get("owner_hint", "Unknown"),
-                due_date=obl.get("due_date"),
-                priority=obl.get("priority", "medium"),
-                review_state=reviewed.get("review_decision", "pending_review"),
-            ))
+            obligations_out.append(
+                ExtractedObligationPayload(
+                    obligation_code=obl.get("obligation_code", ""),
+                    title=obl.get("title", ""),
+                    description=obl.get("description", ""),
+                    confidence=obl.get("confidence", 0.0),
+                    confidence_components=ConfidenceComponentPayload(
+                        directive_signal=cc.get("directive_signal", 0.0),
+                        entity_presence=cc.get("entity_presence", 0.0),
+                        temporal_signal=cc.get("temporal_signal", 0.0),
+                        overall=cc.get("overall", 0.0),
+                    ),
+                    source_highlights=[
+                        SourceHighlightPayload(
+                            text=h.get("text", ""), start=h.get("start", 0), end=h.get("end", 0)
+                        )
+                        for h in obl.get("source_highlights", [])
+                    ],
+                    page_number=obl.get("page_number", request.page_number),
+                    owner_hint=obl.get("owner_hint", "Unknown"),
+                    due_date=obl.get("due_date"),
+                    priority=obl.get("priority", "medium"),
+                    review_state=reviewed.get("review_decision", "pending_review"),
+                )
+            )
 
         return ExtractObligationsResponse(
             document_id=str(request.document_id),
@@ -2086,8 +2386,12 @@ async def extract_obligations_route(
         )
     except ImportError:
         logger.warning("orderflow_intelligence not available, using inline extraction")
-        obligations_out = _inline_extract_obligations(request.text, request.page_number, str(request.document_id))
-        avg_conf = round(sum(o.confidence for o in obligations_out) / max(len(obligations_out), 1), 3)
+        obligations_out = _inline_extract_obligations(
+            request.text, request.page_number, str(request.document_id)
+        )
+        avg_conf = round(
+            sum(o.confidence for o in obligations_out) / max(len(obligations_out), 1), 3
+        )
         low = avg_conf < request.confidence_threshold and len(obligations_out) > 0
         return ExtractObligationsResponse(
             document_id=str(request.document_id),
@@ -2105,21 +2409,38 @@ async def extract_obligations_route(
         raise HTTPException(status_code=500, detail=f"Extraction failed: {exc}")
 
 
-def _inline_extract_obligations(text: str, page_number: int, document_id: str) -> list[ExtractedObligationPayload]:
+def _inline_extract_obligations(
+    text: str, page_number: int, document_id: str
+) -> list[ExtractedObligationPayload]:
     import re as _re
+
     directive_patterns = [
-        r"\bshall\s+b", r"\bmust\s+b", r"\brequired\s+to\b", r"\bdirected\s+to\b",
-        r"\bordered\s+to\b", r"\bshall\s+file\b", r"\bshall\s+submit\b",
-        r"\bshall\s+comply\b", r"\bshall\s+pay\b", r"\bcomply\s+with\b",
+        r"\bshall\s+b",
+        r"\bmust\s+b",
+        r"\brequired\s+to\b",
+        r"\bdirected\s+to\b",
+        r"\bordered\s+to\b",
+        r"\bshall\s+file\b",
+        r"\bshall\s+submit\b",
+        r"\bshall\s+comply\b",
+        r"\bshall\s+pay\b",
+        r"\bcomply\s+with\b",
     ]
     obligations: list[ExtractedObligationPayload] = []
-    sentences = _re.split(r'(?<=[.!?])\s+', text)
+    sentences = _re.split(r"(?<=[.!?])\s+", text)
     for i, sentence in enumerate(sentences):
         lower = sentence.lower()
         if not any(_re.search(p, lower) for p in directive_patterns):
             continue
-        has_entity = bool(_re.search(r'\b(petitioner|respondent|appellant|plaintiff|defendant|court|registry|authority)\b', lower))
-        has_temporal = bool(_re.search(r'\b(within\s+\d+\s+days?|by\s+\d|on\s+or\s+before)\b', lower))
+        has_entity = bool(
+            _re.search(
+                r"\b(petitioner|respondent|appellant|plaintiff|defendant|court|registry|authority)\b",
+                lower,
+            )
+        )
+        has_temporal = bool(
+            _re.search(r"\b(within\s+\d+\s+days?|by\s+\d|on\s+or\s+before)\b", lower)
+        )
         directive_signal = 0.85
         entity_signal = 0.7 if has_entity else 0.3
         temporal_signal = 0.8 if has_temporal else 0.2
@@ -2129,26 +2450,35 @@ def _inline_extract_obligations(text: str, page_number: int, document_id: str) -
             if party in lower:
                 owner = party.capitalize()
                 break
-        obligations.append(ExtractedObligationPayload(
-            obligation_code=f"OBL-P{page_number}-{i + 1:03d}",
-            title=sentence[:80].strip(),
-            description=sentence.strip(),
-            confidence=overall,
-            confidence_components=ConfidenceComponentPayload(
-                directive_signal=directive_signal, entity_presence=entity_signal,
-                temporal_signal=temporal_signal, overall=overall,
-            ),
-            source_highlights=[SourceHighlightPayload(text=sentence.strip(), start=0, end=len(sentence.strip()))],
-            page_number=page_number,
-            owner_hint=owner,
-            due_date=None,
-            priority="high" if has_temporal and has_entity else "medium",
-            review_state="pending_review",
-        ))
+        obligations.append(
+            ExtractedObligationPayload(
+                obligation_code=f"OBL-P{page_number}-{i + 1:03d}",
+                title=sentence[:80].strip(),
+                description=sentence.strip(),
+                confidence=overall,
+                confidence_components=ConfidenceComponentPayload(
+                    directive_signal=directive_signal,
+                    entity_presence=entity_signal,
+                    temporal_signal=temporal_signal,
+                    overall=overall,
+                ),
+                source_highlights=[
+                    SourceHighlightPayload(
+                        text=sentence.strip(), start=0, end=len(sentence.strip())
+                    )
+                ],
+                page_number=page_number,
+                owner_hint=owner,
+                due_date=None,
+                priority="high" if has_temporal and has_entity else "medium",
+                review_state="pending_review",
+            )
+        )
     return obligations
 
 
 # ──── Human Review Decision ────
+
 
 class ReviewObligationRequest(BaseModel):
     obligation_code: str
@@ -2183,8 +2513,6 @@ async def review_obligation_route(
 
     Only approved obligations should be persisted as active records.
     """
-    request_id = getattr(req.state, "request_id", None) if hasattr(req, "state") else None
-
     if request.review_decision == "approved":
         msg = "Obligation approved and will move forward in the workflow."
     else:

@@ -19,7 +19,17 @@ function TypeCheckHook() {
     const concurrency: number = data.current_concurrency;
 
     // Log them to avoid unused variables (using console.log as a dummy for type-checking)
-    console.log(stage, percent, pagesTotal, pagesCompleted, excerpt, jobError, pausedUntil, retryAfter, concurrency);
+    console.log(
+      stage,
+      percent,
+      pagesTotal,
+      pagesCompleted,
+      excerpt,
+      jobError,
+      pausedUntil,
+      retryAfter,
+      concurrency,
+    );
   }
 
   console.log(error, isLoading, isPolling);

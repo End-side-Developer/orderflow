@@ -28,7 +28,6 @@ from orderflow_api.api.stub_repository import (
 from orderflow_api.core.proof_verifier import ProofPayload, verify_proof
 from orderflow_api.core.risk_service import (
     annotate_obligations_with_risk,
-    compute_contempt_risk,
 )
 from orderflow_api.schemas.extractions import ClausesEnvelope, ClausesListData
 from orderflow_api.schemas.obligations import (

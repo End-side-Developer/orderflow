@@ -46,7 +46,7 @@ def test_resolve_source_url_ignores_latest_feed_errors_when_no_sample(
         _failing_latest_feed,
     )
 
-    with pytest.raises(ValueError, match="Could not resolve identifier"):
+    with pytest.raises(ValueError, match="was understood but no matching judgment was found"):
         indian_ecourts_lookup._resolve_source_url("W.P.(C) 9999/2025")
 
 

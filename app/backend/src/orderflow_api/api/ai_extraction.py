@@ -11,8 +11,6 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from uuid import UUID, uuid4
 
-logger = logging.getLogger(__name__)
-
 from orderflow_api.api.extraction_engine import (
     ParsedClause,
     ParsedObligation,
@@ -21,6 +19,8 @@ from orderflow_api.api.extraction_engine import (
 from orderflow_api.core.config import settings
 from orderflow_api.core.gemini_client import call_gemini_json, extract_gemini_text
 from orderflow_api.schemas.extractions import IntakeAiOptions
+
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_PROVIDERS = {"openai", "anthropic", "gemini", "groq"}
 # _REMOTE_FALLBACK_ORDER = ("groq", "gemini", "openai", "anthropic")
@@ -110,9 +110,7 @@ def maybe_extract_obligations_with_ai(
         if fallback_attempt.reason:
             fallback_reasons.append(fallback_attempt.reason)
 
-    reason_parts = [
-        part for part in [primary_attempt.reason, *fallback_reasons] if part
-    ]
+    reason_parts = [part for part in [primary_attempt.reason, *fallback_reasons] if part]
     return AiExtractionAttempt(
         obligations=[],
         attempted=True,
@@ -152,9 +150,7 @@ def _resolve_ai_selection(
     requested_max = ai_options.max_obligations if ai_options is not None else None
 
     provider = forced_provider or settings.orderflow_ai_default_provider.strip().lower()
-    requested_provider = (
-        requested_provider.strip().lower() if requested_provider else None
-    )
+    requested_provider = requested_provider.strip().lower() if requested_provider else None
 
     if forced_provider is None and allow_override and requested_provider:
         provider = requested_provider
@@ -219,13 +215,9 @@ def _resolve_ai_selection(
         )
 
     temperature = (
-        requested_temperature
-        if allow_override and requested_temperature is not None
-        else 0.1
+        requested_temperature if allow_override and requested_temperature is not None else 0.1
     )
-    max_obligations = (
-        requested_max if allow_override and requested_max is not None else 40
-    )
+    max_obligations = requested_max if allow_override and requested_max is not None else 40
     max_clauses = settings.orderflow_ai_max_clauses
     max_clause_chars = 1000
 
@@ -281,9 +273,7 @@ def _attempt_remote_provider(
     selection: _AiSelection,
 ) -> AiExtractionAttempt:
     try:
-        candidates = _extract_candidates_with_remote_provider(
-            clauses=clauses, selection=selection
-        )
+        candidates = _extract_candidates_with_remote_provider(clauses=clauses, selection=selection)
         obligations = _materialize_ai_obligations(
             clauses=clauses,
             document_id=document_id,
@@ -358,9 +348,7 @@ def _attempt_remote_provider_with_retries(
         used_ai=False,
         provider=selection.provider,
         model=selection.model,
-        reason=(
-            f"AI extraction failed after {_AI_EXTRACTION_MAX_ATTEMPTS} attempts. {reason}"
-        ),
+        reason=(f"AI extraction failed after {_AI_EXTRACTION_MAX_ATTEMPTS} attempts. {reason}"),
     )
 
 
@@ -368,18 +356,14 @@ def _should_retry_ai_attempt(result: AiExtractionAttempt) -> bool:
     reason = (result.reason or "").lower()
     if "returned no actionable obligations" in reason:
         return False
-    if any(
-        marker in reason for marker in ("auth", "api key", "unsupported", "bad request")
-    ):
+    if any(marker in reason for marker in ("auth", "api key", "unsupported", "bad request")):
         return False
     return result.attempted and not result.used_ai
 
 
 def _ai_retry_delay_seconds(reason: str | None, attempt: int) -> float:
     reason_text = reason or ""
-    match = re.search(
-        r"retry(?:_after_seconds)?[=: ]+(\d+)", reason_text, re.IGNORECASE
-    )
+    match = re.search(r"retry(?:_after_seconds)?[=: ]+(\d+)", reason_text, re.IGNORECASE)
     if match:
         return min(float(match.group(1)), 2.0)
     return _AI_EXTRACTION_RETRY_BASE_SECONDS * (2 ** max(attempt - 1, 0))
@@ -536,9 +520,7 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
         from groq import Groq
         import httpx
     except ImportError as exc:
-        raise ValueError(
-            "Groq SDK or httpx not installed. Run: pip install groq httpx"
-        ) from exc
+        raise ValueError("Groq SDK or httpx not installed. Run: pip install groq httpx") from exc
 
     user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -560,8 +542,7 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are a legal obligation extraction assistant. "
-                    "Return only valid JSON."
+                    "You are a legal obligation extraction assistant. " "Return only valid JSON."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -578,9 +559,7 @@ def _call_groq(*, prompt: str, selection: _AiSelection) -> str:
     return content
 
 
-def _post_json(
-    *, url: str, headers: dict[str, str], payload: dict[str, Any]
-) -> dict[str, Any]:
+def _post_json(*, url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
     base_headers = {
         "content-type": "application/json",
         "accept": "application/json",
@@ -658,13 +637,9 @@ def _materialize_ai_obligations(
         due_date = _safe_date(candidate.get("due_date"))
         priority = _safe_priority(candidate.get("priority"))
         default_confidence = (
-            float(clause.confidence)
-            if isinstance(clause.confidence, (int, float))
-            else 0.7
+            float(clause.confidence) if isinstance(clause.confidence, (int, float)) else 0.7
         )
-        confidence = _safe_float(
-            candidate.get("confidence"), default=default_confidence
-        )
+        confidence = _safe_float(candidate.get("confidence"), default=default_confidence)
 
         obligations.append(
             ParsedObligation(
@@ -823,9 +798,7 @@ def extract_case_flow(
     event_node_ids: list[str] = []
     for summary in summaries[:12]:
         page_number = _safe_int(_read_field(summary, "page_number"))
-        summary_text = (
-            _safe_text(_read_field(summary, "summary")) or "Proceeding update"
-        )
+        summary_text = _safe_text(_read_field(summary, "summary")) or "Proceeding update"
         label = f"Page {page_number}" if page_number else "Case event"
         node_id = f"event-{page_number or len(event_node_ids) + 1}"
         event_node_ids.append(node_id)
@@ -864,9 +837,7 @@ def extract_case_flow(
     order_node_ids: list[str] = []
     for summary in summaries:
         text = _safe_text(_read_field(summary, "summary")) or ""
-        if not re.search(
-            r"\b(order|directed|dispose|allowed|dismissed)\b", text, re.IGNORECASE
-        ):
+        if not re.search(r"\b(order|directed|dispose|allowed|dismissed)\b", text, re.IGNORECASE):
             continue
         page_number = _safe_int(_read_field(summary, "page_number"))
         node_id = f"order-{len(order_node_ids) + 1}"
@@ -962,9 +933,7 @@ def extract_case_flow(
         )
 
     for idx, obligation_node_id in enumerate(obligation_node_ids):
-        source_order = (
-            order_node_ids[idx % len(order_node_ids)] if order_node_ids else None
-        )
+        source_order = order_node_ids[idx % len(order_node_ids)] if order_node_ids else None
         source_event = event_node_ids[-1] if event_node_ids else None
         source = source_order or source_event
         if source:

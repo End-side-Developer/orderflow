@@ -39,9 +39,7 @@ _NAME_AFTER_HONORIFIC = re.compile(
 )
 
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b", flags=re.IGNORECASE)
-_PHONE = re.compile(
-    r"\b(?:\+?91[-\s]?)?(?:\(?0?\d{2,4}\)?[-\s]?)?\d{6,10}\b"
-)
+_PHONE = re.compile(r"\b(?:\+?91[-\s]?)?(?:\(?0?\d{2,4}\)?[-\s]?)?\d{6,10}\b")
 _AADHAAR = re.compile(r"\b\d{4}\s?\d{4}\s?\d{4}\b")
 _PAN = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
 _CASE_NUMBER = re.compile(
@@ -97,8 +95,13 @@ class RedactionStats:
             "case_numbers": self.case_numbers,
             "addresses": self.addresses,
             "total": (
-                self.names + self.emails + self.phones + self.aadhaar
-                + self.pan + self.case_numbers + self.addresses
+                self.names
+                + self.emails
+                + self.phones
+                + self.aadhaar
+                + self.pan
+                + self.case_numbers
+                + self.addresses
             ),
         }
 
@@ -200,8 +203,7 @@ def redact_obligation(obligation, *, mask_owner: bool = True) -> dict:
     risk_band = getattr(obligation, "risk_band", None)
 
     redacted_counts = {
-        key: t_stats.to_dict()[key] + d_stats.to_dict()[key]
-        for key in t_stats.to_dict().keys()
+        key: t_stats.to_dict()[key] + d_stats.to_dict()[key] for key in t_stats.to_dict().keys()
     }
 
     return {
@@ -210,9 +212,11 @@ def redact_obligation(obligation, *, mask_owner: bool = True) -> dict:
         "title": title,
         "description": description,
         "owner_role": owner_redacted,
-        "due_date": getattr(obligation, "due_date", None).isoformat()
-        if getattr(obligation, "due_date", None) is not None
-        else None,
+        "due_date": (
+            getattr(obligation, "due_date", None).isoformat()
+            if getattr(obligation, "due_date", None) is not None
+            else None
+        ),
         "status": getattr(obligation, "status", None),
         "priority": getattr(obligation, "priority", None),
         "review_state": getattr(obligation, "review_state", None),

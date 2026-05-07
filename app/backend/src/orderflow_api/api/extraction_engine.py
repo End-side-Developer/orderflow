@@ -614,7 +614,7 @@ _PDF_STRUCTURE_MARKERS: tuple[str, ...] = (
 # (e.g. " obj" inside "objections", "stream" inside "mainstream").
 # Require word-boundary or whitespace context so they only match structural syntax.
 _PDF_STRUCTURE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\b\d+\s+\d+\s+obj\b"),   # e.g. "12 0 obj"
+    re.compile(r"\b\d+\s+\d+\s+obj\b"),  # e.g. "12 0 obj"
     re.compile(r"\bxref\b"),
     re.compile(r"\btrailer\b\s*<<"),
     re.compile(r"^stream\s*$", re.MULTILINE),

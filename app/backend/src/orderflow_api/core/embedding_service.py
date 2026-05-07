@@ -40,9 +40,7 @@ def _load_model():
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore
 
-            model_name = os.environ.get(
-                "ORDERFLOW_EMBEDDING_MODEL", DEFAULT_MODEL_NAME
-            )
+            model_name = os.environ.get("ORDERFLOW_EMBEDDING_MODEL", DEFAULT_MODEL_NAME)
             logger.info("Loading sentence-transformer model: %s", model_name)
             _model = SentenceTransformer(model_name)
         except Exception as exc:

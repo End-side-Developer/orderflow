@@ -278,7 +278,9 @@ def _extract_party_lines(page_text: str) -> list[str]:
         line = re.sub(r"\s+", " ", raw_line).strip(" .")
         if not line:
             continue
-        if re.search(r"\b(petitioner|respondent|appellant|versus|v\.?|vs\.?)\b", line, re.IGNORECASE):
+        if re.search(
+            r"\b(petitioner|respondent|appellant|versus|v\.?|vs\.?)\b", line, re.IGNORECASE
+        ):
             parties.append(line)
         if len(parties) >= 6:
             break

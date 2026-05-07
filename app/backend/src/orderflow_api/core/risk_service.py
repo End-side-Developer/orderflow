@@ -30,16 +30,16 @@ from typing import Iterable
 @dataclass
 class RiskFactor:
     name: str
-    weight: float           # weight applied to this factor (0..1)
-    contribution: float     # weight * normalized value, in score points
-    detail: str             # human-readable explanation
+    weight: float  # weight applied to this factor (0..1)
+    contribution: float  # weight * normalized value, in score points
+    detail: str  # human-readable explanation
 
 
 @dataclass
 class ContemptRiskScore:
-    score: int              # 0..100
-    band: str               # low | moderate | high | critical
-    factors: list[RiskFactor]   # all factors, ordered by contribution desc
+    score: int  # 0..100
+    band: str  # low | moderate | high | critical
+    factors: list[RiskFactor]  # all factors, ordered by contribution desc
     top_factors: list[RiskFactor]  # top-3 cut
 
 

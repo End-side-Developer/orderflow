@@ -60,9 +60,7 @@ _JUDGE_PERMS: frozenset[Permission] = _ADVOCATE_PERMS | frozenset(
     }
 )
 
-_GOVERNMENT_PERMS: frozenset[Permission] = _JUDGE_PERMS | frozenset(
-    {Permission.USER_MANAGE}
-)
+_GOVERNMENT_PERMS: frozenset[Permission] = _JUDGE_PERMS | frozenset({Permission.USER_MANAGE})
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {

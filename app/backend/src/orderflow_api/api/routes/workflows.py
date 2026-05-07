@@ -116,9 +116,7 @@ async def start_intake_workflow_route(
             "bypass_cache": "true" if payload.bypass_cache else "false",
         }
         # Pass pages_total from document metadata if available
-        pages_total = (
-            document.metadata.get("pages_total") if document.metadata else None
-        )
+        pages_total = document.metadata.get("pages_total") if document.metadata else None
         if pages_total is not None:
             workflow_input["pages_total"] = str(pages_total)
             workflow_input["total_pages"] = str(pages_total)

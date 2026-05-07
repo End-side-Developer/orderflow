@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 
 interface NormalizedBox {
   left: number;
@@ -55,7 +55,18 @@ export function PdfOverlayLayer({
   onAnnotationClick,
 }: PdfOverlayLayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const [hoveredAnnotation, setHoveredAnnotation] = useState<HoveredAnnotation | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const pageAnnotations = annotations.filter((a) => a.page_number === currentPage);
   const pageActiveRefs = activeRefs.filter((ref) => ref.page_number === currentPage);
@@ -75,10 +86,7 @@ export function PdfOverlayLayer({
     }
   };
 
-  const handleBoxMouseEnter = (
-    annotation: Annotation,
-    event: MouseEvent<HTMLDivElement>,
-  ) => {
+  const handleBoxMouseEnter = (annotation: Annotation, event: MouseEvent<HTMLDivElement>) => {
     const container = containerRef.current;
     const targetRect = event.currentTarget.getBoundingClientRect();
     const containerRect = container?.getBoundingClientRect();
@@ -99,7 +107,6 @@ export function PdfOverlayLayer({
   };
 
   const tooltipLeft = (left: number) => {
-    const containerWidth = containerRef.current?.clientWidth ?? 0;
     if (!containerWidth) return Math.max(0, left);
     return Math.max(0, Math.min(left, Math.max(0, containerWidth - 320)));
   };
@@ -169,8 +176,7 @@ export function PdfOverlayLayer({
               hoveredAnnotation.placement === "above"
                 ? `${hoveredAnnotation.anchor.top - 8}px`
                 : `${hoveredAnnotation.anchor.top + hoveredAnnotation.anchor.height + 8}px`,
-            transform:
-              hoveredAnnotation.placement === "above" ? "translateY(-100%)" : undefined,
+            transform: hoveredAnnotation.placement === "above" ? "translateY(-100%)" : undefined,
           }}
         >
           <div className="mb-1 font-semibold capitalize">

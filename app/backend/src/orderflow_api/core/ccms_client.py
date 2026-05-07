@@ -42,9 +42,7 @@ logger = logging.getLogger(__name__)
 # A public Delhi High Court endpoint that returns recent judgments.
 # Override at runtime via ORDERFLOW_CCMS_POLL_URL when integrating with
 # a real CCMS sandbox.
-DEFAULT_POLL_URL = (
-    "https://delhihighcourt.nic.in/web/hi/judgement/fetch-data"
-)
+DEFAULT_POLL_URL = "https://delhihighcourt.nic.in/web/hi/judgement/fetch-data"
 USER_AGENT = "OrderFlow-CCMS/1.0 (+contact: software@kshaminnovation.in)"
 POLL_TIMEOUT_SECONDS = 20
 
@@ -54,7 +52,7 @@ class CCMSEvent:
     """A single judgment that needs to be ingested."""
 
     reference_id: str
-    identifier: str            # eCourts identifier OR direct PDF URL
+    identifier: str  # eCourts identifier OR direct PDF URL
     document_type: str = "judgment"
     delivery_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source_gateway: str = "ccms"
@@ -65,7 +63,7 @@ class CCMSEvent:
 class IngestResult:
     reference_id: str
     document_id: str | None
-    status: str                 # "ingested" | "duplicate" | "failed"
+    status: str  # "ingested" | "duplicate" | "failed"
     detail: str = ""
 
 
@@ -186,12 +184,10 @@ def ingest_event(event: CCMSEvent) -> IngestResult:
     intake.ccms.delivery_timestamp = event.delivery_timestamp
     intake.ccms.source_gateway = event.source_gateway
 
-    resolved_file_name, resolved_file_type, metadata = (
-        build_indian_ecourts_document_payload(
-            envelope=intake,
-            upload_file_name=lookup.source_file_name,
-            upload_content_type=lookup.source_file_type,
-        )
+    resolved_file_name, resolved_file_type, metadata = build_indian_ecourts_document_payload(
+        envelope=intake,
+        upload_file_name=lookup.source_file_name,
+        upload_content_type=lookup.source_file_type,
     )
 
     # Dedup by checksum so re-delivered events don't create duplicates.

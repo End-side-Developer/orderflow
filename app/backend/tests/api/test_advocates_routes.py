@@ -3,6 +3,7 @@
 Covers: public directory listing, profile detail, pending queue,
 verification/rejection, and permission enforcement.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -171,9 +172,7 @@ def test_pending_queue_accessible_to_judge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     judge = make_user(user_id=str(_JUDGE_ID), role="judge", status="active")
-    monkeypatch.setattr(
-        user_persistence, "get_user_by_id", MagicMock(return_value=judge)
-    )
+    monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=judge))
     monkeypatch.setattr(
         user_persistence,
         "list_advocates",
@@ -189,9 +188,7 @@ def test_pending_queue_forbidden_for_citizen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     citizen = make_user(role="citizen", status="active")
-    monkeypatch.setattr(
-        user_persistence, "get_user_by_id", MagicMock(return_value=citizen)
-    )
+    monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=citizen))
     resp = _client.get(f"{_BASE}/pending", headers=bearer(citizen))
     assert resp.status_code == 403
 
@@ -200,9 +197,7 @@ def test_pending_queue_forbidden_for_advocate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     advocate = make_user(role="advocate", status="active")
-    monkeypatch.setattr(
-        user_persistence, "get_user_by_id", MagicMock(return_value=advocate)
-    )
+    monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=advocate))
     resp = _client.get(f"{_BASE}/pending", headers=bearer(advocate))
     assert resp.status_code == 403
 
@@ -261,9 +256,7 @@ def test_verify_nonexistent_advocate_returns_404(
 ) -> None:
     judge = make_user(user_id=str(_JUDGE_ID), role="judge")
     monkeypatch.setattr(user_persistence, "get_user_by_id", MagicMock(return_value=judge))
-    monkeypatch.setattr(
-        user_persistence, "get_advocate_profile", MagicMock(return_value=None)
-    )
+    monkeypatch.setattr(user_persistence, "get_advocate_profile", MagicMock(return_value=None))
 
     resp = _client.post(f"{_BASE}/{_ADVOCATE_ID}/verify", headers=bearer(judge))
     assert resp.status_code == 404
@@ -357,7 +350,9 @@ def test_claim_case_as_advocate_returns_200(
     monkeypatch.setattr(
         user_persistence,
         "claim_advocate_case",
-        MagicMock(return_value=type("CaseLink", (), {"model_dump": lambda self: _make_case_link()})()),
+        MagicMock(
+            return_value=type("CaseLink", (), {"model_dump": lambda self: _make_case_link()})()
+        ),
     )
 
     resp = _client.post(

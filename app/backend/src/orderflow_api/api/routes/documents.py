@@ -3,7 +3,18 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import ValidationError
 
 from orderflow_api.api import user_persistence
@@ -287,10 +298,11 @@ async def upload_document_route(
     if len(payload) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
-            detail=f"File size exceeds maximum allowed size of {MAX_FILE_SIZE // (1024 * 1024)}MB"
+            detail=f"File size exceeds maximum allowed size of {MAX_FILE_SIZE // (1024 * 1024)}MB",
         )
 
     import hashlib
+
     checksum_sha256 = hashlib.sha256(payload).hexdigest()
 
     existing_document = find_document_by_checksum(checksum_sha256)
@@ -381,6 +393,7 @@ async def intake_indian_ecourts_route(
         raise HTTPException(status_code=400, detail="File payload is empty")
 
     import hashlib
+
     checksum_sha256 = hashlib.sha256(payload).hexdigest()
     existing_document = find_document_by_checksum(checksum_sha256)
     if existing_document:
@@ -596,8 +609,7 @@ def _build_language_metadata(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Invalid source_language override. "
-                "Supported values: en, hi, ta, te, kn, ml, mr"
+                "Invalid source_language override. " "Supported values: en, hi, ta, te, kn, ml, mr"
             ),
         )
 

@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { listClauses, type ClauseRecord, type ObligationRecord } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -137,8 +140,8 @@ export function WhyPanel({ obligation, documentId, defaultOpen = false }: WhyPan
               Source citation
             </h5>
             <p className="mt-1 text-foreground/90">
-              <strong>Page:</strong> {citation.page_number ?? "n/a"} ·{" "}
-              <strong>Clause:</strong> {citation.clause_span ?? "n/a"}
+              <strong>Page:</strong> {citation.page_number ?? "n/a"} · <strong>Clause:</strong>{" "}
+              {citation.clause_span ?? "n/a"}
               {typeof citation.span_start === "number" && typeof citation.span_end === "number"
                 ? ` · chars ${citation.span_start}–${citation.span_end}`
                 : null}

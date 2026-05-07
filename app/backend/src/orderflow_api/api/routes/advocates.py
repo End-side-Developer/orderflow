@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from orderflow_api.api import user_persistence
 from orderflow_api.api.dependencies.auth import (
-    get_current_user,
     require_permission,
 )
 from orderflow_api.api.response import success
@@ -142,19 +141,21 @@ async def update_advocate_me_route(
         years_of_experience=payload.years_of_experience,
         languages=payload.languages,
         specializations=payload.specializations,
-        jurisdictions=[j.model_dump() for j in payload.jurisdictions]
-        if payload.jurisdictions is not None
-        else None,
-        education=[e.model_dump() for e in payload.education]
-        if payload.education is not None
-        else None,
+        jurisdictions=(
+            [j.model_dump() for j in payload.jurisdictions]
+            if payload.jurisdictions is not None
+            else None
+        ),
+        education=(
+            [e.model_dump() for e in payload.education] if payload.education is not None else None
+        ),
         notable_cases=payload.notable_cases,
         consultation_fee_min_inr=payload.consultation_fee_min_inr,
         consultation_fee_max_inr=payload.consultation_fee_max_inr,
         availability=payload.availability.model_dump() if payload.availability else None,
-        contact_preferences=payload.contact_preferences.model_dump()
-        if payload.contact_preferences
-        else None,
+        contact_preferences=(
+            payload.contact_preferences.model_dump() if payload.contact_preferences else None
+        ),
         registration_number=payload.registration_number,
     )
     if updated is None:

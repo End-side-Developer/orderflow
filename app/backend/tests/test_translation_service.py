@@ -50,48 +50,54 @@ class TestTranslationService:
 
     @patch("orderflow_api.core.translation_service.aiohttp.ClientSession")
     @pytest.mark.asyncio
-    async def test_translate_calls_libretranslate_api(self, mock_session_class, translation_service):
+    async def test_translate_calls_libretranslate_api(
+        self, mock_session_class, translation_service
+    ):
         """Test that translation calls LibreTranslate API correctly."""
-        # Mock the HTTP response
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json.return_value = {
-            "translatedText": "यह अंग्रेजी पाठ है"
-        }
+        mock_response.json.return_value = {"translatedText": "यह अंग्रेजी पाठ है"}
+
+        post_cm = AsyncMock()
+        post_cm.__aenter__.return_value = mock_response
+        post_cm.__aexit__.return_value = None
 
         mock_session = AsyncMock()
         mock_session.__aenter__.return_value = mock_session
-        mock_session.post.return_value.__aenter__.return_value = mock_response
+        mock_session.__aexit__.return_value = None
+        mock_session.post = MagicMock(return_value=post_cm)
 
         mock_session_class.return_value = mock_session
 
-        # Call translation
         text = "This is English text"
         result = await translation_service.translate(text, "en", "hi", use_cache=False)
 
         assert result == "यह अंग्रेजी पाठ है"
-
-        # Verify API was called correctly
         mock_session.post.assert_called_once()
         call_args = mock_session.post.call_args
         assert "http://localhost:5000/translate" in str(call_args)
 
     @patch("orderflow_api.core.translation_service.aiohttp.ClientSession")
     @pytest.mark.asyncio
-    async def test_translate_api_error_raises_exception(self, mock_session_class, translation_service):
+    async def test_translate_api_error_raises_exception(
+        self, mock_session_class, translation_service
+    ):
         """Test that API errors raise TranslationServiceError."""
-        # Mock a failed response
         mock_response = AsyncMock()
         mock_response.status = 500
         mock_response.text.return_value = "Internal Server Error"
 
+        post_cm = AsyncMock()
+        post_cm.__aenter__.return_value = mock_response
+        post_cm.__aexit__.return_value = None
+
         mock_session = AsyncMock()
         mock_session.__aenter__.return_value = mock_session
-        mock_session.post.return_value.__aenter__.return_value = mock_response
+        mock_session.__aexit__.return_value = None
+        mock_session.post = MagicMock(return_value=post_cm)
 
         mock_session_class.return_value = mock_session
 
-        # Call translation - should raise after retries
         with pytest.raises(TranslationServiceError):
             await translation_service.translate("Test", "en", "hi", use_cache=False)
 
@@ -99,18 +105,26 @@ class TestTranslationService:
     @pytest.mark.asyncio
     async def test_translate_batch(self, mock_session_class, translation_service):
         """Test batch translation."""
-        # Mock responses for each text
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json.side_effect = [
+        responses = [
             {"translatedText": "अनुवाद 1"},
             {"translatedText": "अनुवाद 2"},
             {"translatedText": "अनुवाद 3"},
         ]
+        response_iter = iter(responses)
+
+        def make_post_cm(*args, **kwargs):
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json.return_value = next(response_iter)
+            cm = AsyncMock()
+            cm.__aenter__.return_value = mock_response
+            cm.__aexit__.return_value = None
+            return cm
 
         mock_session = AsyncMock()
         mock_session.__aenter__.return_value = mock_session
-        mock_session.post.return_value.__aenter__.return_value = mock_response
+        mock_session.__aexit__.return_value = None
+        mock_session.post = MagicMock(side_effect=make_post_cm)
 
         mock_session_class.return_value = mock_session
 
@@ -138,14 +152,21 @@ class TestTranslationService:
         translation_service._get_from_cache = AsyncMock(return_value=None)
         translation_service._set_in_cache = AsyncMock()
 
-        with patch("orderflow_api.core.translation_service.aiohttp.ClientSession") as mock_session_class:
+        with patch(
+            "orderflow_api.core.translation_service.aiohttp.ClientSession"
+        ) as mock_session_class:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = {"translatedText": "translated"}
 
+            post_cm = AsyncMock()
+            post_cm.__aenter__.return_value = mock_response
+            post_cm.__aexit__.return_value = None
+
             mock_session = AsyncMock()
             mock_session.__aenter__.return_value = mock_session
-            mock_session.post.return_value.__aenter__.return_value = mock_response
+            mock_session.__aexit__.return_value = None
+            mock_session.post = MagicMock(return_value=post_cm)
 
             mock_session_class.return_value = mock_session
 

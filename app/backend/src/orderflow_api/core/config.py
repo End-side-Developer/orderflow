@@ -16,12 +16,8 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
 
     orderflow_env: str = Field(default="local", validation_alias="ORDERFLOW_ENV")
-    orderflow_log_level: str = Field(
-        default="info", validation_alias="ORDERFLOW_LOG_LEVEL"
-    )
-    orderflow_api_host: str = Field(
-        default="0.0.0.0", validation_alias="ORDERFLOW_API_HOST"
-    )
+    orderflow_log_level: str = Field(default="info", validation_alias="ORDERFLOW_LOG_LEVEL")
+    orderflow_api_host: str = Field(default="0.0.0.0", validation_alias="ORDERFLOW_API_HOST")
     orderflow_api_port: int = Field(default=8000, validation_alias="ORDERFLOW_API_PORT")
     orderflow_api_database_url: str = Field(
         default="postgresql+psycopg://orderflow:orderflow@localhost:5432/orderflow",
@@ -256,11 +252,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [
-            item.strip()
-            for item in self.orderflow_api_cors_origins.split(",")
-            if item.strip()
-        ]
+        return [item.strip() for item in self.orderflow_api_cors_origins.split(",") if item.strip()]
 
 
 @lru_cache
