@@ -6,6 +6,7 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   FileText,
   Loader2,
@@ -17,7 +18,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { CaseActionPlanData, ObligationRecord, getCaseActionPlan } from "@/lib/api/client";
 
@@ -36,7 +37,6 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
   const loadActionPlan = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-
     try {
       const response = await getCaseActionPlan(documentId);
       if (response.ok) {
@@ -59,7 +59,6 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
 
   useEffect(() => {
     let cancelled = false;
-
     setIsLoading(true);
     setError(null);
 
@@ -97,8 +96,8 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
 
   if (isLoading) {
     return (
-      <div className="flex min-h-full items-center justify-center p-6">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
+      <div className="flex min-h-[200px] items-center justify-center p-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading generated action plan
         </div>
@@ -108,7 +107,7 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
 
   if (!actionPlan) {
     return (
-      <div className="flex min-h-full flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-6">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Action plan unavailable</AlertTitle>
@@ -117,8 +116,8 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
           </AlertDescription>
         </Alert>
         <div>
-          <Button type="button" variant="outline" onClick={() => void loadActionPlan()}>
-            <RefreshCw data-icon="inline-start" />
+          <Button size="sm" type="button" variant="outline" onClick={() => void loadActionPlan()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
             Retry
           </Button>
         </div>
@@ -127,11 +126,12 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-5 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-col gap-0">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">Generated action plan</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="text-lg font-semibold text-foreground">Generated action plan</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {actionPlan.total} item{actionPlan.total === 1 ? "" : "s"} extracted for review
           </p>
         </div>
@@ -143,177 +143,215 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
         </div>
       </div>
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Refresh failed</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
+      <div className="flex flex-col gap-4 p-6">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Refresh failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
 
-      <section className="rounded-md border border-slate-200 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <ClipboardList className="h-4 w-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-900">Plan readiness</h3>
+        {/* KPI row */}
+        <div className="rounded-md border border-border p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Plan readiness</h3>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Metric label="Total items" value={String(actionPlan.total)} />
+            <Metric label="Assigned owners" value={String(stats.assignedOwners)} />
+            <Metric label="Dated actions" value={String(stats.datedActions)} />
+          </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Metric label="Total items" value={String(actionPlan.total)} />
-          <Metric label="Assigned owners" value={String(stats.assignedOwners)} />
-          <Metric label="Dated actions" value={String(stats.datedActions)} />
-        </div>
-      </section>
 
-      {items.length === 0 ? (
-        <Alert>
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertTitle>No action items returned</AlertTitle>
-          <AlertDescription>
-            Refresh after generation completes, or return to the summary stage and request the
-            action plan again.
-          </AlertDescription>
-        </Alert>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {items.map((item, index) => (
-            <ActionPlanItemCard key={item.id} item={item} index={index} />
-          ))}
-        </div>
-      )}
+        {/* Items */}
+        {items.length === 0 ? (
+          <Alert>
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>No action items returned</AlertTitle>
+            <AlertDescription>
+              Refresh after generation completes, or return to the summary stage and request the
+              action plan again.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {items.map((item, index) => (
+              <ActionPlanItemCard key={item.id} item={item} index={index} />
+            ))}
+          </div>
+        )}
 
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">
-        <Button type="button" variant="outline" onClick={() => void loadActionPlan()}>
-          <RefreshCw data-icon="inline-start" />
-          Refresh action plan
-        </Button>
-        <Button type="button" onClick={onContinueToReview} disabled={!canContinue}>
-          Continue to Review
-          <ArrowRight data-icon="inline-end" />
-        </Button>
+        {/* Footer */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+          <Button size="sm" type="button" variant="outline" onClick={() => void loadActionPlan()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh action plan
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="good"
+            className="ml-auto"
+            onClick={onContinueToReview}
+            disabled={!canContinue}
+          >
+            Continue to Review
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
 function ActionPlanItemCard({ item, index }: { item: ObligationRecord; index: number }) {
+  const [open, setOpen] = useState(false);
   const confidencePercent = item.confidence == null ? null : clampPercent(item.confidence * 100);
   const needsHumanReview = confidencePercent != null && confidencePercent < 70;
 
   return (
-    <Card className="shadow-none">
-      <CardHeader className="gap-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <CardTitle className="break-words text-sm">
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-md border border-border overflow-hidden"
+    >
+      <CollapsibleTrigger className="flex w-full items-start justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 pr-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">
               {index + 1}. {item.title}
-            </CardTitle>
-            <CardDescription className="mt-1 break-words">
-              {item.obligation_code ?? item.id}
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Badge variant={priorityVariant(item.priority)}>
-              {formatMachineLabel(item.priority)}
-            </Badge>
-            <Badge variant="secondary">
-              {formatMachineLabel(item.nature_of_action ?? "other")}
-            </Badge>
-            <Badge variant={stageVariant(item.action_plan_stage)}>
-              {formatMachineLabel(item.action_plan_stage)}
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {item.description ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-            {item.description}
-          </p>
-        ) : (
-          <p className="text-sm text-slate-500">No description captured.</p>
-        )}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Detail icon={<UserRound className="h-4 w-4 text-slate-500" />} label="Owner">
-            {item.owner_hint || "Unassigned"}
-          </Detail>
-          <Detail icon={<CalendarDays className="h-4 w-4 text-slate-500" />} label="Due date">
-            {formatDateText(item.due_date)}
-          </Detail>
-          <Detail icon={<ShieldAlert className="h-4 w-4 text-slate-500" />} label="Risk">
-            <span className="flex flex-wrap gap-2">
-              <Badge variant={riskVariant(item.risk_band)}>
-                {formatMachineLabel(item.risk_band ?? "not_scored")}
-              </Badge>
-              {item.risk_score != null ? (
-                <Badge variant="outline">{Math.round(item.risk_score)} score</Badge>
-              ) : null}
             </span>
-          </Detail>
-          <Detail icon={<ClipboardList className="h-4 w-4 text-slate-500" />} label="Status">
-            {formatMachineLabel(item.status)}
-          </Detail>
-        </div>
-
-        {confidencePercent != null ? (
-          <div className="rounded-md bg-slate-50 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-slate-600">
-              <span>Extraction confidence</span>
-              <span className="flex flex-wrap items-center justify-end gap-2">
-                {needsHumanReview ? <Badge variant="warn">Needs human review.</Badge> : null}
-                {confidencePercent}%
-              </span>
-            </div>
-            <Progress value={confidencePercent} className="h-2" />
-            {item.confidence_annotations?.components &&
-            Object.keys(item.confidence_annotations.components).length > 0 ? (
-              <div className="mt-2 space-y-1">
-                {Object.entries(item.confidence_annotations.components).map(([key, val]) => (
-                  <div key={key} className="flex items-center gap-2 text-xs text-slate-500">
-                    <span className="w-32 shrink-0 capitalize">{key.replace(/_/g, " ")}</span>
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className={`h-full rounded-full ${val < 0.5 ? "bg-amber-400" : "bg-emerald-400"}`}
-                        style={{ width: `${Math.round(val * 100)}%` }}
-                      />
-                    </div>
-                    <span className="w-8 text-right tabular-nums">{Math.round(val * 100)}%</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {needsHumanReview && item.confidence_annotations?.rationale?.length ? (
-              <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
-                {item.confidence_annotations.rationale.map((r, i) => (
-                  <li key={i} className="flex gap-1">
-                    <span className="shrink-0">•</span>
-                    <span>{r}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </div>
-        ) : null}
+          <p className="text-xs text-muted-foreground">{item.obligation_code ?? item.id}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Badge variant={priorityVariant(item.priority)}>
+            {formatMachineLabel(item.priority)}
+          </Badge>
+          <Badge variant="secondary">{formatMachineLabel(item.nature_of_action ?? "other")}</Badge>
+          <Badge variant={stageVariant(item.action_plan_stage)}>
+            {formatMachineLabel(item.action_plan_stage)}
+          </Badge>
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </div>
+      </CollapsibleTrigger>
 
-        <SourceEvidence citation={item.citation} />
-      </CardContent>
-    </Card>
+      <CollapsibleContent>
+        <div className="border-t border-border flex flex-col gap-4 p-4">
+          {item.description ? (
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+              {item.description}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground/60">No description captured.</p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Detail icon={<UserRound className="h-4 w-4" />} label="Owner">
+              {item.owner_hint || "Unassigned"}
+            </Detail>
+            <Detail icon={<CalendarDays className="h-4 w-4" />} label="Due date">
+              {item.due_date || "Not dated"}
+            </Detail>
+            <Detail icon={<ShieldAlert className="h-4 w-4" />} label="Risk">
+              <span className="flex flex-wrap gap-2">
+                <Badge variant={riskVariant(item.risk_band)}>
+                  {formatMachineLabel(item.risk_band ?? "not scored")}
+                </Badge>
+                {item.risk_score != null ? (
+                  <Badge variant="outline">{Math.round(item.risk_score)} score</Badge>
+                ) : null}
+              </span>
+            </Detail>
+            <Detail icon={<ClipboardList className="h-4 w-4" />} label="Status">
+              {formatMachineLabel(item.status)}
+            </Detail>
+          </div>
+
+          {confidencePercent != null ? (
+            <ConfidenceBlock
+              percent={confidencePercent}
+              needsReview={needsHumanReview}
+              annotations={item.confidence_annotations}
+            />
+          ) : null}
+
+          <SourceEvidenceBlock citation={item.citation} />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-function SourceEvidence({ citation }: { citation: ObligationRecord["citation"] }) {
+function ConfidenceBlock({
+  percent,
+  needsReview,
+  annotations,
+}: {
+  percent: number;
+  needsReview: boolean;
+  annotations: ObligationRecord["confidence_annotations"];
+}) {
+  return (
+    <div className="rounded-md bg-muted p-3">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+        <span>Extraction confidence</span>
+        <span className="flex flex-wrap items-center justify-end gap-2">
+          {needsReview ? <Badge variant="warn">Needs human review</Badge> : null}
+          {percent}%
+        </span>
+      </div>
+      <Progress value={percent} className="h-2" />
+      {annotations?.components && Object.keys(annotations.components).length > 0 ? (
+        <div className="mt-3 space-y-1.5">
+          {Object.entries(annotations.components).map(([key, val]) => (
+            <div key={key} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="w-28 shrink-0 capitalize">{key.replace(/_/g, " ")}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                <div
+                  className={`h-full rounded-full ${val < 0.5 ? "bg-warn" : "bg-good"}`}
+                  style={{ width: `${Math.round(val * 100)}%` }}
+                />
+              </div>
+              <span className="w-8 text-right tabular-nums">{Math.round(val * 100)}%</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {needsReview && annotations?.rationale?.length ? (
+        <ul className="mt-2 space-y-0.5 text-xs text-warn-foreground">
+          {annotations.rationale.map((r, i) => (
+            <li key={i} className="flex gap-1">
+              <span className="shrink-0 text-warn">•</span>
+              <span className="text-muted-foreground">{r}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function SourceEvidenceBlock({ citation }: { citation: ObligationRecord["citation"] }) {
   if (!citation) {
     return (
-      <div className="rounded-md border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+      <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
         No source evidence attached.
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-slate-200 p-3">
+    <div className="rounded-md border border-border p-3">
       <div className="mb-2 flex items-center gap-2">
-        <FileText className="h-4 w-4 text-slate-500" />
-        <p className="text-xs font-semibold uppercase text-slate-500">Source evidence</p>
+        <FileText className="h-4 w-4 text-muted-foreground" />
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Source evidence
+        </p>
       </div>
       <div className="mb-2 flex flex-wrap gap-2">
         <Badge variant="outline">
@@ -324,16 +362,16 @@ function SourceEvidence({ citation }: { citation: ObligationRecord["citation"] }
         ) : null}
         {citation.span_start != null || citation.span_end != null ? (
           <Badge variant="muted">
-            Span {citation.span_start ?? "?"}-{citation.span_end ?? "?"}
+            Span {citation.span_start ?? "?"}–{citation.span_end ?? "?"}
           </Badge>
         ) : null}
       </div>
       {citation.clause_span ? (
-        <p className="line-clamp-4 break-words text-xs leading-5 text-slate-600">
+        <p className="line-clamp-4 break-words text-xs leading-5 text-muted-foreground">
           {citation.clause_span}
         </p>
       ) : (
-        <p className="text-xs text-slate-500">Citation text was not captured.</p>
+        <p className="text-xs text-muted-foreground">Citation text was not captured.</p>
       )}
     </div>
   );
@@ -349,21 +387,21 @@ function Detail({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-md bg-slate-50 p-3">
-      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-500">
-        {icon}
+    <div className="rounded-md bg-muted p-3">
+      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span className="text-muted-foreground">{icon}</span>
         {label}
       </div>
-      <div className="break-words text-sm font-semibold text-slate-950">{children}</div>
+      <div className="break-words text-sm font-semibold text-foreground">{children}</div>
     </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-slate-950">{value}</div>
+    <div className="rounded-md bg-muted px-3 py-2.5">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-foreground">{value}</div>
     </div>
   );
 }
@@ -379,12 +417,7 @@ function buildActionPlanStats(items: ObligationRecord[]) {
       }
       return stats;
     },
-    {
-      reviewPending: 0,
-      assignedOwners: 0,
-      datedActions: 0,
-      criticalOrHigh: 0,
-    },
+    { reviewPending: 0, assignedOwners: 0, datedActions: 0, criticalOrHigh: 0 },
   );
 }
 
@@ -407,10 +440,6 @@ function riskVariant(riskBand: ObligationRecord["risk_band"]) {
   if (riskBand === "moderate") return "warn" as const;
   if (riskBand === "low") return "good" as const;
   return "muted" as const;
-}
-
-function formatDateText(value: string | null) {
-  return value || "Not dated";
 }
 
 function formatMachineLabel(value: string) {
