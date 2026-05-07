@@ -316,10 +316,57 @@ function Install-PythonDependencies {
     $pythonExe = Get-PythonExe
 
     Invoke-CheckedCommand -Name 'Upgrading pip tooling' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel') -WorkingDirectory $RepoRoot
-    Invoke-CheckedCommand -Name 'Installing backend Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev,pdf]') -WorkingDirectory $BackendDir
-    Invoke-CheckedCommand -Name 'Installing worker Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev]') -WorkingDirectory $WorkerDir
+    Invoke-CheckedCommand -Name 'Installing backend Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev,pdf,ocr]') -WorkingDirectory $BackendDir
+    Invoke-CheckedCommand -Name 'Installing worker Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev,ocr]') -WorkingDirectory $WorkerDir
     Invoke-CheckedCommand -Name 'Installing intelligence Python package' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', '-e', '.[dev]') -WorkingDirectory $IntelligenceDir
     Invoke-CheckedCommand -Name 'Installing orchestration helper dependencies' -FilePath $pythonExe -ArgumentList @('-m', 'pip', 'install', 'httpx') -WorkingDirectory $RepoRoot
+    Initialize-OcrRuntime
+}
+
+function Initialize-OcrRuntime {
+    Write-Step 'Verifying local OCR runtime'
+
+    $ocrCacheDir = Join-Path $RepoRoot '.paddlex-cache'
+    if (-not $env:PADDLE_PDX_CACHE_HOME) {
+        $env:PADDLE_PDX_CACHE_HOME = $ocrCacheDir
+    }
+
+    Write-Host "Paddle cache: $env:PADDLE_PDX_CACHE_HOME"
+
+    $tesseractCmd = $env:ORDERFLOW_OCR_TESSERACT_CMD
+    if ([string]::IsNullOrWhiteSpace($tesseractCmd)) {
+        $tesseractCmd = 'tesseract'
+    }
+    if (-not (Get-Command $tesseractCmd -ErrorAction SilentlyContinue)) {
+        Write-Host "Tesseract fallback not found on PATH as '$tesseractCmd'. PaddleOCR will still run; install Tesseract to enable fallback OCR." -ForegroundColor Yellow
+    }
+
+    if ($DryRun) {
+        Write-Host 'Would create local Paddle cache and import OCR dependencies.' -ForegroundColor Yellow
+        return
+    }
+
+    if (-not (Test-Path $env:PADDLE_PDX_CACHE_HOME)) {
+        New-Item -ItemType Directory -Path $env:PADDLE_PDX_CACHE_HOME -Force | Out-Null
+    }
+
+    $pythonExe = Get-PythonExe
+    $probe = @"
+import importlib.util
+
+modules = ("pypdfium2", "PIL", "paddle", "paddlex", "paddleocr")
+missing = [name for name in modules if importlib.util.find_spec(name) is None]
+if missing:
+    raise SystemExit("Missing OCR modules: " + ", ".join(missing))
+
+from orderflow_api.api.ocr_service import extract_pdf_page_with_ocr
+print("OCR runtime ready; models download on first scanned-page OCR.")
+"@
+
+    & $pythonExe -c $probe
+    if ($LASTEXITCODE -ne 0) {
+        throw 'OCR runtime verification failed.'
+    }
 }
 
 function Install-NodeDependencies {

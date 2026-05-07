@@ -5,6 +5,8 @@ app/frontend/node_modules/
 *.egg-info/
 app/frontend/.next*
 tmp/
+.paddlex-cache/
+**/.paddlex-cache/
 quality_output.txt
 *.tsbuildinfo
 app/backend/AIForBharat_Theme_App_Factory/
