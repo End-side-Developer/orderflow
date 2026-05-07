@@ -220,6 +220,20 @@ def _run_engine(
             settings=settings,
             started=started,
         )
+    if normalized == "google_vision":
+        return _run_google_vision(
+            image_path=image_path,
+            page_number=page_number,
+            source_language=source_language,
+            started=started,
+        )
+    if normalized == "azure_vision":
+        return _run_azure_vision(
+            image_path=image_path,
+            page_number=page_number,
+            source_language=source_language,
+            started=started,
+        )
     raise OcrUnavailableError(f"unsupported_ocr_engine:{engine}")
 
 
@@ -682,6 +696,273 @@ def _tesseract_version(executable: str) -> str | None:
     except Exception:
         return None
     return completed.stdout.splitlines()[0].strip()[:120] if completed.stdout else None
+
+
+def _run_azure_vision(
+    *,
+    image_path: Path,
+    page_number: int,
+    source_language: str | None,
+    started: float,
+) -> OcrPageResult:
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+
+    endpoint = os.environ.get("ORDERFLOW_AI_AZURE_VISION_ENDPOINT", "").strip().rstrip("/")
+    api_key = os.environ.get("ORDERFLOW_AI_AZURE_VISION_KEY", "").strip()
+    if not endpoint:
+        raise OcrUnavailableError("azure_vision_endpoint_missing")
+    if not api_key:
+        raise OcrUnavailableError("azure_vision_key_missing")
+
+    language = _azure_vision_language(source_language)
+    image_bytes = image_path.read_bytes()
+
+    # Submit to Read API (async, better accuracy for scanned documents)
+    submit_url = f"{endpoint}/vision/v3.2/read/analyze?language={language}"
+    req = urllib.request.Request(
+        submit_url,
+        data=image_bytes,
+        headers={"Ocp-Apim-Subscription-Key": api_key, "Content-Type": "image/png"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            operation_url = response.headers.get("Operation-Location", "")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:300]
+        raise OcrUnavailableError(f"azure_vision_submit_error:{exc.code}:{body}") from exc
+
+    if not operation_url:
+        raise OcrUnavailableError("azure_vision_no_operation_url")
+
+    # Poll until complete (max 30 seconds)
+    result_data: dict[str, Any] = {}
+    for _ in range(15):
+        time.sleep(2)
+        poll_req = urllib.request.Request(
+            operation_url,
+            headers={"Ocp-Apim-Subscription-Key": api_key},
+        )
+        with urllib.request.urlopen(poll_req, timeout=30) as poll_resp:
+            result_data = json.loads(poll_resp.read().decode("utf-8"))
+        if result_data.get("status") in ("succeeded", "failed"):
+            break
+
+    if result_data.get("status") != "succeeded":
+        raise OcrUnavailableError(f"azure_vision_read_failed:{result_data.get('status')}")
+
+    image_width, image_height = _image_dimensions(image_path)
+    lines: list[str] = []
+    boxes: list[dict[str, Any]] = []
+    confidences: list[float] = []
+
+    for read_page in result_data.get("analyzeResult", {}).get("readResults", []):
+        for line in read_page.get("lines", []):
+            line_text = line.get("text", "").strip()
+            if line_text:
+                lines.append(line_text)
+            if image_width and image_height:
+                for word in line.get("words", []):
+                    word_text = word.get("text", "").strip()
+                    confidence = word.get("confidence")
+                    bb_points = word.get("boundingBox", [])
+                    box = _azure_read_bounding_box(bb_points, image_width, image_height)
+                    polygon = _azure_read_polygon(bb_points, image_width, image_height)
+                    if word_text and box:
+                        boxes.append(
+                            {
+                                "text": word_text,
+                                "bbox": box,
+                                "polygon": polygon,
+                                "confidence": float(confidence) if isinstance(confidence, (int, float)) else None,
+                                "granularity": "word",
+                                "source": "ocr",
+                            }
+                        )
+                    if isinstance(confidence, (int, float)):
+                        confidences.append(float(confidence))
+
+    text = "\n".join(lines).strip()
+    if not text:
+        raise OcrUnavailableError("azure_vision_empty_response")
+
+    return OcrPageResult(
+        text=text,
+        engine="azure_vision",
+        engine_version="v3.2-read",
+        language_hint=source_language or "en",
+        confidence=_mean_confidence(confidences),
+        page_number=page_number,
+        duration_ms=_duration_ms(started),
+        boxes=tuple(boxes),
+    )
+
+
+def _azure_vision_language(source_language: str | None) -> str:
+    code = (source_language or "").strip().lower()
+    mapping = {
+        "hi": "hi",
+        "mr": "hi",  # Marathi uses Devanagari — Azure maps it under Hindi
+        "ta": "ta",
+        "te": "te",
+        "kn": "kn",
+        "ml": "ml",
+        "en": "en",
+    }
+    return mapping.get(code, "unk")  # "unk" tells Azure to auto-detect
+
+
+def _azure_read_bounding_box(
+    points: list[float],
+    image_width: float,
+    image_height: float,
+) -> dict[str, float] | None:
+    # Read API returns [x0,y0, x1,y1, x2,y2, x3,y3] (8 values, clockwise)
+    if not isinstance(points, list) or len(points) < 8:
+        return None
+    xs = [points[i] for i in range(0, 8, 2)]
+    ys = [points[i] for i in range(1, 8, 2)]
+    left, top = min(xs), min(ys)
+    width, height = max(xs) - left, max(ys) - top
+    return _normalize_rect(left, top, width, height, image_width, image_height)
+
+
+def _azure_read_polygon(
+    points: list[float],
+    image_width: float,
+    image_height: float,
+) -> list[dict[str, float]] | None:
+    if not isinstance(points, list) or len(points) < 8:
+        return None
+    return [
+        {"x": _fraction(points[i], image_width), "y": _fraction(points[i + 1], image_height)}
+        for i in range(0, len(points), 2)
+    ]
+
+
+def _run_google_vision(
+    *,
+    image_path: Path,
+    page_number: int,
+    source_language: str | None,
+    started: float,
+) -> OcrPageResult:
+    import base64
+    import json
+    import urllib.error
+    import urllib.request
+
+    api_key = os.environ.get("ORDERFLOW_AI_GOOGLE_VISION_API_KEY", "").strip()
+    if not api_key:
+        raise OcrUnavailableError("google_vision_api_key_missing")
+
+    image_b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
+    language_hints = _google_vision_language_hints(source_language)
+    request_body = {
+        "requests": [
+            {
+                "image": {"content": image_b64},
+                "features": [{"type": "DOCUMENT_TEXT_DETECTION"}],
+                "imageContext": {"languageHints": language_hints},
+            }
+        ]
+    }
+
+    url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(request_body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            result_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise OcrUnavailableError(f"google_vision_http_error:{exc.code}") from exc
+
+    responses = result_data.get("responses", [{}])
+    first = responses[0] if responses else {}
+
+    api_error = first.get("error")
+    if api_error:
+        raise OcrUnavailableError(f"google_vision_api_error:{api_error.get('message', 'unknown')}")
+
+    annotation = first.get("fullTextAnnotation", {})
+    text = annotation.get("text", "").strip()
+    if not text:
+        raise OcrUnavailableError("google_vision_empty_response")
+
+    pages = annotation.get("pages", [])
+    page_confidences = [p["confidence"] for p in pages if isinstance(p.get("confidence"), float)]
+    confidence = _mean_confidence(page_confidences)
+
+    boxes = _google_vision_boxes(first, image_path)
+    return OcrPageResult(
+        text=text,
+        engine="google_vision",
+        engine_version="v1",
+        language_hint=source_language or "en",
+        confidence=confidence,
+        page_number=page_number,
+        duration_ms=_duration_ms(started),
+        boxes=tuple(boxes),
+    )
+
+
+def _google_vision_language_hints(source_language: str | None) -> list[str]:
+    code = (source_language or "").strip().lower()
+    mapping: dict[str, list[str]] = {
+        "hi": ["hi"],
+        "mr": ["mr"],
+        "ta": ["ta"],
+        "te": ["te"],
+        "kn": ["kn"],
+        "ml": ["ml"],
+        "en": ["en"],
+        "auto": ["en", "hi"],
+    }
+    return mapping.get(code, ["en", "hi"] if not code else ["en"])
+
+
+def _google_vision_boxes(
+    response: dict[str, Any],
+    image_path: Path,
+) -> list[dict[str, Any]]:
+    image_width, image_height = _image_dimensions(image_path)
+    if not image_width or not image_height:
+        return []
+    boxes: list[dict[str, Any]] = []
+    # textAnnotations[0] is the full-page block; individual words start at index 1
+    for annotation in response.get("textAnnotations", [])[1:]:
+        text = annotation.get("description", "").strip()
+        if not text:
+            continue
+        vertices = annotation.get("boundingPoly", {}).get("vertices", [])
+        if len(vertices) < 4:
+            continue
+        xs = [v.get("x", 0) for v in vertices]
+        ys = [v.get("y", 0) for v in vertices]
+        left, top = min(xs), min(ys)
+        width, height = max(xs) - left, max(ys) - top
+        polygon = [
+            {"x": _fraction(v.get("x", 0), image_width), "y": _fraction(v.get("y", 0), image_height)}
+            for v in vertices
+        ]
+        boxes.append(
+            {
+                "text": text,
+                "bbox": _normalize_rect(left, top, width, height, image_width, image_height),
+                "polygon": polygon,
+                "confidence": None,
+                "granularity": "word",
+                "source": "ocr",
+            }
+        )
+    return boxes
 
 
 def _engine_plan(settings: Any) -> list[str]:
