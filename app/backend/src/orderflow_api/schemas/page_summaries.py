@@ -75,6 +75,7 @@ class PageDepartment(BaseModel):
 
 PlaceType = Literal["court", "property", "incident", "address", "jurisdiction", "other"]
 GeocodeSource = Literal["nominatim", "cache", "fallback_court_metadata", "none"]
+PageTextSource = Literal["native_pdf", "ocr", "low_text_fallback"]
 
 
 class ExtractedPlace(BaseModel):
@@ -164,6 +165,23 @@ class PageSummaryRecord(BaseModel):
         default=None,
         description="Provider token usage metadata, when available",
     )
+    text_source: PageTextSource = Field(
+        default="native_pdf",
+        description="Whether page_text came from native PDF text, OCR, or fallback handling",
+    )
+    ocr_engine: str | None = Field(default=None, description="OCR engine used for this page")
+    ocr_engine_version: str | None = Field(
+        default=None,
+        description="Version/signature of the OCR engine used for cache invalidation",
+    )
+    ocr_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="OCR confidence normalized to 0..1",
+    )
+    ocr_language: str | None = Field(default=None, description="OCR language hint used")
+    ocr_error: str | None = Field(default=None, description="Structured OCR failure reason")
 
     generated_at: datetime
     created_at: datetime

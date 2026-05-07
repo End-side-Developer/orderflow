@@ -48,6 +48,12 @@ PAGE_SUMMARIES_TABLE = sa.Table(
     sa.Column("prompt_version", sa.String(length=80), nullable=True),
     sa.Column("source_excerpt", sa.Text(), nullable=True),
     sa.Column("ai_token_usage", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column("text_source", sa.String(length=32), nullable=False, server_default="native_pdf"),
+    sa.Column("ocr_engine", sa.String(length=64), nullable=True),
+    sa.Column("ocr_engine_version", sa.String(length=120), nullable=True),
+    sa.Column("ocr_confidence", sa.Numeric(5, 4), nullable=True),
+    sa.Column("ocr_language", sa.String(length=32), nullable=True),
+    sa.Column("ocr_error", sa.String(length=240), nullable=True),
     sa.Column("generated_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -76,6 +82,12 @@ def create_page_summary(
     prompt_version: str | None = None,
     source_excerpt: str | None = None,
     ai_token_usage: dict[str, Any] | None = None,
+    text_source: str = "native_pdf",
+    ocr_engine: str | None = None,
+    ocr_engine_version: str | None = None,
+    ocr_confidence: float | None = None,
+    ocr_language: str | None = None,
+    ocr_error: str | None = None,
 ) -> PageSummaryRecord:
     summary_id = uuid4()
     now = datetime.now(UTC)
@@ -104,6 +116,12 @@ def create_page_summary(
         "prompt_version": prompt_version,
         "source_excerpt": _sanitize_source_excerpt(source_excerpt),
         "ai_token_usage": _sanitize_ai_token_usage(ai_token_usage),
+        "text_source": _sanitize_text_source(text_source),
+        "ocr_engine": _sanitize_short_text(ocr_engine, max_chars=64),
+        "ocr_engine_version": _sanitize_short_text(ocr_engine_version, max_chars=120),
+        "ocr_confidence": _sanitize_confidence(ocr_confidence),
+        "ocr_language": _sanitize_short_text(ocr_language, max_chars=32),
+        "ocr_error": _sanitize_short_text(ocr_error, max_chars=240),
         "generated_at": now,
         "created_at": now,
         "updated_at": now,
@@ -146,6 +164,12 @@ def upsert_page_summary(
     prompt_version: str | None = None,
     source_excerpt: str | None = None,
     ai_token_usage: dict[str, Any] | None = None,
+    text_source: str = "native_pdf",
+    ocr_engine: str | None = None,
+    ocr_engine_version: str | None = None,
+    ocr_confidence: float | None = None,
+    ocr_language: str | None = None,
+    ocr_error: str | None = None,
 ) -> PageSummaryRecord:
     summary_id = uuid4()
     now = datetime.now(UTC)
@@ -173,6 +197,12 @@ def upsert_page_summary(
         "prompt_version": prompt_version,
         "source_excerpt": _sanitize_source_excerpt(source_excerpt),
         "ai_token_usage": _sanitize_ai_token_usage(ai_token_usage),
+        "text_source": _sanitize_text_source(text_source),
+        "ocr_engine": _sanitize_short_text(ocr_engine, max_chars=64),
+        "ocr_engine_version": _sanitize_short_text(ocr_engine_version, max_chars=120),
+        "ocr_confidence": _sanitize_confidence(ocr_confidence),
+        "ocr_language": _sanitize_short_text(ocr_language, max_chars=32),
+        "ocr_error": _sanitize_short_text(ocr_error, max_chars=240),
         "generated_at": now,
         "created_at": now,
         "updated_at": now,
@@ -204,6 +234,12 @@ def upsert_page_summary(
             "prompt_version": statement.excluded.prompt_version,
             "source_excerpt": statement.excluded.source_excerpt,
             "ai_token_usage": statement.excluded.ai_token_usage,
+            "text_source": statement.excluded.text_source,
+            "ocr_engine": statement.excluded.ocr_engine,
+            "ocr_engine_version": statement.excluded.ocr_engine_version,
+            "ocr_confidence": statement.excluded.ocr_confidence,
+            "ocr_language": statement.excluded.ocr_language,
+            "ocr_error": statement.excluded.ocr_error,
             "generated_at": statement.excluded.generated_at,
             "updated_at": now,
         },
@@ -416,6 +452,14 @@ def _to_page_summary(
         prompt_version=row["prompt_version"],
         source_excerpt=row["source_excerpt"],
         ai_token_usage=row["ai_token_usage"],
+        text_source=row.get("text_source") or "native_pdf",
+        ocr_engine=row.get("ocr_engine"),
+        ocr_engine_version=row.get("ocr_engine_version"),
+        ocr_confidence=(
+            float(row["ocr_confidence"]) if row.get("ocr_confidence") is not None else None
+        ),
+        ocr_language=row.get("ocr_language"),
+        ocr_error=row.get("ocr_error"),
         generated_at=row["generated_at"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -454,6 +498,29 @@ def _sanitize_ai_token_usage(
         sanitized[key] = value
 
     return sanitized or None
+
+
+def _sanitize_text_source(value: str | None) -> str:
+    if value in {"native_pdf", "ocr", "low_text_fallback"}:
+        return value
+    return "native_pdf"
+
+
+def _sanitize_short_text(value: str | None, *, max_chars: int) -> str | None:
+    if value is None:
+        return None
+    cleaned = " ".join(str(value).split())
+    if not cleaned:
+        return None
+    return cleaned[:max_chars]
+
+
+def _sanitize_confidence(value: float | None) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if not isinstance(value, (int, float)):
+        return None
+    return min(1.0, max(0.0, float(value)))
 
 
 def _serialize_places(
