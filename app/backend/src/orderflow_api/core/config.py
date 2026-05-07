@@ -179,6 +179,31 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="ORDERFLOW_TRANSLATION_API_KEY",
     )
+    orderflow_ocr_enabled: bool = Field(
+        default=True,
+        validation_alias="ORDERFLOW_OCR_ENABLED",
+    )
+    orderflow_ocr_primary_engine: str = Field(
+        default="paddleocr",
+        validation_alias="ORDERFLOW_OCR_PRIMARY_ENGINE",
+    )
+    orderflow_ocr_fallback_engine: str = Field(
+        default="tesseract",
+        validation_alias="ORDERFLOW_OCR_FALLBACK_ENGINE",
+    )
+    orderflow_ocr_dpi: int = Field(default=300, validation_alias="ORDERFLOW_OCR_DPI")
+    orderflow_ocr_min_chars: int = Field(
+        default=120,
+        validation_alias="ORDERFLOW_OCR_MIN_CHARS",
+    )
+    orderflow_ocr_min_confidence: float = Field(
+        default=0.55,
+        validation_alias="ORDERFLOW_OCR_MIN_CONFIDENCE",
+    )
+    orderflow_ocr_tesseract_cmd: str = Field(
+        default="tesseract",
+        validation_alias="ORDERFLOW_OCR_TESSERACT_CMD",
+    )
     orderflow_translation_max_retries: int = Field(
         default=3,
         validation_alias="ORDERFLOW_TRANSLATION_MAX_RETRIES",
