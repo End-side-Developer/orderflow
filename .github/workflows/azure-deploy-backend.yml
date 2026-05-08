@@ -59,6 +59,31 @@ jobs:
           pip install -r requirements.txt
           PYTHONPATH=src python -c "from orderflow_api.main import app; print('imports ok')"
 
+      - name: Run alembic migrations against Azure Postgres
+        working-directory: ${{ env.BACKEND_DIR }}
+        env:
+          ORDERFLOW_API_DATABASE_URL: ${{ secrets.ORDERFLOW_API_DATABASE_URL }}
+          PYTHONPATH: src
+        run: |
+          if [ -z "${ORDERFLOW_API_DATABASE_URL}" ]; then
+            echo "ORDERFLOW_API_DATABASE_URL secret is not set; skipping migrations"
+            exit 0
+          fi
+          python -m alembic -c alembic.ini upgrade head
+
+      - name: Seed demo and evaluator accounts
+        working-directory: ${{ env.BACKEND_DIR }}
+        env:
+          ORDERFLOW_API_DATABASE_URL: ${{ secrets.ORDERFLOW_API_DATABASE_URL }}
+          PYTHONPATH: src
+        run: |
+          if [ -z "${ORDERFLOW_API_DATABASE_URL}" ]; then
+            echo "ORDERFLOW_API_DATABASE_URL secret is not set; skipping seeds"
+            exit 0
+          fi
+          python -m scripts.seed_demo_advocates || echo "seed_demo_advocates: non-fatal"
+          python -m scripts.seed_evaluator || echo "seed_evaluator: non-fatal"
+
       - name: Stage deploy bundle (orderflow_api at bundle root so Oryx finds it)
         working-directory: ${{ env.BACKEND_DIR }}
         run: |
