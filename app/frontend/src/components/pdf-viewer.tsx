@@ -68,7 +68,7 @@ function normalizedBoxesForHighlight(
   const serverBoxes = (highlight.visual_refs ?? [])
     .filter((ref) => ref.page_number === pageNumber)
     .map((ref) => ref.bbox);
-  if (serverBoxes.length > 0) return serverBoxes;
+  if (serverBoxes.length > 0) return serverBoxes.map(adjustHighlightBox);
 
   return matchTextPositionsToHighlight(
     positions.filter((position) => position.page === pageNumber),
@@ -111,12 +111,12 @@ function matchTextPositionsToHighlight(
     const bottom = Math.max(
       ...linePositions.map((position) => position.bbox.y + position.bbox.height),
     );
-    return {
+    return adjustHighlightBox({
       left: clampFraction(left / pageWidth),
       top: clampFraction(top / pageHeight),
       width: clampFraction((right - left) / pageWidth),
       height: clampFraction((bottom - top) / pageHeight),
-    };
+    });
   });
 }
 
@@ -137,6 +137,28 @@ function normalizeText(value: string): string {
 function clampFraction(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1, Math.max(0, value));
+}
+
+function adjustHighlightBox(box: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}): { left: number; top: number; width: number; height: number } {
+  const verticalPadding = 0.0020;
+  const horizontalPadding = 0.0025;
+
+  const left = clampFraction(box.left - horizontalPadding);
+  const top = clampFraction(box.top - verticalPadding);
+  const right = clampFraction(box.left + box.width + horizontalPadding);
+  const bottom = clampFraction(box.top + box.height + verticalPadding * 1.4);
+
+  return {
+    left,
+    top,
+    width: clampFraction(right - left),
+    height: clampFraction(bottom - top),
+  };
 }
 
 // Dynamic import of pdfjs-dist to avoid SSR issues
