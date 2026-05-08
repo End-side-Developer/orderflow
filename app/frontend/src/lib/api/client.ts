@@ -702,7 +702,11 @@ export type CaseActionPlanRegenerateData = {
   regenerated_at: string | null;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "http://localhost:8000/api/v1";
+// Default to a same-origin path so cookies set by the backend are reachable
+// to the frontend's middleware. The Next.js rewrite in next.config.mjs proxies
+// /api/v1/* to the actual backend (configured via ORDERFLOW_API_BASE_URL on
+// the server). Override only if you intentionally want to bypass the proxy.
+const apiBaseUrl = process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL ?? "/api/v1";
 
 // Auth handlers registered by <AuthProvider> to avoid a circular store ↔ client import.
 let _getToken: () => string | null = () => null;
