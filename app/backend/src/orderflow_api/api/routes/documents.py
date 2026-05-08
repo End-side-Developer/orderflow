@@ -34,6 +34,7 @@ from orderflow_api.api.document_persistence import (
     list_all_persisted_documents,
     find_document_by_checksum,
     delete_all_documents as delete_all_persisted_documents,
+    delete_persisted_document,
     set_document_case_flow_graph,
 )
 from orderflow_api.api.stub_repository import (
@@ -41,6 +42,7 @@ from orderflow_api.api.stub_repository import (
     get_document,
     ensure_demo_documents,
     delete_all_documents as delete_all_stub_documents,
+    delete_document as delete_stub_document,
 )
 from orderflow_api.core.config import get_settings
 from orderflow_api.core.language_service import detect_language
@@ -136,6 +138,44 @@ async def get_document_route(
 
     request_id = getattr(request.state, "request_id", None)
     return success(data=document, request_id=request_id)
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document_route(
+    request: Request,
+    document_id: UUID,
+    _user=Depends(require_permission(Permission.DOCUMENT_UPLOAD)),
+) -> dict[str, object]:
+    """
+    Delete a single case (document + every cascaded child row + the blob).
+
+    Reuses Postgres FK ON DELETE CASCADE so clauses, obligations, audit
+    events, page summaries, page annotations, document summary, text boxes,
+    extraction job, workflow runs, and case-advocate links all go in the
+    same transaction. The blob is removed best-effort first; storage
+    failures do not block the database deletion.
+    """
+    request_id = getattr(request.state, "request_id", None)
+
+    if _use_stub_repository():
+        deleted = delete_stub_document(document_id)
+    else:
+        deleted = delete_persisted_document(document_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "document_not_found",
+                "message": f"No document with id {document_id}",
+            },
+        )
+
+    return success(
+        data={"document_id": str(document_id), "deleted": True},
+        request_id=request_id,
+        message="document_deleted",
+    )
 
 
 @router.get("/documents/{document_id}/download")

@@ -933,6 +933,20 @@ export async function listDocuments(): Promise<ApiResult<DocumentsListData>> {
   return apiGet<DocumentsListData>("/documents");
 }
 
+export type DeleteDocumentData = {
+  document_id: string;
+  deleted: boolean;
+};
+
+export async function deleteDocument(
+  documentId: string,
+): Promise<ApiResult<DeleteDocumentData>> {
+  return requestApi<DeleteDocumentData>(`/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+  });
+}
+
 export async function getWorkbenchOverview(): Promise<ApiResult<WorkbenchOverviewData>> {
   return apiGet<WorkbenchOverviewData>("/workbench/overview");
 }

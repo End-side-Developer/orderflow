@@ -126,3 +126,32 @@ def get_object_bytes(client: Any, object_key: str) -> bytes:
     finally:
         response.close()
         response.release_conn()
+
+
+def delete_object(client: Any, object_key: str) -> bool:
+    """
+    Best-effort deletion of a single object. Returns True if it was removed,
+    False if it didn't exist or the backend reported a not-found. Other
+    failures bubble up so callers can decide whether to swallow or escalate.
+    """
+    container = _container_name()
+
+    if _is_azure_blob():
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            blob = client.get_blob_client(container=container, blob=object_key)
+            blob.delete_blob()
+            return True
+        except ResourceNotFoundError:
+            return False
+
+    from minio.error import S3Error
+
+    try:
+        client.remove_object(bucket_name=container, object_name=object_key)
+        return True
+    except S3Error as exc:
+        if getattr(exc, "code", None) == "NoSuchKey":
+            return False
+        raise

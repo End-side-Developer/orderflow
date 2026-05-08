@@ -257,3 +257,45 @@ def delete_all_documents() -> int:
     with get_engine().begin() as connection:
         result = connection.execute(statement)
     return result.rowcount
+
+
+def delete_persisted_document(document_id: UUID) -> bool:
+    """
+    Atomically delete a single document and all dependent rows.
+
+    All FKs that point at `documents.id` use `ON DELETE CASCADE` (clauses,
+    obligations, page_summaries, page_annotations, document_summaries,
+    document_text_boxes, extraction_jobs, workflow_runs, case_advocates),
+    so a single DELETE on the parent cascades through every child table.
+
+    The associated blob is also removed on a best-effort basis. Storage
+    failures do not block the database deletion.
+
+    Returns True if a row was deleted, False if no document with that id
+    existed.
+    """
+    document = get_persisted_document(document_id)
+    if document is None:
+        return False
+
+    if document.object_key:
+        try:
+            from orderflow_api.core.storage import (
+                build_object_storage_client,
+                delete_object,
+            )
+
+            client = build_object_storage_client()
+            delete_object(client, document.object_key)
+        except Exception as exc:
+            # Storage cleanup is best-effort — log and continue so a stuck
+            # blob never blocks a case-deletion request.
+            print(
+                f"warn: failed to delete blob '{document.object_key}' for "
+                f"document {document_id}: {exc}"
+            )
+
+    statement = sa.delete(DOCUMENTS_TABLE).where(DOCUMENTS_TABLE.c.id == document_id)
+    with get_engine().begin() as connection:
+        result = connection.execute(statement)
+    return result.rowcount > 0

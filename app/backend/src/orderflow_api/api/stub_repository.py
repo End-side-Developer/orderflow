@@ -73,6 +73,18 @@ def delete_all_documents() -> int:
     return count
 
 
+def delete_document(document_id: UUID) -> bool:
+    """Delete one stubbed document and any obligations/clauses tied to it."""
+    if document_id not in _DOCUMENTS:
+        return False
+    _DOCUMENTS.pop(document_id, None)
+    obligations = _OBLIGATIONS_BY_DOCUMENT.pop(document_id, [])
+    for obligation in obligations:
+        _AUDIT_EVENTS_BY_OBLIGATION.pop(obligation.id, None)
+    _CLAUSES_BY_DOCUMENT.pop(document_id, None)
+    return True
+
+
 def list_obligations(document_id: UUID | None = None) -> list[ObligationRecord]:
     if document_id is not None:
         return list(_OBLIGATIONS_BY_DOCUMENT.get(document_id, []))

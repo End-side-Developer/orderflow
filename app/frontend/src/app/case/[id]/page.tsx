@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2, Trash2 } from "lucide-react";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntakeProgress } from "../../../lib/hooks/useIntakeProgress";
@@ -14,7 +15,21 @@ import { ActionPlanPanel } from "../../../components/case/action-plan-panel";
 import { ReviewPanel } from "../../../components/case/review-panel";
 import { DashboardPanel } from "../../../components/case/dashboard-panel";
 import { PdfViewer } from "../../../components/pdf-viewer";
-import { CitationVisualRef, DocumentRecord, getDocument } from "../../../lib/api/client";
+import { Button } from "../../../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog";
+import {
+  CitationVisualRef,
+  DocumentRecord,
+  deleteDocument,
+  getDocument,
+} from "../../../lib/api/client";
 
 export default function CaseWizardPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -26,6 +41,25 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
   const [docError, setDocError] = useState<string | null>(null);
   const [pdfPage, setPdfPage] = useState(1);
   const [activeVisualRefs, setActiveVisualRefs] = useState<CitationVisualRef[]>([]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await deleteDocument(documentId);
+      if (!result.ok) {
+        setDeleteError(result.error.message || "Failed to delete case.");
+        return;
+      }
+      setDeleteOpen(false);
+      router.replace("/dashboard");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const {
     data: progress,
@@ -104,11 +138,66 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="flex min-h-[calc(100vh-9rem)] w-full flex-col gap-4 overflow-hidden">
-      <StageStepper
-        currentStage={currentAllowedStage}
-        activeStage={activeStage}
-        onStageClick={handleStageClick}
-      />
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <StageStepper
+            currentStage={currentAllowedStage}
+            activeStage={activeStage}
+            onStageClick={handleStageClick}
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setDeleteError(null);
+            setDeleteOpen(true);
+          }}
+          className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="mr-1 h-4 w-4" />
+          Delete case
+        </Button>
+      </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this case?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the document and every cached extraction
+              (clauses, page summaries, obligations, audit log, action plan,
+              annotations, and the stored PDF). This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && (
+            <div className="text-sm text-destructive">{deleteError}</div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setDeleteOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Yes, delete permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
         <div className="flex shrink-0 flex-col overflow-y-auto rounded-lg border border-border bg-card shadow-sm">
