@@ -43,6 +43,17 @@ class Settings(BaseSettings):
         default="orderflow-documents",
         validation_alias="ORDERFLOW_API_S3_BUCKET",
     )
+    # "minio" (default; uses S3_ENDPOINT/_ACCESS_KEY/_SECRET_KEY) or
+    # "azure_blob" (uses ORDERFLOW_API_AZURE_STORAGE_CONNECTION_STRING).
+    # Bucket/container name is shared via ORDERFLOW_API_S3_BUCKET.
+    orderflow_api_storage_backend: str = Field(
+        default="minio",
+        validation_alias="ORDERFLOW_API_STORAGE_BACKEND",
+    )
+    orderflow_api_azure_storage_connection_string: str | None = Field(
+        default=None,
+        validation_alias="ORDERFLOW_API_AZURE_STORAGE_CONNECTION_STRING",
+    )
     orderflow_api_temporal_host: str = Field(
         default="localhost:7233",
         validation_alias="ORDERFLOW_API_TEMPORAL_HOST",
