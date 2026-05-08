@@ -95,11 +95,11 @@ class Settings(BaseSettings):
         validation_alias="ORDERFLOW_AI_ALLOW_USER_OVERRIDE",
     )
     orderflow_ai_default_provider: str = Field(
-        default="gemini",
+        default="groq",
         validation_alias="ORDERFLOW_AI_DEFAULT_PROVIDER",
     )
     orderflow_ai_default_model: str = Field(
-        default="gemini-2.0-flash",
+        default="llama-3.1-8b-instant",
         validation_alias="ORDERFLOW_AI_DEFAULT_MODEL",
     )
     orderflow_ai_openai_api_key: str | None = Field(
