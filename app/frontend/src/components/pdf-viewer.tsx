@@ -209,6 +209,17 @@ interface PdfViewerProps {
   activeVisualRefs?: CitationVisualRef[];
   onTextExtracted?: (positions: PdfTextPosition[]) => void;
   places?: ExtractedPlace[];
+
+  /**
+   * Changes when intake progress changes.
+   * Used to refresh cached page summaries without full browser reload.
+   */
+  refreshToken?: string | number;
+
+  /**
+   * How many page summaries should be available based on intake progress.
+   */
+  expectedSummaryCount?: number;
 }
 
 export function PdfViewer({
@@ -219,6 +230,8 @@ export function PdfViewer({
   activeVisualRefs = [],
   onTextExtracted,
   places = [],
+  refreshToken,
+  expectedSummaryCount = 0,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<{ cancel?: () => void } | null>(null);
@@ -253,29 +266,45 @@ export function PdfViewer({
     [effectiveAnnotations, summaryHighlightAnnotations],
   );
 
-  const loadCachedPageSummaries = useCallback(async () => {
-    setSummariesLoading(true);
+  const loadCachedPageSummaries = useCallback(
+  async (options: { silent?: boolean } = {}) => {
+    const silent = options.silent === true;
+
+    if (!silent) {
+      setSummariesLoading(true);
+    }
+
     setSummariesError(null);
 
     try {
       const response = await listPageSummaries(documentId);
+
       if (response.ok) {
         setPageSummaries(response.data.items);
       } else {
-        setPageSummaries([]);
+        if (!silent) {
+          setPageSummaries([]);
+        }
         setSummariesError(response.error.message);
       }
     } catch (requestError) {
-      setPageSummaries([]);
+      if (!silent) {
+        setPageSummaries([]);
+      }
+
       setSummariesError(
         requestError instanceof Error
           ? requestError.message
           : "Could not load cached page extractions.",
       );
     } finally {
-      setSummariesLoading(false);
+      if (!silent) {
+        setSummariesLoading(false);
+      }
     }
-  }, [documentId]);
+  },
+  [documentId],
+);
 
   const loadDocumentAnnotations = useCallback(async () => {
     try {
@@ -295,6 +324,58 @@ export function PdfViewer({
       setLoadedAnnotations([]);
     }
   }, [documentId]);
+
+// Refresh cached page summaries when intake progress changes.
+// This fixes the PDF sidebar staying stale until manual browser reload.
+// It is silent so the right panel does not rapidly switch to skeleton state.
+useEffect(() => {
+  if (!refreshToken) return;
+
+  void loadCachedPageSummaries({ silent: true });
+  void loadDocumentAnnotations();
+}, [refreshToken, loadCachedPageSummaries, loadDocumentAnnotations]);
+
+// Keep polling while backend says pages are completed but this viewer
+// has not received those cached page summaries yet.
+// IMPORTANT: this is a silent background refresh, so the sidebar does not flicker.
+useEffect(() => {
+  if (expectedSummaryCount <= 0) return;
+
+  const currentLoadedCount = pageSummaries.length;
+  const currentPageLoaded = pageSummaries.some(
+    (summary) => summary.page_number === currentPage,
+  );
+
+  if (currentLoadedCount >= expectedSummaryCount && currentPageLoaded) {
+    return;
+  }
+
+  let cancelled = false;
+
+  const refresh = async () => {
+    if (cancelled) return;
+
+    await loadCachedPageSummaries({ silent: true });
+    await loadDocumentAnnotations();
+  };
+
+  void refresh();
+
+  const interval = window.setInterval(() => {
+    void refresh();
+  }, 2500);
+
+  return () => {
+    cancelled = true;
+    window.clearInterval(interval);
+  };
+}, [
+  expectedSummaryCount,
+  pageSummaries.length,
+  currentPage,
+  loadCachedPageSummaries,
+  loadDocumentAnnotations,
+]);
 
   // Extract local text positions for deterministic highlight alignment only.
   async function extractAllTextPositions(pdfDoc: any) {

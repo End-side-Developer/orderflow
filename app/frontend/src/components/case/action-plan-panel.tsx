@@ -87,27 +87,51 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
     };
   }, [documentId]);
 
-  // Poll every 4 s while the plan hasn't arrived yet (generation is async).
-  // Clears automatically once the plan is set or the component unmounts.
+  // Poll while action plan is not ready OR it returned empty items.
+  // Sometimes backend returns a valid empty plan first, then items appear after worker finishes.
   useEffect(() => {
-    if (isLoading || actionPlan) return;
+    if (isLoading) return;
+
+    const hasItems = (actionPlan?.items?.length ?? 0) > 0;
+
+    if (hasItems) return;
 
     let cancelled = false;
-    const interval = setInterval(() => {
-      void getCaseActionPlan(documentId).then((response) => {
+
+    const fetchPlan = async () => {
+      try {
+        const response = await getCaseActionPlan(documentId);
+
         if (cancelled) return;
+
         if (response.ok) {
           setActionPlan(response.data);
           setError(null);
+        } else {
+          setError(response.error.message);
         }
-      });
-    }, 4000);
+      } catch (requestError) {
+        if (cancelled) return;
+
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not load the generated action plan.",
+        );
+      }
+    };
+
+    void fetchPlan();
+
+    const interval = setInterval(() => {
+      void fetchPlan();
+    }, 2000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [documentId, isLoading, actionPlan]);
+  }, [documentId, isLoading, actionPlan?.items?.length]);
 
   const items = actionPlan?.items ?? EMPTY_ACTION_ITEMS;
   const stats = useMemo(() => buildActionPlanStats(items), [items]);
@@ -124,7 +148,7 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
     );
   }
 
-  if (!actionPlan) {
+  if (!actionPlan || actionPlan.items.length === 0) {
     return (
       <div className="flex flex-col gap-4 p-6">
         <Alert variant="destructive">
@@ -133,7 +157,7 @@ export function ActionPlanPanel({ documentId, onContinueToReview }: ActionPlanPa
           <AlertDescription>
             {error
               ? `${error} — checking again automatically.`
-              : "The action plan has not been generated yet. Checking automatically every few seconds."}
+              : "The action plan is still being generated. This panel will update automatically when items are ready."}
           </AlertDescription>
         </Alert>
         <div>

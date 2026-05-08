@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ExtractionJobStatusData,
   getCaseIntakeEventsUrl,
   getCaseIntakeStatus,
-  ExtractionJobStatusData,
 } from "../api/client";
 
 export type UseIntakeProgressResult = {
@@ -18,76 +18,81 @@ export function useIntakeProgress(documentId: string | null): UseIntakeProgressR
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPolling, setIsPolling] = useState<boolean>(false);
 
-  // Use refs to keep track of state within closures without triggering re-renders
-  const fallbackPollingRef = useRef<boolean>(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!documentId) {
-      setData(null);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    fallbackPollingRef.current = false;
-    setIsPolling(false);
-
-    // Initial fetch to get status immediately
-    getCaseIntakeStatus(documentId)
-      .then((res) => {
-        if (res.ok) {
-          setData(res.data);
-          setError(null);
-          // If already in a terminal state, we don't strictly need to open SSE, but we can rely on backend to close it or just not open it.
-          // Let's open SSE anyway to get potential updates unless it's already finalized or failed permanently (but we don't have permanent fail state yet).
-        } else {
-          setError(new Error(res.error.message || "Failed to fetch initial status"));
-        }
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err : new Error("Unknown error"));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    let cancelled = false;
 
     function cleanup() {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
+
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
     }
 
-    function startPolling() {
-      if (pollIntervalRef.current) return;
+    async function fetchStatus(options: { initial?: boolean } = {}) {
+      if (!documentId || cancelled) return;
 
-      fallbackPollingRef.current = true;
-      setIsPolling(true);
+      try {
+        const res = await getCaseIntakeStatus(documentId);
 
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const res = await getCaseIntakeStatus(documentId!);
-          if (res.ok) {
-            setData(res.data);
-            setError(null);
-          } else {
-            console.error("Polling error:", res.error);
-          }
-        } catch (e) {
-          console.error("Polling exception:", e);
+        if (cancelled) return;
+
+        if (res.ok) {
+          setData((previous) => {
+            const previousSignature = previous ? JSON.stringify(previous) : "";
+            const nextSignature = JSON.stringify(res.data);
+
+            if (previousSignature === nextSignature) {
+              return previous;
+            }
+
+            return res.data;
+          });
+          setError(null);
+        } else {
+          setError(new Error(res.error.message || "Failed to fetch intake status"));
         }
-      }, 2000);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err : new Error("Unknown intake status error"));
+        }
+      } finally {
+        if (options.initial && !cancelled) {
+          setIsLoading(false);
+        }
+      }
     }
 
-    // Attempt to connect via SSE
+    if (!documentId) {
+      cleanup();
+      setData(null);
+      setError(null);
+      setIsLoading(false);
+      setIsPolling(false);
+      return cleanup;
+    }
+
+    cleanup();
+    setIsLoading(true);
+    setError(null);
+    setIsPolling(true);
+
+    void fetchStatus({ initial: true });
+
+    // Reliable polling. This is the important fix.
+    // SSE is useful, but polling guarantees UI updates even when SSE is silent.
+    pollIntervalRef.current = setInterval(() => {
+      void fetchStatus();
+    }, 2000);
+
+    // Optional SSE fast path.
     try {
       const url = getCaseIntakeEventsUrl(documentId);
       const eventSource = new EventSource(url, { withCredentials: true });
@@ -96,7 +101,8 @@ export function useIntakeProgress(documentId: string | null): UseIntakeProgressR
       const handleStatusEvent = (event: MessageEvent<string>) => {
         try {
           const parsedData = parseStatusEventData(event.data);
-          if (parsedData) {
+
+          if (parsedData && !cancelled) {
             setData(parsedData);
             setError(null);
           }
@@ -109,25 +115,21 @@ export function useIntakeProgress(documentId: string | null): UseIntakeProgressR
       eventSource.addEventListener("intake_status", handleStatusEvent);
 
       eventSource.onerror = (err) => {
-        console.error("SSE error, falling back to polling", err);
-        // Close the failing SSE
+        console.error("SSE error. Keeping polling active.", err);
+
         if (eventSourceRef.current) {
           eventSourceRef.current.close();
           eventSourceRef.current = null;
         }
-        // Start polling
-        startPolling();
       };
     } catch (e) {
-      console.error(
-        "EventSource not supported or failed to initialize, falling back to polling",
-        e,
-      );
-      startPolling();
+      console.error("EventSource failed. Polling remains active.", e);
     }
 
     return () => {
+      cancelled = true;
       cleanup();
+      setIsPolling(false);
     };
   }, [documentId]);
 
@@ -136,18 +138,23 @@ export function useIntakeProgress(documentId: string | null): UseIntakeProgressR
 
 function parseStatusEventData(rawData: string): ExtractionJobStatusData | null {
   const parsed: unknown = JSON.parse(rawData);
+
   if (isExtractionJobStatusData(parsed)) {
     return parsed;
   }
+
   if (isRecord(parsed) && isExtractionJobStatusData(parsed.data)) {
     return parsed.data;
   }
+
   return null;
 }
 
 function isExtractionJobStatusData(value: unknown): value is ExtractionJobStatusData {
   return (
-    isRecord(value) && typeof value.document_id === "string" && typeof value.stage === "string"
+    isRecord(value) &&
+    typeof value.document_id === "string" &&
+    typeof value.stage === "string"
   );
 }
 

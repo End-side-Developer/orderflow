@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Trash2 } from "lucide-react";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntakeProgress } from "../../../lib/hooks/useIntakeProgress";
 import {
@@ -44,22 +44,8 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  async function handleDelete() {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const result = await deleteDocument(documentId);
-      if (!result.ok) {
-        setDeleteError(result.error.message || "Failed to delete case.");
-        return;
-      }
-      setDeleteOpen(false);
-      router.replace("/dashboard");
-    } finally {
-      setDeleting(false);
-    }
-  }
+  const [activeStage, setActiveStage] = useState<WizardStage>("extraction");
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   const {
     data: progress,
@@ -68,18 +54,47 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
     isPolling,
   } = useIntakeProgress(documentId);
 
-  // Derive the backend stage
   const jobStage = progress?.stage;
   const currentAllowedStage = getWizardStageFromJobStage(jobStage);
 
-  // The stage the user is currently viewing (can look back, but not forward)
-  const [activeStage, setActiveStage] = useState<WizardStage>("extraction");
+  const progressSignature = useMemo(() => {
+    return JSON.stringify({
+      stage: progress?.stage ?? null,
+      pages_completed: progress?.pages_completed ?? 0,
+      pages_total: progress?.pages_total ?? 0,
+      current_page: progress?.current_page ?? 0,
+      percent: progress?.percent ?? 0,
+      updated_at: progress?.updated_at ?? null,
+    });
+  }, [progress]);
+
+  const progressRefreshKey = `${documentId}:${refreshNonce}`;
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const result = await deleteDocument(documentId);
+
+      if (!result.ok) {
+        setDeleteError(result.error.message || "Failed to delete case.");
+        return;
+      }
+
+      setDeleteOpen(false);
+      router.replace("/dashboard");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
-    // Fetch document details for the PDF viewer
     setPdfPage(1);
     setActiveVisualRefs([]);
     setDocLoading(true);
+    setDocError(null);
+
     getDocument(documentId)
       .then((res) => {
         if (res.ok) {
@@ -97,34 +112,47 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
   }, [documentId]);
 
   useEffect(() => {
-    // Auto-advance active stage when allowed stage moves forward, unless user is looking back
     if (jobStage) {
       setActiveStage(currentAllowedStage);
     }
   }, [currentAllowedStage, jobStage]);
 
+  useEffect(() => {
+  if (!progress?.stage) return;
+
+  const shouldHardReload =
+    progress.stage === "summary_pending" ||
+    progress.stage === "action_plan_pending" ||
+    progress.stage === "review_in_progress" ||
+    progress.stage === "finalized";
+
+  if (!shouldHardReload) return;
+
+  const reloadKey = `orderflow:auto-reloaded:${documentId}:${progress.stage}`;
+
+  if (window.sessionStorage.getItem(reloadKey) === "true") return;
+
+  window.sessionStorage.setItem(reloadKey, "true");
+
+  window.setTimeout(() => {
+    window.location.reload();
+  }, 800);
+}, [documentId, progress?.stage]);
+
   const handleStageClick = (stage: WizardStage) => {
     setActiveStage(stage);
   };
 
-  const pdfViewerRefreshKey = [
-    documentId,
-    progress?.stage ?? "unknown",
-    progress?.pages_completed ?? 0,
-    progress?.pages_total ?? 0,
-    progress?.updated_at ?? "",
-  ].join(":");
-
   if (docError || progressError) {
     return (
-      <div className="flex flex-col h-full bg-muted">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="bg-destructive/10 text-destructive p-6 rounded-lg max-w-md">
-            <h2 className="text-lg font-bold mb-2">Error Loading Case</h2>
+      <div className="flex h-full flex-col bg-muted">
+        <div className="flex flex-1 items-center justify-center">
+          <div className="max-w-md rounded-lg bg-destructive/10 p-6 text-destructive">
+            <h2 className="mb-2 text-lg font-bold">Error Loading Case</h2>
             <p>{docError || progressError?.message}</p>
             <button
               onClick={() => router.push("/dashboard")}
-              className="mt-4 px-4 py-2 bg-destructive text-destructive-foreground rounded hover:opacity-90"
+              className="mt-4 rounded bg-destructive px-4 py-2 text-destructive-foreground hover:opacity-90"
             >
               Back to Dashboard
             </button>
@@ -136,9 +164,9 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
 
   if (docLoading) {
     return (
-      <div className="flex flex-col h-full bg-muted">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-muted-foreground animate-pulse">Loading case data...</div>
+      <div className="flex h-full flex-col bg-muted">
+        <div className="flex flex-1 items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">Loading case data...</div>
         </div>
       </div>
     );
@@ -147,13 +175,14 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="flex min-h-[calc(100vh-9rem)] w-full flex-col gap-4 overflow-hidden">
       <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <StageStepper
             currentStage={currentAllowedStage}
             activeStage={activeStage}
             onStageClick={handleStageClick}
           />
         </div>
+
         <Button
           variant="outline"
           size="sm"
@@ -178,9 +207,9 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
               annotations, and the stored PDF). This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          {deleteError && (
-            <div className="text-sm text-destructive">{deleteError}</div>
-          )}
+
+          {deleteError && <div className="text-sm text-destructive">{deleteError}</div>}
+
           <DialogFooter>
             <Button
               type="button"
@@ -190,6 +219,7 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
             >
               Cancel
             </Button>
+
             <Button
               type="button"
               variant="destructive"
@@ -211,21 +241,32 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
         <div className="flex shrink-0 flex-col overflow-y-auto rounded-lg border border-border bg-card shadow-sm">
           {activeStage === "extraction" && (
             <PageExtractionPanel
+              key={`extraction:${progressRefreshKey}`}
               documentId={documentId}
               progress={progress}
               isPolling={isPolling}
               isLoading={progressLoading}
             />
           )}
-          {activeStage === "summary" && <SummaryPanel documentId={documentId} />}
+
+          {activeStage === "summary" && (
+            <SummaryPanel
+              key={`summary:${progressRefreshKey}`}
+              documentId={documentId}
+            />
+          )}
+
           {activeStage === "action_plan" && (
             <ActionPlanPanel
+              key={`action:${progressRefreshKey}`}
               documentId={documentId}
               onContinueToReview={() => setActiveStage("review")}
             />
           )}
+
           {activeStage === "review" && (
             <ReviewPanel
+              key={`review:${progressRefreshKey}`}
               documentId={documentId}
               onNavigateToPage={(pageNumber, visualRefs = []) => {
                 setPdfPage(pageNumber);
@@ -234,20 +275,28 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
               onProceedToDashboard={() => setActiveStage("dashboard")}
             />
           )}
-          {activeStage === "dashboard" && <DashboardPanel documentId={documentId} />}
+
+          {activeStage === "dashboard" && (
+            <DashboardPanel
+              key={`dashboard:${progressRefreshKey}`}
+              documentId={documentId}
+            />
+          )}
         </div>
 
         <div className="flex min-h-[500px] flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
           {document ? (
             <PdfViewer
-              key={pdfViewerRefreshKey}
-              documentId={documentId}
-              initialPage={pdfPage}
-              onPageChange={setPdfPage}
-              activeVisualRefs={activeVisualRefs}
-            />
+  key={`pdf:${documentId}`}
+  documentId={documentId}
+  initialPage={pdfPage}
+  onPageChange={setPdfPage}
+  activeVisualRefs={activeVisualRefs}
+  refreshToken={progressRefreshKey}
+  expectedSummaryCount={progress?.pages_completed ?? 0}
+/>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <div className="flex flex-1 items-center justify-center text-muted-foreground">
               PDF not available
             </div>
           )}
