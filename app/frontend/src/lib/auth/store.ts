@@ -26,10 +26,11 @@ type AuthActions = {
   refreshAccessToken: () => Promise<string | null>;
 };
 
-// Same-origin path so the orderflow_refresh cookie is reachable; the
+// Always same-origin so the orderflow_refresh cookie is reachable. The
 // Next.js rewrite in next.config.mjs proxies /api/v1/* to the backend.
-const API_BASE =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_ORDERFLOW_API_BASE_URL) || "/api/v1";
+// NEXT_PUBLIC_ORDERFLOW_API_BASE_URL is intentionally NOT honored — see
+// the matching note in lib/api/client.ts.
+const API_BASE = "/api/v1";
 
 async function callRefresh(): Promise<{ token: string; user: UserSummary } | null> {
   try {
