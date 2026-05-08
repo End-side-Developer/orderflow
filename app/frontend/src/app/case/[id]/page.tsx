@@ -107,6 +107,14 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
     setActiveStage(stage);
   };
 
+  const pdfViewerRefreshKey = [
+    documentId,
+    progress?.stage ?? "unknown",
+    progress?.pages_completed ?? 0,
+    progress?.pages_total ?? 0,
+    progress?.updated_at ?? "",
+  ].join(":");
+
   if (docError || progressError) {
     return (
       <div className="flex flex-col h-full bg-muted">
@@ -232,6 +240,7 @@ export default function CaseWizardPage({ params }: { params: Promise<{ id: strin
         <div className="flex min-h-[500px] flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
           {document ? (
             <PdfViewer
+              key={pdfViewerRefreshKey}
               documentId={documentId}
               initialPage={pdfPage}
               onPageChange={setPdfPage}
