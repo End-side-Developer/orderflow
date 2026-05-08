@@ -1,7 +1,7 @@
 """Add rich cached page extraction fields.
 
-Revision ID: 20260505_01_page_summary_rich_extraction
-Revises: 20260504_01_t12_intake_flow
+Revision ID: 20260505_01_rich_page
+Revises: 20260504_01
 Create Date: 2026-05-05
 """
 
@@ -12,7 +12,10 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "20260505_01_page_summary_rich_extraction"
+# Shortened from 20260505_01_page_summary_rich_extraction (40 chars) so the
+# value fits the default alembic_version.version_num VARCHAR(32) column on
+# Azure Postgres flexible server. Behaviour is unchanged.
+revision = "20260505_01_rich_page"
 down_revision = "20260504_01"
 branch_labels = None
 depends_on = None
