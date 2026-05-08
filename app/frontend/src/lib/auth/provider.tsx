@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 import { registerAuthHandlers } from "@/lib/api/client";
 
@@ -15,11 +16,15 @@ function shouldRedirectOnLogout(pathname: string): boolean {
   if (pathname.startsWith("/login/")) return false;
   if (pathname.startsWith("/register/")) return false;
   if (pathname.startsWith("/public/")) return false;
+  // The root path is public in this app
+  if (pathname === "/") return false;
   return true;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const bootstrap = useAuthStore((s) => s.bootstrap);
+  const status = useAuthStore((s) => s.status);
+  const pathname = usePathname();
 
   useEffect(() => {
     // Wire the store's token getter and refresh function into the API client.
@@ -44,6 +49,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("auth:logout", onLogout);
     };
   }, [bootstrap]);
+
+  // If we are on a protected route and still loading the session,
+  // block rendering to prevent race conditions in child component useEffects.
+  if (status === "loading" && shouldRedirectOnLogout(pathname)) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-2">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="animate-pulse text-sm text-muted-foreground">Initializing session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }

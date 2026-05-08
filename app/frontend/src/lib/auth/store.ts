@@ -32,6 +32,9 @@ type AuthActions = {
 // the matching note in lib/api/client.ts.
 const API_BASE = "/api/v1";
 
+// Simple lock to prevent parallel refresh calls
+let refreshPromise: Promise<string | null> | null = null;
+
 async function callRefresh(): Promise<{ token: string; user: UserSummary } | null> {
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
@@ -65,27 +68,37 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       },
 
       async bootstrap() {
-        const result = await callRefresh();
-        if (result) {
-          set({ accessToken: result.token, user: result.user, status: "authed" });
-        } else {
-          // Keep persisted user for display but clear the token
-          set((s) => ({ accessToken: null, status: "anon", user: s.user }));
-        }
+        // Use the locked refresh method to avoid double-fetching on mount
+        await get().refreshAccessToken();
+        
+        // If we still don't have a token after refresh, but we have a persisted user,
+        // the status will be "anon" (via refreshAccessToken's failure path).
+        // If it succeeded, status will be "authed".
       },
 
       async refreshAccessToken() {
-        const result = await callRefresh();
-        if (result) {
-          set({ accessToken: result.token, user: result.user, status: "authed" });
-          return result.token;
-        }
-        // Refresh failed — clear session
-        set({ accessToken: null, user: null, status: "anon" });
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("auth:logout"));
-        }
-        return null;
+        // Atomic refresh to prevent race conditions on page load/parallel requests
+        if (refreshPromise) return refreshPromise;
+
+        refreshPromise = (async () => {
+          try {
+            const result = await callRefresh();
+            if (result) {
+              set({ accessToken: result.token, user: result.user, status: "authed" });
+              return result.token;
+            }
+            // Refresh failed — clear session
+            set({ accessToken: null, user: null, status: "anon" });
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event("auth:logout"));
+            }
+            return null;
+          } finally {
+            refreshPromise = null;
+          }
+        })();
+
+        return refreshPromise;
       },
     }),
     {

@@ -845,8 +845,9 @@ async function requestApi<T>(path: string, init: RequestInit): Promise<ApiResult
       headers,
     });
 
-    // On 401, try a single token refresh then retry (skip for auth routes to avoid loops)
-    if (response.status === 401 && token && !path.startsWith("/auth/")) {
+    // On 401, try a single token refresh then retry (skip for auth routes to avoid loops).
+    // We try this even if token was missing from the first attempt, as we might have a valid refresh cookie.
+    if (response.status === 401 && !path.startsWith("/auth/")) {
       const newToken = await _doRefresh();
       if (newToken) {
         headers.set("Authorization", `Bearer ${newToken}`);
@@ -1165,6 +1166,27 @@ export async function downloadDocument(documentId: string): Promise<DocumentDown
       headers,
     });
 
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      const newToken = await _doRefresh();
+      if (newToken) {
+        headers["Authorization"] = `Bearer ${newToken}`;
+        const retryResponse = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+          headers,
+        });
+        if (!retryResponse.ok) {
+          throw new Error(`HTTP ${retryResponse.status}`);
+        }
+        return {
+          blob: await retryResponse.blob(),
+          fileName: parseContentDispositionFilename(retryResponse.headers.get("content-disposition")),
+          contentType: retryResponse.headers.get("content-type"),
+        };
+      }
+    }
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -1222,6 +1244,27 @@ export async function downloadActionPlan(
       credentials: "include",
       headers,
     });
+
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      const newToken = await _doRefresh();
+      if (newToken) {
+        headers["Authorization"] = `Bearer ${newToken}`;
+        const retryResponse = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+          headers,
+        });
+        if (!retryResponse.ok) {
+          throw new Error(`HTTP ${retryResponse.status}`);
+        }
+        return {
+          blob: await retryResponse.blob(),
+          fileName: parseContentDispositionFilename(retryResponse.headers.get("content-disposition")),
+          contentType: retryResponse.headers.get("content-type"),
+        };
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
