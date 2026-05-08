@@ -272,6 +272,17 @@ async def start_intake(
         current_concurrency=current_concurrency,
         bypass_cache=bypass_cache,
     )
+
+    if settings.orderflow_temporal_disabled:
+        # No Temporal / no worker. Mark the job as pages_done so the wizard
+        # can advance; downstream stages auto-advance via the same flag in
+        # request_summary_generation / request_action_plan_generation.
+        advanced = update_extraction_job_stage(document_id, "pages_done")
+        if advanced is not None:
+            job = advanced
+        workflow_run = _synthesise_workflow_run_record(document)
+        return StartIntakeResult(job=job, workflow_run=workflow_run, workflow_started=True)
+
     workflow_run, workflow_started = await _ensure_intake_workflow(
         document,
         bypass_cache=bypass_cache,
@@ -283,6 +294,30 @@ async def start_intake(
         job=job,
         workflow_run=workflow_run,
         workflow_started=workflow_started,
+    )
+
+
+def _synthesise_workflow_run_record(document: DocumentRecord) -> WorkflowRunRecord:
+    """Build a placeholder WorkflowRunRecord for the temporal-disabled path.
+
+    The record is not persisted; it just satisfies the StartIntakeResult
+    contract so callers (and the response envelope) keep working.
+    """
+    now = datetime.now(UTC)
+    placeholder_id = uuid4()
+    return WorkflowRunRecord(
+        id=placeholder_id,
+        document_id=document.id,
+        workflow_type="orderflow-intake-workflow",
+        workflow_id=f"{settings.orderflow_api_temporal_workflow_id_prefix}-{document.id}-noop",
+        run_id=str(placeholder_id),
+        task_queue=settings.orderflow_api_temporal_task_queue,
+        status="completed",
+        metadata={"temporal_disabled": True},
+        started_at=now,
+        completed_at=now,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -361,6 +396,13 @@ def request_action_plan(document_id: UUID) -> ExtractionJobStatusData:
 async def request_summary_generation(document_id: UUID) -> StageGateSignalResult:
     """Advance the summary gate and release the waiting intake workflow."""
     job = request_summary(document_id)
+    if settings.orderflow_temporal_disabled:
+        # No worker to do real summary generation — jump straight to summary_done
+        # so the wizard's next gate opens.
+        advanced = update_extraction_job_stage(document_id, "summary_done")
+        if advanced is not None:
+            job = advanced
+        return StageGateSignalResult(job=job, workflow_signal_sent=False)
     signal_sent = await signal_advance_to_summary(document_id)
     return StageGateSignalResult(job=job, workflow_signal_sent=signal_sent)
 
@@ -368,6 +410,11 @@ async def request_summary_generation(document_id: UUID) -> StageGateSignalResult
 async def request_action_plan_generation(document_id: UUID) -> StageGateSignalResult:
     """Advance the action-plan gate and release the waiting intake workflow."""
     job = request_action_plan(document_id)
+    if settings.orderflow_temporal_disabled:
+        advanced = update_extraction_job_stage(document_id, "action_plan_done")
+        if advanced is not None:
+            job = advanced
+        return StageGateSignalResult(job=job, workflow_signal_sent=False)
     signal_sent = await signal_advance_to_action_plan(document_id)
     return StageGateSignalResult(job=job, workflow_signal_sent=signal_sent)
 
@@ -508,6 +555,12 @@ async def signal_advance_to_action_plan(document_id: UUID) -> bool:
 
 
 async def _signal_intake_workflow(document_id: UUID, signal_name: str) -> bool:
+    if settings.orderflow_temporal_disabled:
+        # No workflow exists to signal — the orchestrator advanced job state
+        # directly. Return True so callers don't surface a misleading
+        # "signal failed" warning.
+        return True
+
     workflow_run = _find_intake_workflow_run(document_id)
     if workflow_run is None:
         return False

@@ -70,6 +70,14 @@ class Settings(BaseSettings):
         default="orderflow-intake",
         validation_alias="ORDERFLOW_API_TEMPORAL_WORKFLOW_ID_PREFIX",
     )
+    # When true, the orchestrator skips Temporal entirely and serves a
+    # synthesized intake job that auto-advances through the wizard stages.
+    # Useful when running the API on infrastructure (Azure App Service,
+    # Vercel, etc.) where deploying Temporal + a worker is impractical.
+    orderflow_temporal_disabled: bool = Field(
+        default=False,
+        validation_alias="ORDERFLOW_TEMPORAL_DISABLED",
+    )
     orderflow_api_cors_origins: str = Field(
         default="http://localhost:3000",
         validation_alias="ORDERFLOW_API_CORS_ORIGINS",
