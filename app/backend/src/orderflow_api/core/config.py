@@ -210,7 +210,7 @@ class Settings(BaseSettings):
     )
 
     orderflow_auth_required: bool = Field(
-        default=False,
+        default=True,
         validation_alias="ORDERFLOW_AUTH_REQUIRED",
     )
     orderflow_jwt_secret: str = Field(

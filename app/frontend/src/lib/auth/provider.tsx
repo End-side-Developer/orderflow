@@ -6,6 +6,18 @@ import { registerAuthHandlers } from "@/lib/api/client";
 
 import { useAuthStore } from "./store";
 
+// Routes that should NOT trigger a logout-redirect (we are already on the
+// login surface, or on a public page that does not need a session).
+const NO_REDIRECT_PATHS = ["/login", "/register", "/public", "/"];
+
+function shouldRedirectOnLogout(pathname: string): boolean {
+  if (NO_REDIRECT_PATHS.includes(pathname)) return false;
+  if (pathname.startsWith("/login/")) return false;
+  if (pathname.startsWith("/register/")) return false;
+  if (pathname.startsWith("/public/")) return false;
+  return true;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const bootstrap = useAuthStore((s) => s.bootstrap);
 
@@ -17,6 +29,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       () => useAuthStore.getState().refreshAccessToken(),
     );
     bootstrap();
+
+    // Hard-redirect to /login on logout / refresh-failure events. The store
+    // dispatches `auth:logout` whenever the session is cleared (manual logout
+    // or token refresh failure), so any open protected page bounces out.
+    function onLogout() {
+      if (typeof window === "undefined") return;
+      if (!shouldRedirectOnLogout(window.location.pathname)) return;
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.replace(`/login?redirect=${next}`);
+    }
+    window.addEventListener("auth:logout", onLogout);
+    return () => {
+      window.removeEventListener("auth:logout", onLogout);
+    };
   }, [bootstrap]);
 
   return <>{children}</>;

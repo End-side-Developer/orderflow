@@ -71,6 +71,21 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
 }
 
 
+# Roles that bypass per-document owner_user_id checks (can see every case).
+# Hackathon evaluators log in as a dedicated government-role account, so
+# `government` is the only privileged role here.
+PRIVILEGED_ROLES: frozenset[Role] = frozenset({Role.GOVERNMENT})
+
+
+def is_privileged(role: Role | str) -> bool:
+    if isinstance(role, str):
+        try:
+            role = Role(role)
+        except ValueError:
+            return False
+    return role in PRIVILEGED_ROLES
+
+
 def role_permissions(role: Role | str) -> frozenset[Permission]:
     if isinstance(role, str):
         try:
