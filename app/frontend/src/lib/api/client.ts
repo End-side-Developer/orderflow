@@ -1401,7 +1401,13 @@ function appendQuery(path: string, params?: Record<string, string | undefined>):
 }
 
 export function getCaseIntakeEventsUrl(documentId: string): string {
-  return `${apiBaseUrl}${caseRoute(documentId, "/intake/events")}`;
+  const base = `${apiBaseUrl}${caseRoute(documentId, "/intake/events")}`;
+  const token = _getToken();
+  if (token) {
+    const separator = base.includes("?") ? "&" : "?";
+    return `${base}${separator}token=${encodeURIComponent(token)}`;
+  }
+  return base;
 }
 
 export async function startCaseIntake(

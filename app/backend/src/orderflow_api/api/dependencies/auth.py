@@ -15,13 +15,21 @@ _DEMO_ACTOR_ROLE = "government"
 
 
 def _decode_bearer(request: Request) -> str | None:
+    # 1. Check Authorization header (Standard)
     header = request.headers.get("authorization") or request.headers.get("Authorization")
-    if not header:
-        return None
-    parts = header.split(None, 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return None
-    return parts[1].strip() or None
+    if header:
+        parts = header.split(None, 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            val = parts[1].strip()
+            if val:
+                return val
+
+    # 2. Check 'token' query parameter (for SSE/EventSource)
+    token_param = request.query_params.get("token")
+    if token_param:
+        return token_param
+
+    return None
 
 
 def _set_actor_state(
