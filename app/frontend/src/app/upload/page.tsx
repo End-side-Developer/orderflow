@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -82,14 +83,17 @@ const STEPS: Array<{ id: 1 | 2 | 3 | 4; label: string; description: string }> = 
 function toText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
+
 function toCommaSeparatedText(value: unknown): string {
   if (!Array.isArray(value)) return "";
   return value
     .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     .join(", ");
 }
+
 function setFieldValue(form: HTMLFormElement, fieldName: string, value: string): void {
   const element = form.elements.namedItem(fieldName);
+
   if (
     element instanceof HTMLInputElement ||
     element instanceof HTMLSelectElement ||
@@ -98,25 +102,37 @@ function setFieldValue(form: HTMLFormElement, fieldName: string, value: string):
     element.value = value;
   }
 }
+
 function setFileValue(form: HTMLFormElement, file: File): void {
   const element = form.elements.namedItem("judgment");
+
   if (!(element instanceof HTMLInputElement) || element.type !== "file") return;
+
   const dataTransfer = new DataTransfer();
   dataTransfer.items.add(file);
   element.files = dataTransfer.files;
 }
+
 function decodeBase64ToBytes(value: string): ArrayBuffer {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
   return bytes.buffer;
 }
+
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+
   const units = ["B", "KB", "MB", "GB"];
   const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+
   return `${(bytes / Math.pow(1024, idx)).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 }
+
 function applyIndianECourtsEnvelopeToForm(
   form: HTMLFormElement,
   envelope: IndianECourtsIntakeEnvelope,
@@ -124,6 +140,7 @@ function applyIndianECourtsEnvelopeToForm(
   const ccms = envelope.ccms;
   const cis = envelope.cis;
   const additionalMetadata = envelope.additional_metadata;
+
   setFieldValue(form, "case_id", toText(cis?.case_id ?? additionalMetadata?.case_id));
   setFieldValue(form, "department", toText(additionalMetadata?.department));
   setFieldValue(form, "ccms_reference_id", toText(ccms.reference_id));
@@ -177,6 +194,7 @@ const STAGE_TO_STEP: Record<UploadStage, 1 | 2 | 3 | 4> = {
 export default function UploadPage() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement | null>(null);
+
   const [stage, setStage] = useState<UploadStage>("idle");
   const [statusText, setStatusText] = useState("Pick a judgment file to start extraction.");
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -215,38 +233,57 @@ export default function UploadPage() {
 
   async function handleOnlineIndianECourtsLookup(): Promise<void> {
     const identifier = onlineLookupId.trim();
+
     if (!identifier) {
       setOnlineLookupError("Enter a case identifier to fetch online.");
       setOnlineLookupStatus(null);
       return;
     }
-    const form = formRef.current;
-    if (!form) {
+
+    if (!formRef.current) {
       setOnlineLookupError("The intake form is not ready yet.");
       setOnlineLookupStatus(null);
       return;
     }
+
     setOnlineLookupError(null);
     setOnlineLookupStatus("Fetching case details from Indian eCourts source…");
     setOnlineLookupLoading(true);
-    const lookupResult = await lookupIndianECourtsIntake(identifier);
-    if (!lookupResult.ok) {
-      setOnlineLookupError(lookupResult.error.message);
-      setOnlineLookupStatus(null);
-      setOnlineLookupLoading(false);
-      return;
-    }
-    const payload = lookupResult.data;
-    setIntakeSource("indian_ecourts");
-    setTimeout(() => {
-      applyIndianECourtsEnvelopeToForm(form, payload.envelope);
+
+    try {
+      const lookupResult = await lookupIndianECourtsIntake(identifier);
+
+      if (!lookupResult.ok) {
+        setOnlineLookupError(lookupResult.error.message);
+        setOnlineLookupStatus(null);
+        return;
+      }
+
+      const payload = lookupResult.data;
+
+      flushSync(() => {
+        setIntakeSource("indian_ecourts");
+      });
+
+      const updatedForm = formRef.current;
+
+      if (!updatedForm) {
+        setOnlineLookupError("The intake form was not ready after switching source.");
+        setOnlineLookupStatus(null);
+        return;
+      }
+
+      applyIndianECourtsEnvelopeToForm(updatedForm, payload.envelope);
+
       try {
         const fileBytes = decodeBase64ToBytes(payload.file_content_base64);
         const file = new File([fileBytes], payload.source_file_name, {
           type: payload.source_file_type || "application/pdf",
         });
-        setFileValue(form, file);
+
+        setFileValue(updatedForm, file);
         setSelectedFileMeta({ name: file.name, size: file.size });
+
         setOnlineLookupStatus(
           `Fetched ${payload.source_file_name} and prefilled the full CCMS/CIS form from ${payload.resolved_source_url}.`,
         );
@@ -255,99 +292,105 @@ export default function UploadPage() {
           "Case metadata was fetched and prefilled, but the PDF file could not be restored automatically.",
         );
         setOnlineLookupError("Could not decode the fetched PDF payload.");
-      } finally {
-        setOnlineLookupLoading(false);
       }
-    }, 0);
+    } finally {
+      setOnlineLookupLoading(false);
+    }
   }
 
   async function handleLoadDocumentById(): Promise<void> {
     const lookupId = documentLookupId.trim();
+
     if (!lookupId) {
       setDocumentLookupError("Enter a document id to load.");
       setDocumentLookupStatus(null);
       return;
     }
-    const form = formRef.current;
-    if (!form) {
+
+    if (!formRef.current) {
       setDocumentLookupError("The intake form is not ready yet.");
       return;
     }
+
     setDocumentLookupError(null);
     setDocumentLookupStatus("Loading saved document…");
     setDocumentLookupLoading(true);
-    const lookupResult = await getDocument(lookupId);
-    if (!lookupResult.ok) {
-      setDocumentLookupError(lookupResult.error.message);
-      setDocumentLookupStatus(null);
-      setDocumentLookupLoading(false);
-      return;
-    }
-    const documentRecord = lookupResult.data;
-    const metadata = documentRecord.metadata as IndianECourtsMetadataRecord | null;
-    const ccms = metadata?.ccms ?? null;
-    const cis = metadata?.cis ?? null;
-    const additionalMetadata = metadata?.additional_metadata ?? null;
-    const hasIndianEcourtsData =
-      metadata?.source_system === "indian_ecourts_service" || Boolean(ccms || cis);
-    setIntakeSource(hasIndianEcourtsData ? "indian_ecourts" : "upload");
-    setTimeout(() => {
-      setFieldValue(form, "case_id", toText(cis?.case_id ?? additionalMetadata?.case_id));
-      setFieldValue(form, "department", toText(additionalMetadata?.department));
-      setFieldValue(form, "ccms_reference_id", toText(ccms?.reference_id));
-      setFieldValue(form, "ccms_delivery_timestamp", toText(ccms?.delivery_timestamp));
-      setFieldValue(form, "ccms_document_type", toText(ccms?.document_type));
-      setFieldValue(form, "ccms_source_url", toText(ccms?.source_url));
-      setFieldValue(form, "ccms_source_gateway", toText(ccms?.source_gateway));
-      setFieldValue(form, "ccms_receipt_id", toText(ccms?.receipt_id));
-      setFieldValue(form, "cis_case_id", toText(cis?.case_id));
-      setFieldValue(form, "cis_court_name", toText(cis?.court_name));
-      setFieldValue(form, "cis_court_code", toText(cis?.court_code));
-      setFieldValue(form, "cis_order_date", toText(cis?.order_date));
-      setFieldValue(form, "cis_bench", toText(cis?.bench));
-      setFieldValue(form, "cis_parties", toCommaSeparatedText(cis?.parties));
-      setFieldValue(form, "cis_petitioners", toCommaSeparatedText(cis?.petitioners));
-      setFieldValue(form, "cis_respondents", toCommaSeparatedText(cis?.respondents));
-      setFieldValue(form, "cis_case_type", toText(cis?.case_type));
-      setFieldValue(form, "cis_filing_number", toText(cis?.filing_number));
-      setFieldValue(form, "cis_diary_number", toText(cis?.diary_number));
-      setFieldValue(form, "cis_judge_names", toCommaSeparatedText(cis?.judge_names));
-      setFieldValue(form, "cis_hearing_stage", toText(cis?.hearing_stage));
-      setFieldValue(form, "cis_state", toText(cis?.state));
-      setFieldValue(form, "cis_district", toText(cis?.district));
-      setFieldValue(form, "cis_department_tags", toCommaSeparatedText(cis?.department_tags));
-      try {
-        downloadDocument(documentRecord.id)
-          .then((downloadResult) => {
-            const fileName =
-              downloadResult.fileName ?? documentRecord.source_file_name ?? "document.pdf";
-            const fileType =
-              downloadResult.contentType ?? documentRecord.source_file_type ?? "application/pdf";
-            const file = new File([downloadResult.blob], fileName, { type: fileType });
-            setFileValue(form, file);
-            setSelectedFileMeta({ name: file.name, size: file.size });
-            setDocumentLookupStatus(
-              `Loaded ${documentRecord.id} and restored ${fileName}. The form is prefilled and ready.`,
-            );
-          })
-          .catch((error) => {
-            setDocumentLookupStatus(
-              `Loaded ${documentRecord.id}. The metadata is prefilled, but the PDF could not be restored automatically.`,
-            );
-            setDocumentLookupError(
-              error instanceof Error ? error.message : "Document file load failed",
-            );
-          })
-          .finally(() => {
-            setDocumentLookupLoading(false);
-          });
-      } catch (error) {
-        setDocumentLookupError(
-          error instanceof Error ? error.message : "Document file load failed",
-        );
-        setDocumentLookupLoading(false);
+
+    try {
+      const lookupResult = await getDocument(lookupId);
+
+      if (!lookupResult.ok) {
+        setDocumentLookupError(lookupResult.error.message);
+        setDocumentLookupStatus(null);
+        return;
       }
-    }, 0);
+
+      const documentRecord = lookupResult.data;
+      const metadata = documentRecord.metadata as IndianECourtsMetadataRecord | null;
+      const ccms = metadata?.ccms ?? null;
+      const cis = metadata?.cis ?? null;
+      const additionalMetadata = metadata?.additional_metadata ?? null;
+      const hasIndianEcourtsData =
+        metadata?.source_system === "indian_ecourts_service" || Boolean(ccms || cis);
+
+      flushSync(() => {
+        setIntakeSource(hasIndianEcourtsData ? "indian_ecourts" : "upload");
+      });
+
+      const updatedForm = formRef.current;
+
+      if (!updatedForm) {
+        setDocumentLookupError("The intake form was not ready after switching source.");
+        return;
+      }
+
+      setFieldValue(updatedForm, "case_id", toText(cis?.case_id ?? additionalMetadata?.case_id));
+      setFieldValue(updatedForm, "department", toText(additionalMetadata?.department));
+      setFieldValue(updatedForm, "ccms_reference_id", toText(ccms?.reference_id));
+      setFieldValue(updatedForm, "ccms_delivery_timestamp", toText(ccms?.delivery_timestamp));
+      setFieldValue(updatedForm, "ccms_document_type", toText(ccms?.document_type));
+      setFieldValue(updatedForm, "ccms_source_url", toText(ccms?.source_url));
+      setFieldValue(updatedForm, "ccms_source_gateway", toText(ccms?.source_gateway));
+      setFieldValue(updatedForm, "ccms_receipt_id", toText(ccms?.receipt_id));
+      setFieldValue(updatedForm, "cis_case_id", toText(cis?.case_id));
+      setFieldValue(updatedForm, "cis_court_name", toText(cis?.court_name));
+      setFieldValue(updatedForm, "cis_court_code", toText(cis?.court_code));
+      setFieldValue(updatedForm, "cis_order_date", toText(cis?.order_date));
+      setFieldValue(updatedForm, "cis_bench", toText(cis?.bench));
+      setFieldValue(updatedForm, "cis_parties", toCommaSeparatedText(cis?.parties));
+      setFieldValue(updatedForm, "cis_petitioners", toCommaSeparatedText(cis?.petitioners));
+      setFieldValue(updatedForm, "cis_respondents", toCommaSeparatedText(cis?.respondents));
+      setFieldValue(updatedForm, "cis_case_type", toText(cis?.case_type));
+      setFieldValue(updatedForm, "cis_filing_number", toText(cis?.filing_number));
+      setFieldValue(updatedForm, "cis_diary_number", toText(cis?.diary_number));
+      setFieldValue(updatedForm, "cis_judge_names", toCommaSeparatedText(cis?.judge_names));
+      setFieldValue(updatedForm, "cis_hearing_stage", toText(cis?.hearing_stage));
+      setFieldValue(updatedForm, "cis_state", toText(cis?.state));
+      setFieldValue(updatedForm, "cis_district", toText(cis?.district));
+      setFieldValue(updatedForm, "cis_department_tags", toCommaSeparatedText(cis?.department_tags));
+
+      try {
+        const downloadResult = await downloadDocument(documentRecord.id);
+        const fileName =
+          downloadResult.fileName ?? documentRecord.source_file_name ?? "document.pdf";
+        const fileType =
+          downloadResult.contentType ?? documentRecord.source_file_type ?? "application/pdf";
+        const file = new File([downloadResult.blob], fileName, { type: fileType });
+
+        setFileValue(updatedForm, file);
+        setSelectedFileMeta({ name: file.name, size: file.size });
+        setDocumentLookupStatus(
+          `Loaded ${documentRecord.id} and restored ${fileName}. The form is prefilled and ready.`,
+        );
+      } catch (error) {
+        setDocumentLookupStatus(
+          `Loaded ${documentRecord.id}. The metadata is prefilled, but the PDF could not be restored automatically.`,
+        );
+        setDocumentLookupError(error instanceof Error ? error.message : "Document file load failed");
+      }
+    } finally {
+      setDocumentLookupLoading(false);
+    }
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -369,12 +412,14 @@ export default function UploadPage() {
     const department = String(formData.get("department") ?? "").trim();
     const usingIndianECourts = intakeSource === "indian_ecourts";
     const selectedSourceLanguage = sourceLanguage.trim();
+
     const ccmsReferenceId = String(formData.get("ccms_reference_id") ?? "").trim();
     const ccmsDeliveryTimestamp = String(formData.get("ccms_delivery_timestamp") ?? "").trim();
     const ccmsDocumentType = String(formData.get("ccms_document_type") ?? "").trim();
     const ccmsSourceUrl = String(formData.get("ccms_source_url") ?? "").trim();
     const ccmsSourceGateway = String(formData.get("ccms_source_gateway") ?? "").trim();
     const ccmsReceiptId = String(formData.get("ccms_receipt_id") ?? "").trim();
+
     const cisCaseId = String(formData.get("cis_case_id") ?? "").trim();
     const cisCourtName = String(formData.get("cis_court_name") ?? "").trim();
     const cisCourtCode = String(formData.get("cis_court_code") ?? "").trim();
@@ -391,6 +436,7 @@ export default function UploadPage() {
     const cisState = String(formData.get("cis_state") ?? "").trim();
     const cisDistrict = String(formData.get("cis_district") ?? "").trim();
     const cisDepartmentTags = String(formData.get("cis_department_tags") ?? "").trim();
+
     const aiMode = selectedAiMode;
     const aiModel = String(formData.get("ai_model") ?? "").trim();
     const selectedProvider =
@@ -406,19 +452,23 @@ export default function UploadPage() {
     );
 
     let uploadResult;
+
     if (usingIndianECourts) {
       if (!ccmsReferenceId && !cisCaseId) {
         setStage("error");
         setErrorText("Provide CCMS reference id or CIS case id for Indian eCourts intake.");
         return;
       }
+
       const buildStringArray = (value: string): string[] | undefined => {
         const list = value
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
+
         return list.length > 0 ? list : undefined;
       };
+
       const envelope: IndianECourtsIntakeEnvelope = {
         ccms: {
           reference_id: ccmsReferenceId || undefined,
@@ -437,6 +487,7 @@ export default function UploadPage() {
           department: department || undefined,
         },
       };
+
       const cisPayload: IndianECourtsIntakeEnvelope["cis"] = {
         case_id: cisCaseId || undefined,
         court_name: cisCourtName || undefined,
@@ -455,18 +506,22 @@ export default function UploadPage() {
         district: cisDistrict || undefined,
         department_tags: buildStringArray(cisDepartmentTags),
       };
+
       const hasCisData = Object.values(cisPayload).some((value) => value !== undefined);
       if (hasCisData) envelope.cis = cisPayload;
 
       const ecourtsFormData = new FormData();
       ecourtsFormData.append("file", file);
       ecourtsFormData.append("envelope", JSON.stringify(envelope));
+
       if (selectedSourceLanguage && selectedSourceLanguage !== "auto") {
         ecourtsFormData.append("source_language", selectedSourceLanguage);
       }
+
       uploadResult = await intakeIndianECourtsDocument(ecourtsFormData);
     } else {
       const uploadFormData = new FormData();
+
       uploadFormData.append("file", file);
       uploadFormData.append(
         "metadata",
@@ -476,15 +531,18 @@ export default function UploadPage() {
           source: "upload-page",
         }),
       );
+
       if (selectedSourceLanguage && selectedSourceLanguage !== "auto") {
         uploadFormData.append("source_language", selectedSourceLanguage);
       }
+
       uploadResult = await uploadDocument(uploadFormData);
     }
 
     if (!uploadResult.ok) {
       setStage("error");
       setErrorText(uploadResult.error.message);
+
       if (uploadResult.error.code === "duplicate_document") {
         const existingId =
           (uploadResult.error.details?.existing_document_id as string | undefined) ?? null;
@@ -493,6 +551,7 @@ export default function UploadPage() {
       } else {
         setStatusText("Upload failed.");
       }
+
       return;
     }
 
@@ -504,6 +563,7 @@ export default function UploadPage() {
 
     setStage("workflow");
     setStatusText("Starting page extraction workflow...");
+
     const intakeResult = await startCaseIntake(uploadResult.data.id, {
       ...(selectedProvider ? { ai_provider: selectedProvider } : {}),
       ...(aiModel ? { ai_model: aiModel } : {}),
@@ -545,11 +605,11 @@ export default function UploadPage() {
         subtitle="Pick a file or fetch from Indian eCourts. Page extraction starts automatically in the case workflow."
       />
 
-      {/* Stepper */}
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Intake progress">
         {STEPS.map((step) => {
           const isActive = step.id === activeStep;
           const isComplete = step.id < activeStep || stage === "success";
+
           return (
             <li
               key={step.id}
@@ -572,12 +632,9 @@ export default function UploadPage() {
                       : "bg-muted text-muted-foreground",
                 )}
               >
-                {isComplete && step.id < activeStep ? (
-                  <CheckCircle2 className="h-4 w-4" />
-                ) : (
-                  step.id
-                )}
+                {isComplete && step.id < activeStep ? <CheckCircle2 className="h-4 w-4" /> : step.id}
               </span>
+
               <div className="flex flex-col">
                 <span
                   className={cn(
@@ -594,7 +651,6 @@ export default function UploadPage() {
         })}
       </ol>
 
-      {/* Top: lookup helpers */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="card-interactive">
           <CardHeader>
@@ -608,6 +664,7 @@ export default function UploadPage() {
               One Delhi High Court identifier — auto-fetch the PDF and prefill CCMS/CIS.
             </CardDescription>
           </CardHeader>
+
           <CardContent className="flex flex-col gap-3">
             <Label htmlFor="online_lookup_id">Case id or judgment token/URL</Label>
             <Input
@@ -616,6 +673,7 @@ export default function UploadPage() {
               value={onlineLookupId}
               onChange={(e) => setOnlineLookupId(e.target.value)}
             />
+
             <Button
               type="button"
               onClick={() => void handleOnlineIndianECourtsLookup()}
@@ -624,6 +682,7 @@ export default function UploadPage() {
               {onlineLookupLoading ? <Loader2 className="animate-spin" /> : <Search />}
               {onlineLookupLoading ? "Fetching…" : "Fetch and prefill form"}
             </Button>
+
             {onlineLookupLoading ? (
               <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/40 p-3">
                 <Skeleton className="h-3 w-3/4" />
@@ -631,11 +690,13 @@ export default function UploadPage() {
                 <Skeleton className="h-3 w-1/2" />
               </div>
             ) : null}
+
             {onlineLookupStatus && !onlineLookupLoading ? (
               <Alert>
                 <AlertDescription>{onlineLookupStatus}</AlertDescription>
               </Alert>
             ) : null}
+
             {onlineLookupError ? (
               <Alert variant="destructive">
                 <AlertDescription>{onlineLookupError}</AlertDescription>
@@ -652,10 +713,9 @@ export default function UploadPage() {
               </span>
               Reload saved document
             </CardTitle>
-            <CardDescription>
-              Restore a previously uploaded PDF and its CCMS/CIS metadata.
-            </CardDescription>
+            <CardDescription>Restore a previously uploaded PDF and its CCMS/CIS metadata.</CardDescription>
           </CardHeader>
+
           <CardContent className="flex flex-col gap-3">
             <Label htmlFor="document_lookup_id">Document id</Label>
             <Input
@@ -664,6 +724,7 @@ export default function UploadPage() {
               value={documentLookupId}
               onChange={(e) => setDocumentLookupId(e.target.value)}
             />
+
             <Button
               type="button"
               variant="outline"
@@ -673,6 +734,7 @@ export default function UploadPage() {
               {documentLookupLoading ? <Loader2 className="animate-spin" /> : <FileSearch />}
               {documentLookupLoading ? "Loading…" : "Load and prefill form"}
             </Button>
+
             {documentLookupLoading ? (
               <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/40 p-3">
                 <Skeleton className="h-3 w-3/4" />
@@ -680,11 +742,13 @@ export default function UploadPage() {
                 <Skeleton className="h-3 w-1/2" />
               </div>
             ) : null}
+
             {documentLookupStatus && !documentLookupLoading ? (
               <Alert>
                 <AlertDescription>{documentLookupStatus}</AlertDescription>
               </Alert>
             ) : null}
+
             {documentLookupError ? (
               <Alert variant="destructive">
                 <AlertDescription>{documentLookupError}</AlertDescription>
@@ -694,7 +758,6 @@ export default function UploadPage() {
         </Card>
       </div>
 
-      {/* Intake form */}
       <Card>
         <CardHeader className="border-b border-border">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -708,13 +771,14 @@ export default function UploadPage() {
             metadata.
           </CardDescription>
         </CardHeader>
+
         <CardContent className="pt-6">
           <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-6">
-            {/* File dropzone */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="judgment" className="text-sm font-medium">
                 Judgment file
               </Label>
+
               <label
                 htmlFor="judgment"
                 className="dropzone cursor-pointer"
@@ -729,6 +793,7 @@ export default function UploadPage() {
                   onChange={handleFileChange}
                   className="sr-only"
                 />
+
                 {selectedFileMeta ? (
                   <div className="flex w-full max-w-md items-center gap-3 rounded-md border border-primary/30 bg-primary/10 p-3 text-left">
                     <span className="icon-chip">
@@ -762,7 +827,6 @@ export default function UploadPage() {
               </label>
             </div>
 
-            {/* Source / case basics */}
             <div className="grid gap-4 md:grid-cols-2">
               <Field id="intake_source" label="Intake source">
                 <Select
@@ -781,6 +845,7 @@ export default function UploadPage() {
                 </Select>
                 <input type="hidden" name="intake_source" value={intakeSource} />
               </Field>
+
               <Field id="source_language" label="Source language">
                 <Select value={sourceLanguage} onValueChange={setSourceLanguage}>
                   <SelectTrigger id="source_language">
@@ -796,9 +861,11 @@ export default function UploadPage() {
                   </SelectContent>
                 </Select>
               </Field>
+
               <Field id="case_id" label="Case id (optional)">
                 <Input id="case_id" name="case_id" placeholder="CASE-2026-001" />
               </Field>
+
               <Field id="department" label="Department (optional)">
                 <Input id="department" name="department" placeholder="District Administration" />
               </Field>
@@ -812,6 +879,7 @@ export default function UploadPage() {
                     Either CCMS reference id or CIS case id is required for Indian eCourts intake.
                   </CardDescription>
                 </CardHeader>
+
                 <CardContent className="grid gap-3 md:grid-cols-2">
                   <Field id="ccms_reference_id" label="CCMS reference id">
                     <Input
@@ -820,6 +888,7 @@ export default function UploadPage() {
                       placeholder="CCMS-REF-2026-001"
                     />
                   </Field>
+
                   <Field id="ccms_delivery_timestamp" label="CCMS delivery timestamp (ISO)">
                     <Input
                       id="ccms_delivery_timestamp"
@@ -827,6 +896,7 @@ export default function UploadPage() {
                       placeholder="2026-04-24T10:15:00Z"
                     />
                   </Field>
+
                   <Field id="ccms_document_type" label="CCMS document type">
                     <Input
                       id="ccms_document_type"
@@ -834,6 +904,7 @@ export default function UploadPage() {
                       placeholder="final_order"
                     />
                   </Field>
+
                   <Field id="ccms_source_url" label="CCMS source URL">
                     <Input
                       id="ccms_source_url"
@@ -841,6 +912,7 @@ export default function UploadPage() {
                       placeholder="https://...pdf"
                     />
                   </Field>
+
                   <Field id="ccms_source_gateway" label="CCMS source gateway">
                     <Input
                       id="ccms_source_gateway"
@@ -848,6 +920,7 @@ export default function UploadPage() {
                       placeholder="indian-ecourts-service"
                     />
                   </Field>
+
                   <Field id="ccms_receipt_id" label="CCMS receipt id">
                     <Input
                       id="ccms_receipt_id"
@@ -855,9 +928,11 @@ export default function UploadPage() {
                       placeholder="CCMS-RECEIPT-001"
                     />
                   </Field>
+
                   <Field id="cis_case_id" label="CIS case id">
                     <Input id="cis_case_id" name="cis_case_id" placeholder="CIS-CASE-2026-981" />
                   </Field>
+
                   <Field id="cis_court_name" label="CIS court name">
                     <Input
                       id="cis_court_name"
@@ -865,18 +940,23 @@ export default function UploadPage() {
                       placeholder="High Court of Karnataka"
                     />
                   </Field>
+
                   <Field id="cis_court_code" label="CIS court code">
                     <Input id="cis_court_code" name="cis_court_code" placeholder="KAHC01" />
                   </Field>
+
                   <Field id="cis_order_date" label="CIS order date">
                     <Input id="cis_order_date" name="cis_order_date" type="date" />
                   </Field>
+
                   <Field id="cis_bench" label="CIS bench">
                     <Input id="cis_bench" name="cis_bench" placeholder="Division Bench" />
                   </Field>
+
                   <Field id="cis_parties" label="CIS parties (comma separated)">
                     <Input id="cis_parties" name="cis_parties" placeholder="State, Petitioner" />
                   </Field>
+
                   <Field id="cis_petitioners" label="CIS petitioners">
                     <Input
                       id="cis_petitioners"
@@ -884,6 +964,7 @@ export default function UploadPage() {
                       placeholder="Petitioner 1, Petitioner 2"
                     />
                   </Field>
+
                   <Field id="cis_respondents" label="CIS respondents">
                     <Input
                       id="cis_respondents"
@@ -891,9 +972,11 @@ export default function UploadPage() {
                       placeholder="Union of India, State"
                     />
                   </Field>
+
                   <Field id="cis_case_type" label="CIS case type">
                     <Input id="cis_case_type" name="cis_case_type" placeholder="Writ Petition" />
                   </Field>
+
                   <Field id="cis_filing_number" label="CIS filing number">
                     <Input
                       id="cis_filing_number"
@@ -901,6 +984,7 @@ export default function UploadPage() {
                       placeholder="Filing No. 1234/2025"
                     />
                   </Field>
+
                   <Field id="cis_diary_number" label="CIS diary number">
                     <Input
                       id="cis_diary_number"
@@ -908,6 +992,7 @@ export default function UploadPage() {
                       placeholder="Diary No. 9876/2025"
                     />
                   </Field>
+
                   <Field id="cis_judge_names" label="CIS judge names">
                     <Input
                       id="cis_judge_names"
@@ -915,6 +1000,7 @@ export default function UploadPage() {
                       placeholder="Justice A, Justice B"
                     />
                   </Field>
+
                   <Field id="cis_hearing_stage" label="CIS hearing stage">
                     <Input
                       id="cis_hearing_stage"
@@ -922,12 +1008,15 @@ export default function UploadPage() {
                       placeholder="Judgment pronounced"
                     />
                   </Field>
+
                   <Field id="cis_state" label="CIS state">
                     <Input id="cis_state" name="cis_state" placeholder="Karnataka" />
                   </Field>
+
                   <Field id="cis_district" label="CIS district">
                     <Input id="cis_district" name="cis_district" placeholder="Bengaluru" />
                   </Field>
+
                   <Field id="cis_department_tags" label="CIS department tags">
                     <Input
                       id="cis_department_tags"
@@ -939,12 +1028,12 @@ export default function UploadPage() {
               </Card>
             ) : null}
 
-            {/* AI mode */}
             <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-4">
               <div className="flex items-center gap-2">
                 <span className="icon-chip icon-chip-accent">
                   <Sparkles className="h-4 w-4" />
                 </span>
+
                 <div className="flex flex-col">
                   <Label className="flex items-center gap-2 text-sm font-semibold">
                     <Cpu className="h-3.5 w-3.5" /> AI extraction mode
@@ -954,10 +1043,13 @@ export default function UploadPage() {
                   </span>
                 </div>
               </div>
+
               <input type="hidden" name="ai_mode" value={selectedAiMode} />
+
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {AI_MODES.map((mode) => {
                   const active = selectedAiMode === mode.id;
+
                   return (
                     <button
                       key={mode.id}
@@ -984,6 +1076,7 @@ export default function UploadPage() {
                   );
                 })}
               </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <Field id="ai_model" label="AI model override (optional)">
                   <Input id="ai_model" name="ai_model" placeholder="gemini-2.0-flash" />
@@ -1001,7 +1094,6 @@ export default function UploadPage() {
         </CardContent>
       </Card>
 
-      {/* Pipeline status */}
       <Card
         className={cn(
           stage === "error" && "border-destructive/40",
@@ -1030,15 +1122,19 @@ export default function UploadPage() {
                 <Sparkles className="h-4 w-4" />
               )}
             </span>
+
             <div>
               <CardTitle className="text-base">Pipeline status</CardTitle>
               <CardDescription>{statusText}</CardDescription>
             </div>
           </div>
+
           <Badge variant={STAGE_VARIANT[stage]}>{stageLabel}</Badge>
         </CardHeader>
+
         <CardContent className="flex flex-col gap-4 pt-0">
           <Progress value={STAGE_PROGRESS[stage]} className="h-1.5" />
+
           {submitting ? (
             <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-3">
               <Skeleton className="h-3 w-3/5" />
@@ -1046,12 +1142,14 @@ export default function UploadPage() {
               <Skeleton className="h-3 w-4/5" />
             </div>
           ) : null}
+
           {errorText ? (
             <Alert variant="destructive">
               <AlertTitle>Pipeline error</AlertTitle>
               <AlertDescription>{errorText}</AlertDescription>
             </Alert>
           ) : null}
+
           {duplicateExistingId ? (
             <Button
               type="button"
@@ -1060,6 +1158,7 @@ export default function UploadPage() {
                 if (typeof window !== "undefined") {
                   window.localStorage.setItem("orderflow:current_document_id", duplicateExistingId);
                 }
+
                 router.push(`/case/${encodeURIComponent(duplicateExistingId)}`);
               }}
             >
