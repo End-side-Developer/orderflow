@@ -26,9 +26,18 @@ _LEGACY_REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 def _client_ip(request: Request) -> str | None:
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip() or None
-    return request.client.host if request.client else None
+    raw = forwarded.split(",")[0].strip() if forwarded else None
+    if not raw:
+        raw = request.client.host if request.client else None
+    if not raw:
+        return None
+    # Azure App Service's x-forwarded-for sometimes contains "ip:port"; the
+    # refresh-tokens.client_ip column is INET and rejects ports. Strip an
+    # IPv4 trailing port; leave bracketed IPv6 hosts untouched.
+    if raw.startswith("[") or raw.count(":") != 1:
+        return raw
+    host, _, _port = raw.rpartition(":")
+    return host or raw
 
 
 def _user_agent(request: Request) -> str | None:

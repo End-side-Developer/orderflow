@@ -40,14 +40,20 @@ cd app/backend
 python -m scripts.seed_evaluator
 ```
 
-Creates one account:
+Creates one account whose **email and password are supplied via env vars
+or GitHub Secrets — never committed to source control**:
 
-| Field    | Value                                           |
-| -------- | ----------------------------------------------- |
-| Email    | `evaluator@orderflow.example`                   |
-| Password | `Evaluator@2026`                                |
-| Role     | `government` (full access, demo-friendly)       |
-| Status   | `active`                                        |
+| Field    | Source                                                          |
+| -------- | --------------------------------------------------------------- |
+| Email    | `$ORDERFLOW_EVALUATOR_EMAIL` (placeholder if unset)             |
+| Password | `$ORDERFLOW_EVALUATOR_PASSWORD` (placeholder if unset)          |
+| Role     | `government` (full access, demo-friendly)                       |
+| Status   | `active`                                                        |
+
+The actual values are provisioned out-of-band — see the team's password
+manager / shared notes / hackathon submission cover sheet. They are
+injected into the Azure deploy pipeline via GitHub Secrets
+`ORDERFLOW_EVALUATOR_EMAIL` and `ORDERFLOW_EVALUATOR_PASSWORD`.
 
 Override via env vars before running:
 

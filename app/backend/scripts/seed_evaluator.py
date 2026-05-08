@@ -29,9 +29,12 @@ from orderflow_api.api import user_persistence
 from orderflow_api.core.auth.passwords import hash_password
 
 
-DEFAULT_EMAIL = "evaluator@orderflow.example"
-DEFAULT_PASSWORD = "Evaluator@2026"
-DEFAULT_NAME = "Hackathon Evaluator"
+# Placeholders only — the real evaluator email/password MUST be supplied
+# via the env vars below (set as GitHub Secrets in CI / Azure app settings
+# locally). Never commit real credentials to git.
+DEFAULT_EMAIL = "evaluator@example.invalid"
+DEFAULT_PASSWORD = "change-me-in-env"
+DEFAULT_NAME = "OrderFlow Hackathon Evaluator"
 
 
 def main() -> int:
